@@ -36,10 +36,19 @@ DEFAULT_VENV = Path.home() / ".local/share/audio-subtitles-venv"
 
 
 @dataclass
+class TimedWord:
+    text: str
+    start: float
+    end: float
+    confidence: float | None = None
+
+
+@dataclass
 class Cue:
     start: float
     end: float
     text: str
+    words: list[TimedWord] | None = None
 
 
 def main() -> int:
@@ -59,6 +68,14 @@ def main() -> int:
         if platform_result is not None:
             base_name, cues, metadata = platform_result
             outputs = write_outputs(output_dir, base_name, cues, metadata, formats)
+            if args.save_audio:
+                saved_audio, saved_audio_cleanup = download_url_audio(args.input, output_dir, args)
+                outputs.append(saved_audio)
+                saved_audio_cleanup()
+            if args.save_video_preview:
+                saved_video = maybe_download_url_video_preview(args.input, output_dir, args)
+                if saved_video:
+                    outputs.append(saved_video)
             print(f"Source: {args.input}")
             print("Subtitle source: Platform")
             print(f"Output directory: {output_dir}")
@@ -89,6 +106,12 @@ def main() -> int:
             cleanup_func()
 
     outputs = write_outputs(output_dir, base_name, cues, metadata, formats)
+    if args.save_audio:
+        outputs.append(audio_path)
+    if args.save_video_preview and is_url(args.input):
+        saved_video = maybe_download_url_video_preview(args.input, output_dir, args)
+        if saved_video:
+            outputs.append(saved_video)
 
     print(f"Source: {source}")
     print(f"Output directory: {output_dir}")
@@ -132,6 +155,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--line-gap", type=float, default=1.15, help="Start a new lyric line after this word gap in seconds.")
     parser.add_argument("--no-word-timestamps", action="store_true", help="Use segment timestamps only.")
     parser.add_argument("--save-audio", action="store_true", help="Save extracted 16 kHz mono WAV next to outputs.")
+    parser.add_argument("--save-video-preview", action="store_true", help="Save a low-resolution local video preview for in-app karaoke playback.")
     parser.add_argument("--vad-filter", action="store_true", help="Enable VAD filtering in faster-whisper.")
     return parser.parse_args()
 
@@ -263,6 +287,50 @@ def download_url_audio(url: str, output_dir: Path, args: argparse.Namespace) -> 
             return path, cleanup
     cleanup()
     raise SystemExit("yt-dlp finished but no downloaded audio file was found.")
+
+
+def maybe_download_url_video_preview(url: str, output_dir: Path, args: argparse.Namespace) -> Path | None:
+    try:
+        return download_url_video_preview(url, output_dir, args)
+    except subprocess.CalledProcessError as exc:
+        message = last_error_line(exc.stderr or exc.stdout or str(exc))
+        print(f"Video preview download failed; continuing without local video preview: {message}", file=sys.stderr)
+    except Exception as exc:
+        print(f"Video preview download failed; continuing without local video preview: {exc}", file=sys.stderr)
+    return None
+
+
+def download_url_video_preview(url: str, output_dir: Path, args: argparse.Namespace) -> Path:
+    require_binary("yt-dlp")
+    cmd = [
+        "yt-dlp",
+        "--no-playlist",
+        "-f",
+        "bv*[height<=720][ext=mp4]/bv*[height<=720]/bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/best[height<=720][ext=mp4]/best[height<=720]",
+        "-P",
+        str(output_dir),
+        "-o",
+        "%(title).180B [%(id)s].preview.%(ext)s",
+        "--print",
+        "after_move:filepath",
+        url,
+    ]
+    if args.browser:
+        cmd[1:1] = ["--cookies-from-browser", args.browser]
+    if args.cookies:
+        cmd[1:1] = ["--cookies", args.cookies]
+
+    result = subprocess.run(cmd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    paths = [Path(line.strip()) for line in result.stdout.splitlines() if line.strip()]
+    for path in reversed(paths):
+        if path.exists() and path.suffix.lower() in VIDEO_EXTS:
+            return path
+
+    candidates = sorted(output_dir.glob("*.preview.*"))
+    for path in candidates:
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTS:
+            return path
+    raise RuntimeError("yt-dlp finished but no downloaded video preview file was found.")
 
 
 def download_url_subtitles(url: str, output_dir: Path, args: argparse.Namespace) -> tuple[str, list[Cue], dict] | None:
@@ -576,6 +644,8 @@ def separate_source(source: Path, output_dir: Path, args: argparse.Namespace) ->
     vocal = choose_stem(candidates, "vocals")
     print(f"Separated stems directory: {stems_dir}", file=sys.stderr)
     print(f"Transcribing vocal stem: {vocal}", file=sys.stderr)
+    for path in sorted(candidates):
+        print(path)
     return vocal
 
 
@@ -685,16 +755,17 @@ def cues_from_segments(segments: Iterable[object], args: argparse.Namespace) -> 
 
 def cues_from_words(words: Iterable[object], max_chars: int, max_words: int, line_gap: float) -> list[Cue]:
     cues: list[Cue] = []
-    current_words: list[str] = []
+    current_words: list[TimedWord] = []
     start: float | None = None
     end: float | None = None
     previous_end: float | None = None
 
     def flush() -> None:
         nonlocal current_words, start, end
-        text = clean_text(" ".join(current_words))
+        text = clean_text(" ".join(word.text for word in current_words))
         if text and start is not None and end is not None:
-            cues.append(Cue(start, max(end, start + 0.25), text))
+            cue_end = max(end, start + 0.25)
+            cues.append(Cue(start, cue_end, text, [word for word in current_words if word.end > word.start]))
         current_words = []
         start = None
         end = None
@@ -705,13 +776,15 @@ def cues_from_words(words: Iterable[object], max_chars: int, max_words: int, lin
             continue
         word_start = float(getattr(item, "start", previous_end or 0.0) or 0.0)
         word_end = float(getattr(item, "end", word_start + 0.3) or word_start + 0.3)
+        probability = getattr(item, "probability", None)
+        confidence = float(probability) if probability is not None else None
         gap = 0.0 if previous_end is None else word_start - previous_end
-        next_len = len(" ".join([*current_words, word]))
+        next_len = len(" ".join([current_word.text for current_word in current_words] + [word]))
         if current_words and (gap > line_gap or len(current_words) >= max_words or next_len > max_chars):
             flush()
         if start is None:
             start = word_start
-        current_words.append(word)
+        current_words.append(TimedWord(word, word_start, max(word_end, word_start + 0.05), confidence))
         end = word_end
         previous_end = word_end
     flush()
