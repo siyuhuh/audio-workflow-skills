@@ -122,7 +122,7 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate SRT, VTT, LRC, TXT, and JSON subtitles from audio, video, or UVR vocal stems."
+        description="Generate SRT, VTT, LRC, TXT, JSON, and ASS subtitles from audio, video, or UVR vocal stems."
     )
     parser.add_argument("input", help="Audio/video file, UVR output folder, or media URL such as YouTube or Bilibili.")
     parser.add_argument("--output-dir", help="Directory for generated subtitle files.")
@@ -131,7 +131,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--task", choices=["transcribe", "translate"], default="transcribe")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--compute-type", default="auto", help="auto, int8, float16, float32, int8_float16.")
-    parser.add_argument("--formats", default="srt,vtt,lrc,txt,json", help="Comma list: srt,vtt,lrc,txt,json.")
+    parser.add_argument("--formats", default="srt,vtt,lrc,txt,json,ass", help="Comma list: srt,vtt,lrc,txt,json,ass.")
+    parser.add_argument(
+        "--word-engine",
+        choices=["auto", "whisper_timestamped", "faster_whisper"],
+        default="auto",
+        help="Word timing engine for local transcription. auto prefers whisper_timestamped and falls back to faster_whisper.",
+    )
     parser.add_argument("--stem", choices=["auto", "vocals", "instrumental", "none"], default="auto")
     parser.add_argument("--separate", action="store_true", help="Separate vocals/instrumental first with audio-separator.")
     parser.add_argument("--separator-model", help="audio-separator model filename. Omit to use its default.")
@@ -156,7 +162,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-word-timestamps", action="store_true", help="Use segment timestamps only.")
     parser.add_argument("--save-audio", action="store_true", help="Save extracted 16 kHz mono WAV next to outputs.")
     parser.add_argument("--save-video-preview", action="store_true", help="Save a low-resolution local video preview for in-app karaoke playback.")
-    parser.add_argument("--vad-filter", action="store_true", help="Enable VAD filtering in faster-whisper.")
+    parser.add_argument("--vad-filter", action="store_true", help="Enable VAD filtering for the selected local word engine.")
     return parser.parse_args()
 
 
@@ -394,6 +400,9 @@ def download_url_subtitles(url: str, output_dir: Path, args: argparse.Namespace)
             "subtitle_language": selected_lang,
             "subtitle_kind": subtitle_kind,
             "subtitle_language_selector": args.sub_langs or args.language or "auto",
+            "word_engine": "platform",
+            "word_timing_source": "estimated",
+            "has_word_timestamps": False,
         }
         return base_name, cues, metadata
     except subprocess.CalledProcessError as exc:
@@ -702,6 +711,57 @@ def convert_audio(source: Path, target: Path) -> None:
 
 
 def transcribe(audio_path: Path, args: argparse.Namespace) -> tuple[list[Cue], dict]:
+    if args.word_engine in {"auto", "whisper_timestamped"} and not args.no_word_timestamps:
+        try:
+            return transcribe_with_whisper_timestamped(audio_path, args)
+        except ImportError as exc:
+            if args.word_engine == "whisper_timestamped":
+                setup_script = SKILL_DIR / "scripts/setup_faster_whisper.sh"
+                raise SystemExit(
+                    "Missing Python package: whisper-timestamped\n"
+                    f"Install it with: {setup_script}\n"
+                    "Then rerun the same audio-subtitles command."
+                ) from exc
+            print("whisper-timestamped is not installed; falling back to faster-whisper.", file=sys.stderr)
+        except Exception:
+            if args.word_engine == "whisper_timestamped":
+                raise
+            print("whisper-timestamped failed; falling back to faster-whisper.", file=sys.stderr)
+
+    return transcribe_with_faster_whisper(audio_path, args)
+
+
+def transcribe_with_whisper_timestamped(audio_path: Path, args: argparse.Namespace) -> tuple[list[Cue], dict]:
+    import whisper_timestamped as whisper
+
+    device = "cpu" if args.device == "auto" else args.device
+    model = whisper.load_model(args.model, device=device)
+    result = whisper.transcribe(
+        model,
+        str(audio_path),
+        language=args.language,
+        task=args.task,
+        beam_size=5,
+        best_of=5,
+        temperature=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+        vad=args.vad_filter,
+    )
+    cues = cues_from_timestamped_segments(result.get("segments", []), args)
+    metadata = {
+        "model": args.model,
+        "device": device,
+        "compute_type": None,
+        "language": result.get("language"),
+        "language_probability": result.get("language_probability"),
+        "duration": result.get("duration"),
+        "word_engine": "whisper_timestamped",
+        "word_timing_source": "aligned" if cues_have_word_timestamps(cues) else "none",
+        "has_word_timestamps": cues_have_word_timestamps(cues),
+    }
+    return cues, metadata
+
+
+def transcribe_with_faster_whisper(audio_path: Path, args: argparse.Namespace) -> tuple[list[Cue], dict]:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
@@ -736,8 +796,26 @@ def transcribe(audio_path: Path, args: argparse.Namespace) -> tuple[list[Cue], d
         "language": getattr(info, "language", None),
         "language_probability": getattr(info, "language_probability", None),
         "duration": getattr(info, "duration", None),
+        "word_engine": "faster_whisper",
+        "word_timing_source": "faster_whisper" if cues_have_word_timestamps(cues) else "none",
+        "has_word_timestamps": cues_have_word_timestamps(cues),
     }
     return cues, metadata
+
+
+def cues_from_timestamped_segments(segments: Iterable[dict], args: argparse.Namespace) -> list[Cue]:
+    cues: list[Cue] = []
+    for segment in segments:
+        words = segment.get("words") or []
+        if words:
+            cues.extend(cues_from_word_dicts(words, args.max_line_chars, args.max_line_words, args.line_gap))
+        else:
+            text = clean_text(str(segment.get("text", "")))
+            start = float(segment.get("start", 0.0) or 0.0)
+            end = float(segment.get("end", start + 0.25) or start + 0.25)
+            if text:
+                cues.append(Cue(start, max(end, start + 0.25), text))
+    return [cue for cue in cues if cue.text]
 
 
 def cues_from_segments(segments: Iterable[object], args: argparse.Namespace) -> list[Cue]:
@@ -762,7 +840,7 @@ def cues_from_words(words: Iterable[object], max_chars: int, max_words: int, lin
 
     def flush() -> None:
         nonlocal current_words, start, end
-        text = clean_text(" ".join(word.text for word in current_words))
+        text = join_lyric_words(word.text for word in current_words)
         if text and start is not None and end is not None:
             cue_end = max(end, start + 0.25)
             cues.append(Cue(start, cue_end, text, [word for word in current_words if word.end > word.start]))
@@ -791,13 +869,72 @@ def cues_from_words(words: Iterable[object], max_chars: int, max_words: int, lin
     return cues
 
 
+def cues_from_word_dicts(words: Iterable[dict], max_chars: int, max_words: int, line_gap: float) -> list[Cue]:
+    cues: list[Cue] = []
+    current_words: list[TimedWord] = []
+    start: float | None = None
+    end: float | None = None
+    previous_end: float | None = None
+
+    def flush() -> None:
+        nonlocal current_words, start, end
+        text = join_lyric_words(word.text for word in current_words)
+        if text and start is not None and end is not None:
+            cue_end = max(end, start + 0.25)
+            cues.append(Cue(start, cue_end, text, [word for word in current_words if word.end > word.start]))
+        current_words = []
+        start = None
+        end = None
+
+    for item in words:
+        word = clean_text(str(item.get("text") or item.get("word") or ""))
+        if not word:
+            continue
+        word_start = float(item.get("start", previous_end or 0.0) or 0.0)
+        word_end = float(item.get("end", word_start + 0.3) or word_start + 0.3)
+        confidence_value = item.get("confidence", item.get("probability"))
+        confidence = float(confidence_value) if confidence_value is not None else None
+        gap = 0.0 if previous_end is None else word_start - previous_end
+        next_len = len(" ".join([current_word.text for current_word in current_words] + [word]))
+        if current_words and (gap > line_gap or len(current_words) >= max_words or next_len > max_chars):
+            flush()
+        if start is None:
+            start = word_start
+        current_words.append(TimedWord(word, word_start, max(word_end, word_start + 0.05), confidence))
+        end = word_end
+        previous_end = word_end
+    flush()
+    return cues
+
+
 def clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def join_lyric_words(words: Iterable[str]) -> str:
+    output: list[str] = []
+    previous = ""
+    for index, word in enumerate(words):
+        output.append(word_text_prefix(previous, word, index) + word)
+        previous = word
+    return clean_text("".join(output))
+
+
+def word_text_prefix(previous: str, current: str, index: int) -> str:
+    if index == 0 or not previous:
+        return ""
+    if re.match(r"^[,.;:!?，。！？；：、）】》」』”’]$", current):
+        return ""
+    if re.match(r"^[（【《「『“‘]$", previous):
+        return ""
+    if is_compact_token(previous) or is_compact_token(current):
+        return ""
+    return " "
+
+
 def parse_formats(value: str) -> set[str]:
     formats = {item.strip().lower() for item in value.split(",") if item.strip()}
-    allowed = {"srt", "vtt", "lrc", "txt", "json"}
+    allowed = {"srt", "vtt", "lrc", "txt", "json", "ass"}
     unknown = formats - allowed
     if unknown:
         raise SystemExit(f"Unsupported formats: {', '.join(sorted(unknown))}")
@@ -826,6 +963,10 @@ def write_outputs(output_dir: Path, base_name: str, cues: list[Cue], metadata: d
         path = output_dir / f"{base_name}.json"
         payload = {"metadata": metadata, "cues": [asdict(cue) for cue in cues]}
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        outputs.append(path)
+    if "ass" in formats:
+        path = output_dir / f"{base_name}.ass"
+        path.write_text(render_ass(cues, metadata), encoding="utf-8")
         outputs.append(path)
     return outputs
 
@@ -857,6 +998,115 @@ def render_txt(cues: list[Cue], metadata: dict) -> str:
     ]
     lines.extend(f"[{vtt_time(cue.start)} --> {vtt_time(cue.end)}] {cue.text}" for cue in cues)
     return "\n".join(lines) + "\n"
+
+
+def render_ass(cues: list[Cue], metadata: dict) -> str:
+    title = ass_escape(str(metadata.get("source") or "VocalFlow Karaoke"))
+    header = [
+        "[Script Info]",
+        f"Title: {title}",
+        "ScriptType: v4.00+",
+        "PlayResX: 1280",
+        "PlayResY: 720",
+        "WrapStyle: 0",
+        "ScaledBorderAndShadow: yes",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        "Style: Default,Arial,58,&H00FFFFFF,&H000078FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,80,80,54,1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ]
+    events = []
+    for cue in cues:
+        words = cue.words if cue.words else infer_timed_words(cue)
+        text = render_ass_karaoke_text(cue, words)
+        events.append(f"Dialogue: 0,{ass_time(cue.start)},{ass_time(cue.end)},Default,,0,0,0,,{text}")
+    return "\n".join([*header, *events, ""])
+
+
+def render_ass_karaoke_text(cue: Cue, words: list[TimedWord]) -> str:
+    if not words:
+        duration = max(1, ass_centiseconds(cue.end - cue.start))
+        return f"{{\\kf{duration}}}{ass_escape(cue.text)}"
+
+    parts: list[str] = []
+    cursor = cue.start
+    previous_text = ""
+    for index, word in enumerate(words):
+        gap = max(0, ass_centiseconds(word.start - cursor))
+        if gap:
+            parts.append(f"{{\\k{gap}}}")
+        duration = max(1, ass_centiseconds(word.end - word.start))
+        text = word.text
+        prefix = ass_word_prefix(previous_text, text, index)
+        parts.append(f"{{\\kf{duration}}}{ass_escape(prefix + text)}")
+        previous_text = text
+        cursor = word.end
+    return "".join(parts)
+
+
+def infer_timed_words(cue: Cue) -> list[TimedWord]:
+    tokens = tokenize_lyric_text(cue.text)
+    if not tokens:
+        return []
+    duration = max(0.05, cue.end - cue.start)
+    weights = [estimated_token_weight(token) for token in tokens]
+    total_weight = sum(weights) or len(tokens)
+    cursor = cue.start
+    words: list[TimedWord] = []
+    for index, token in enumerate(tokens):
+        start = cursor if index > 0 else cue.start
+        end = cue.end if index == len(tokens) - 1 else min(cue.end, start + duration * (weights[index] / total_weight))
+        words.append(TimedWord(token, start, max(end, start + 0.01)))
+        cursor = end
+    return words
+
+
+def tokenize_lyric_text(text: str) -> list[str]:
+    return re.findall(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]|[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[^\s]", text)
+
+
+def estimated_token_weight(token: str) -> float:
+    if re.match(r"^[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+$", token):
+        return 0.35
+    if re.match(r"^[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]$", token):
+        return 1.0
+    return max(0.8, min(3.6, len(token) / 3))
+
+
+def ass_word_prefix(previous: str, current: str, index: int) -> str:
+    return word_text_prefix(previous, current, index)
+
+
+def is_compact_token(token: str) -> bool:
+    return bool(re.match(r"^[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]$", token))
+
+
+def ass_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\r\n", "\\N").replace("\n", "\\N")
+
+
+def ass_time(seconds: float) -> str:
+    seconds = max(0.0, seconds)
+    centis = int(round((seconds - int(seconds)) * 100))
+    whole = int(seconds)
+    if centis == 100:
+        whole += 1
+        centis = 0
+    hrs = whole // 3600
+    mins = (whole % 3600) // 60
+    secs = whole % 60
+    return f"{hrs}:{mins:02d}:{secs:02d}.{centis:02d}"
+
+
+def ass_centiseconds(seconds: float) -> int:
+    return max(0, int(round(seconds * 100)))
+
+
+def cues_have_word_timestamps(cues: list[Cue]) -> bool:
+    return any(bool(cue.words) for cue in cues)
 
 
 def srt_time(seconds: float) -> str:

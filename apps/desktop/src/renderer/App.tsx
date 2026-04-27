@@ -103,7 +103,7 @@ interface ResourcePackage {
   duplicateIds: string[];
 }
 
-const allFormats: OutputFormat[] = ["lrc", "srt", "vtt", "txt", "json"];
+const allFormats: OutputFormat[] = ["lrc", "srt", "vtt", "txt", "json", "ass"];
 const motionEase = [0.23, 1, 0.32, 1] as const;
 const lyricEffectOptions: Array<[LyricEffect, string]> = [
   ["sweep", "Blue sweep"],
@@ -134,7 +134,7 @@ const defaultOptions: JobOptions = {
   subLangs: "",
   browser: "",
   cookies: "",
-  formats: ["lrc", "json"]
+  formats: ["lrc", "json", "ass"]
 };
 
 function createHttpAudioWorkflowApi(): AudioWorkflowApi {
@@ -398,7 +398,7 @@ export default function App() {
       localFallback: workflowMode === "karaoke",
       separate: workflowMode === "karaoke" ? options.separate : false,
       saveAudio: false,
-      formats: workflowMode === "karaoke" ? ["lrc", "json"] : ["srt"]
+      formats: workflowMode === "karaoke" ? ["lrc", "json", "ass"] : ["srt"]
     });
   }
 
@@ -1952,38 +1952,7 @@ function KaraokeRoomScene({
           </div>
 
           <div className="ktvTransportDock">
-            <div className="lyricStyleControls">
-              <div className="lyricEffectSelector" aria-label="Lyric effect">
-                {lyricEffectOptions.map(([effect, label]) => (
-                  <button key={effect} type="button" data-selected={lyricEffect === effect} onClick={() => onLyricEffectChange(effect)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="lyricFontSelector" aria-label="Lyric font">
-                {lyricFontOptions.map(([font, label]) => (
-                  <button key={font} type="button" data-selected={lyricFont === font} onClick={() => onLyricFontChange(font)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="trackSelector" aria-label="Track role">
-              <button type="button" data-selected={trackRole === "original"} disabled={!trackAssets.original} onClick={() => onTrackRoleChange("original")}>
-                Original
-              </button>
-              <button type="button" data-selected={trackRole === "backing"} disabled={!trackAssets.backing} onClick={() => onTrackRoleChange("backing")}>
-                Backing
-              </button>
-              <button type="button" data-selected={trackRole === "vocal"} disabled={!trackAssets.vocal} onClick={() => onTrackRoleChange("vocal")}>
-                Vocal
-              </button>
-            </div>
             <div className="transportPanel">
-              <div>
-                <span>{selectedMediaName}</span>
-                <strong>{formatClock(playbackController.currentTime)}</strong>
-              </div>
               <input
                 aria-label="Playback position"
                 type="range"
@@ -2011,11 +1980,43 @@ function KaraokeRoomScene({
                 </button>
               </div>
             </div>
-            {!hasStems ? (
-              <button type="button" className="splitInlineButton" onClick={onSplitVocals} disabled={isRunning}>
-                {isRunning ? "Splitting..." : "Split vocals"}
-              </button>
-            ) : null}
+            <div className="dockUtilityRow">
+              <div className="trackSelector" aria-label="Track role">
+                <button type="button" data-selected={trackRole === "original"} disabled={!trackAssets.original} onClick={() => onTrackRoleChange("original")}>
+                  Original
+                </button>
+                <button type="button" data-selected={trackRole === "backing"} disabled={!trackAssets.backing} onClick={() => onTrackRoleChange("backing")}>
+                  Backing
+                </button>
+                <button type="button" data-selected={trackRole === "vocal"} disabled={!trackAssets.vocal} onClick={() => onTrackRoleChange("vocal")}>
+                  Vocal
+                </button>
+              </div>
+              <details className="dockMenu">
+                <summary>Aa</summary>
+                <div className="dockMenuContent lyricStyleControls">
+                  <div className="lyricEffectSelector" aria-label="Lyric effect">
+                    {lyricEffectOptions.map(([effect, label]) => (
+                      <button key={effect} type="button" data-selected={lyricEffect === effect} onClick={() => onLyricEffectChange(effect)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="lyricFontSelector" aria-label="Lyric font">
+                    {lyricFontOptions.map(([font, label]) => (
+                      <button key={font} type="button" data-selected={lyricFont === font} onClick={() => onLyricFontChange(font)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </details>
+              {!hasStems ? (
+                <button type="button" className="splitInlineButton" onClick={onSplitVocals} disabled={isRunning}>
+                  {isRunning ? "Splitting..." : "Split vocals"}
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {playbackController.mediaUrl && !showLocalVideo ? (
@@ -2037,43 +2038,46 @@ function KaraokeRoomScene({
             />
           ) : null}
 
-          <div className="ktvSidePanel">
-            <MicrophoneMonitorPanel monitor={microphoneMonitor} />
+          <details className="ktvSidePanel">
+            <summary>Panel</summary>
+            <div className="ktvSideContent">
+              <MicrophoneMonitorPanel monitor={microphoneMonitor} />
 
-            <label className="songPackageSelector">
-              <span>Karaoke song</span>
-              <select value={activeReview.id} onChange={(event) => onPackageChange(event.target.value)} disabled={songOptions.length <= 1}>
-                {songOptions.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {reviewDisplayTitle(entry)}
-                  </option>
+              <label className="songPackageSelector">
+                <span>Karaoke song</span>
+                <select value={activeReview.id} onChange={(event) => onPackageChange(event.target.value)} disabled={songOptions.length <= 1}>
+                  {songOptions.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {reviewDisplayTitle(entry)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="packageBindingField roomBindingField">
+                <span>Lyrics</span>
+                <strong>{selectedSubtitleName}</strong>
+              </div>
+
+              {!playbackController.mediaUrl ? <p className="emptyText">{playbackController.mediaStatus || playbackBundle?.unavailableReason || "No local audio track available."}</p> : null}
+
+              <div className="cueList roomCueList">
+                {cues.map((cue, index) => (
+                  <motion.button
+                    key={`${cue.start}-${index}`}
+                    type="button"
+                    data-active={index === activeCueIndex}
+                    onClick={() => playbackController.seek(cue.start, true)}
+                    animate={index === activeCueIndex ? { x: 2 } : { x: 0 }}
+                    transition={{ duration: 0.14, ease: motionEase }}
+                  >
+                    <span>{formatClock(cue.start)}</span>
+                    <strong>{cue.text}</strong>
+                  </motion.button>
                 ))}
-              </select>
-            </label>
-
-            <div className="packageBindingField roomBindingField">
-              <span>Lyrics</span>
-              <strong>{selectedSubtitleName}</strong>
+              </div>
             </div>
-
-            {!playbackController.mediaUrl ? <p className="emptyText">{playbackController.mediaStatus || playbackBundle?.unavailableReason || "No local audio track available."}</p> : null}
-
-            <div className="cueList roomCueList">
-              {cues.map((cue, index) => (
-                <motion.button
-                  key={`${cue.start}-${index}`}
-                  type="button"
-                  data-active={index === activeCueIndex}
-                  onClick={() => playbackController.seek(cue.start, true)}
-                  animate={index === activeCueIndex ? { x: 2 } : { x: 0 }}
-                  transition={{ duration: 0.14, ease: motionEase }}
-                >
-                  <span>{formatClock(cue.start)}</span>
-                  <strong>{cue.text}</strong>
-                </motion.button>
-              ))}
-            </div>
-          </div>
+          </details>
         </aside>
       </section>
     </motion.main>
@@ -2437,7 +2441,7 @@ function upsertHistoryEntry(current: SavedJobHistory[], entry: SavedJobHistory):
 
 function ensureKaraokeFormats(formats: OutputFormat[]): OutputFormat[] {
   const nextFormats = [...formats];
-  for (const format of ["lrc", "json"] as OutputFormat[]) {
+  for (const format of ["lrc", "json", "ass"] as OutputFormat[]) {
     if (!nextFormats.includes(format)) {
       nextFormats.push(format);
     }

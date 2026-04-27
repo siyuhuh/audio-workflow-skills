@@ -61,16 +61,18 @@ interface SamplePackageManifest {
 const runtimePackageChecks = {
   ytDlp: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('yt_dlp') else 1)",
   whisper: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('faster_whisper') else 1)",
+  whisperTimestamped: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('whisper_timestamped') else 1)",
   separator: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('audio_separator') else 1)"
 };
 
 const runtimePackages = {
   ytDlp: "yt-dlp",
   whisper: "faster-whisper",
+  whisperTimestamped: "whisper-timestamped",
   separator: "audio-separator[cpu]"
 };
 
-const subtitleExtensions = new Set([".srt", ".vtt", ".lrc", ".txt", ".json"]);
+const subtitleExtensions = new Set([".srt", ".vtt", ".lrc", ".txt", ".json", ".ass"]);
 const mediaExtensions = new Set([".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".opus", ".aiff", ".aif", ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"]);
 const reviewExtensions = new Set([...subtitleExtensions, ...mediaExtensions]);
 const mediaProtocol = "vocalflow-media";
@@ -884,7 +886,7 @@ function classifyAssetRole(filePath: string, type: GeneratedAsset["type"]): Gene
 }
 
 function selectPrimarySubtitle(assets: GeneratedAsset[]): string | null {
-  return selectByExtension(assets, "subtitle", [".lrc", ".srt", ".vtt", ".json", ".txt"]);
+  return selectByExtension(assets, "subtitle", [".lrc", ".srt", ".vtt", ".json", ".txt", ".ass"]);
 }
 
 function selectPrimaryMedia(options: Pick<JobOptions, "input" | "workflowMode">, assets: GeneratedAsset[]): string | null {
@@ -1419,6 +1421,9 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
   if (needs.whisper && !(await pythonCheck(venvPython, runtimePackageChecks.whisper, runtimeEnv))) {
     missingPackages.push(runtimePackages.whisper);
   }
+  if (needs.whisper && !(await pythonCheck(venvPython, runtimePackageChecks.whisperTimestamped, runtimeEnv))) {
+    missingPackages.push(runtimePackages.whisperTimestamped);
+  }
   if (needs.separator && !(await pythonCheck(venvPython, runtimePackageChecks.separator, runtimeEnv))) {
     missingPackages.push(runtimePackages.separator);
   }
@@ -1645,6 +1650,7 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
   args.push("--subtitle-source", options.subtitleSource);
   args.push("--model", options.model || "medium");
   args.push("--formats", formats.join(","));
+  args.push("--word-engine", "auto");
 
   if (options.language.trim()) {
     args.push("--language", options.language.trim());
@@ -1702,7 +1708,7 @@ function isPreviewVideo(filePath: string): boolean {
 }
 
 function normalizeFormats(formats: OutputFormat[]): OutputFormat[] {
-  const fallback: OutputFormat[] = ["srt", "vtt", "lrc", "txt", "json"];
+  const fallback: OutputFormat[] = ["srt", "vtt", "lrc", "txt", "json", "ass"];
   const allowed = new Set(fallback);
   const selected = formats.filter((format) => allowed.has(format));
   return selected.length > 0 ? selected : fallback;
@@ -1759,7 +1765,7 @@ function parseGeneratedOutput(output: string): Pick<JobResult, "outputDir" | "ge
 }
 
 function looksLikeGeneratedFile(value: string): boolean {
-  return /\.(srt|vtt|lrc|txt|json|mp3|wav|m4a|flac|aac|ogg|opus|aiff|aif|mp4|mov|mkv|webm|avi|m4v)$/i.test(value) && (path.isAbsolute(value) || value.includes(path.sep));
+  return /\.(srt|vtt|lrc|txt|json|ass|mp3|wav|m4a|flac|aac|ogg|opus|aiff|aif|mp4|mov|mkv|webm|avi|m4v)$/i.test(value) && (path.isAbsolute(value) || value.includes(path.sep));
 }
 
 function quoteForDisplay(value: string): string {

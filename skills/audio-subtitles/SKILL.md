@@ -20,8 +20,8 @@ Default behavior:
 - Accept media URLs such as YouTube or Bilibili; use platform subtitles first with `yt-dlp` before local model work when available.
 - Accept an Ultimate Vocal Remover output folder; prefer files named like `vocals`, `vocal`, `voice`, or `acapella`.
 - Optionally run UVR-style source separation first via `audio-separator`.
-- Output `.srt`, `.vtt`, `.lrc`, `.txt`, and `.json` next to the input unless `--output-dir` is set.
-- Use `faster-whisper` locally only for local media, `--subtitle-source local`, or URL `--local-fallback`.
+- Output `.srt`, `.vtt`, `.lrc`, `.txt`, `.json`, and `.ass` next to the input unless `--output-dir` is set.
+- Use `whisper-timestamped` first for local word alignment, with `faster-whisper` as fallback for local media, `--subtitle-source local`, or URL `--local-fallback`.
 - Keep generated subtitle files separate from audio files; do not overwrite source media.
 
 Install the local transcription dependency when missing:
@@ -57,7 +57,7 @@ audio-subtitles "https://www.youtube.com/watch?v=..."
 audio-subtitles "https://www.bilibili.com/video/BV..."
 ```
 
-For URL inputs, default behavior is to download available platform subtitles or auto-subtitles and convert them to `.srt`, `.vtt`, `.lrc`, `.txt`, and `.json`. This avoids running Whisper when platform captions already exist. Bilibili URLs fall back to local Whisper by default when no platform subtitles are available.
+For URL inputs, default behavior is to download available platform subtitles or auto-subtitles and convert them to `.srt`, `.vtt`, `.lrc`, `.txt`, `.json`, and `.ass`. This avoids running Whisper when platform captions already exist. Bilibili URLs fall back to local Whisper by default when no platform subtitles are available.
 
 Select subtitle languages:
 
@@ -160,6 +160,7 @@ The official Ultimate Vocal Remover GUI is best treated as a manual stem produce
 - `.vtt`: best for web playback.
 - `.txt`: quick review transcript with timestamps.
 - `.json`: machine-readable segment timing for later conversion or cleanup.
+- `.ass`: karaoke subtitle output using ASS `\kf` timing tags.
 
 GarageBand may import audio/MIDI cleanly, but it is not a reliable native subtitle/lyrics-file viewer. Treat the generated `.lrc`/`.srt` as a companion file for a lyrics viewer, video editor, or another music app/plugin that explicitly supports timed lyrics/subtitles.
 
@@ -186,7 +187,7 @@ Use:
 - `large-v3-turbo`: better quality when speed is acceptable and memory is enough.
 - `large-v3`: best local Whisper-family accuracy, slower and heavier.
 
-For this skill, prefer `faster-whisper` first: it is a CTranslate2 reimplementation of Whisper, runs locally, supports word timestamps, and is faster/lower-memory than the original OpenAI Whisper implementation for the same model family.
+For this skill, prefer `whisper-timestamped` first for karaoke word alignment. Keep `faster-whisper` available as a faster/lower-memory fallback for the same Whisper model family.
 
 Use `whisper.cpp` when the user wants a native C/C++ route, especially on Apple Silicon with Core ML/Metal-oriented setup. It requires converting input to 16-bit mono WAV for the CLI.
 

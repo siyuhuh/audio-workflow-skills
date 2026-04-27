@@ -574,7 +574,7 @@ button:disabled {
 .roomLyrics {
   position: absolute;
   right: 6vw;
-  bottom: clamp(182px, 23vh, 260px);
+  bottom: clamp(210px, 30vh, 340px);
   left: 6vw;
   z-index: 3;
   display: grid;
@@ -609,9 +609,9 @@ button:disabled {
   align-items: baseline;
   justify-content: center;
   justify-self: center;
-  max-width: min(100%, 1420px);
+  max-width: min(100%, 1280px);
   color: #ffffff;
-  font-size: clamp(46px, 7.2vw, 92px);
+  font-size: clamp(40px, 6.4vw, 82px);
   line-height: 1.08;
   font-weight: 950;
   letter-spacing: 0;
@@ -722,7 +722,7 @@ button:disabled {
   --lyric-fill: #ff3b7a;
   --lyric-stroke: rgba(255, 255, 255, 0.86);
   --lyric-glow: rgba(255, 59, 122, 0.42);
-  font-size: clamp(56px, 8.4vw, 118px);
+  font-size: clamp(46px, 7.2vw, 96px);
   line-height: 1.02;
 }
 
@@ -742,12 +742,12 @@ button:disabled {
 
 .karaokeControlPane {
   position: absolute;
-  right: 28px;
-  bottom: 24px;
-  left: 28px;
+  right: 20px;
+  bottom: 18px;
+  left: 20px;
   z-index: 4;
   display: grid;
-  grid-template-columns: minmax(220px, 340px) minmax(360px, 1fr) minmax(240px, 320px);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 16px;
   align-items: end;
   min-width: 0;
@@ -755,30 +755,38 @@ button:disabled {
   border-radius: 0;
   padding: 0;
   background: transparent;
+  pointer-events: none;
 }
 
 .ktvMetaPanel,
 .ktvTransportDock,
 .ktvSidePanel {
   border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(7, 8, 7, 0.48);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(18px);
+  background: rgba(7, 8, 7, 0.42);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(22px) saturate(1.15);
+  pointer-events: auto;
 }
 
 .ktvMetaPanel {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 14px;
-  align-items: end;
-  padding: 12px;
+  grid-column: 1;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  justify-self: start;
+  width: min(300px, 100%);
+  min-width: 240px;
+  padding: 8px;
+  border-radius: 18px;
+  opacity: 0.9;
 }
 
 .ktvCover {
   display: grid;
   place-items: end start;
-  width: 96px;
-  height: 96px;
+  width: 68px;
+  height: 68px;
   padding: 10px;
   overflow: hidden;
   background:
@@ -805,40 +813,43 @@ button:disabled {
 
 .ktvTrackMeta strong {
   color: #ffffff;
-  font-size: 23px;
+  font-size: 16px;
   line-height: 1.05;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.72);
 }
 
 .ktvTrackMeta span {
   color: rgba(255, 255, 255, 0.68);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .ktvTransportDock {
   display: grid;
-  gap: 10px;
+  grid-column: 2;
+  gap: 8px;
   justify-self: center;
-  width: min(620px, 100%);
-  padding: 12px;
+  width: min(520px, 42vw);
+  min-width: 390px;
+  border-radius: 24px;
+  padding: 9px 11px;
 }
 
 .lyricStyleControls {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .lyricEffectSelector,
 .lyricFontSelector {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 7px;
 }
 
 .lyricEffectSelector button,
 .lyricFontSelector button {
-  min-height: 30px;
+  min-height: 28px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.06);
@@ -857,11 +868,13 @@ button:disabled {
 .trackSelector {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
 }
 
 .trackSelector button {
-  min-height: 34px;
+  min-height: 30px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
@@ -877,7 +890,7 @@ button:disabled {
 }
 
 .splitInlineButton {
-  min-height: 34px;
+  min-height: 30px;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.92);
@@ -891,6 +904,53 @@ button:disabled {
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(5, 6, 4, 0.72);
   color: #f7f7f3;
+}
+
+.dockUtilityRow {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.dockMenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dockMenu summary,
+.ktvSidePanel summary {
+  display: grid;
+  place-items: center;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 900;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dockMenu summary::-webkit-details-marker,
+.ktvSidePanel summary::-webkit-details-marker {
+  display: none;
+}
+
+.dockMenuContent {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: min(420px, 78vw);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  padding: 10px;
+  background: rgba(7, 8, 7, 0.82);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(24px);
 }
 
 .micMonitorPanel {
@@ -968,25 +1028,11 @@ button:disabled {
 
 .transportPanel {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   border: 0;
   border-radius: 0;
   padding: 0;
   background: transparent;
-}
-
-.transportPanel > div:first-child {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 12px;
-}
-
-.transportPanel > div:first-child span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .transportPanel input[type="range"] {
@@ -997,11 +1043,11 @@ button:disabled {
 .transportButtons {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 7px;
 }
 
 .transportButtons button {
-  min-height: 34px;
+  min-height: 31px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
@@ -1015,11 +1061,40 @@ button:disabled {
 }
 
 .ktvSidePanel {
+  position: relative;
+  grid-column: 3;
+  justify-self: end;
+  width: auto;
+  min-width: 0;
+  border-radius: 999px;
+  padding: 6px;
+  background: rgba(7, 8, 7, 0.34);
+}
+
+.ktvSidePanel[open] {
+  border-radius: 20px;
+  background: rgba(7, 8, 7, 0.78);
+}
+
+.ktvSidePanel summary {
+  min-width: 74px;
+}
+
+.ktvSideContent {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
   display: grid;
   gap: 8px;
-  max-height: min(48vh, 430px);
-  padding: 10px;
+  width: min(320px, calc(100vw - 40px));
+  max-height: min(58vh, 480px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  padding: 12px;
   overflow: hidden;
+  background: rgba(7, 8, 7, 0.84);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(24px);
 }
 
 .songPackageSelector {
@@ -1044,7 +1119,7 @@ button:disabled {
 }
 
 .roomCueList {
-  max-height: 168px;
+  max-height: 190px;
   border: 0;
   background: transparent;
 }
@@ -1056,6 +1131,49 @@ button:disabled {
 .roomCueList button[data-active="true"] {
   background: rgba(255, 255, 255, 0.16);
   color: #ffffff;
+}
+
+@media (max-width: 1100px) {
+  .ktvMetaPanel {
+    display: none;
+  }
+
+  .ktvTransportDock {
+    width: min(520px, calc(100vw - 150px));
+    min-width: 0;
+  }
+
+  .roomLyrics {
+    right: 4vw;
+    bottom: clamp(198px, 29vh, 300px);
+    left: 4vw;
+  }
+
+  .karaokeLyricLine {
+    font-size: clamp(36px, 6.8vw, 74px);
+  }
+}
+
+@media (max-height: 740px) {
+  .roomLyrics {
+    bottom: clamp(178px, 28vh, 260px);
+  }
+
+  .karaokeLyricLine {
+    font-size: clamp(34px, 6vw, 70px);
+  }
+
+  .roomLyricContext {
+    font-size: clamp(17px, 2.2vw, 28px);
+  }
+
+  .ktvMetaPanel {
+    display: none;
+  }
+
+  .ktvTransportDock {
+    padding: 8px 10px;
+  }
 }
 
 .eyebrow {

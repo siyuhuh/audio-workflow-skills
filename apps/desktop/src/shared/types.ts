@@ -2,7 +2,7 @@ export type SubtitleSource = "auto" | "platform" | "local";
 
 export type WorkflowMode = "karaoke" | "subtitle";
 
-export type OutputFormat = "lrc" | "srt" | "vtt" | "txt" | "json";
+export type OutputFormat = "lrc" | "srt" | "vtt" | "txt" | "json" | "ass";
 
 export type GeneratedAssetType = "subtitle" | "media" | "stem" | "other";
 

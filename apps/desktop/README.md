@@ -40,7 +40,7 @@ The packaged app includes the `audio-subtitles` script, a bundled Python runtime
 ~/.local/bin/audio-subtitles
 ```
 
-For packaged users, Python packages are installed automatically into the user's app data directory on first use. First-run setup needs internet access because `yt-dlp`, `faster-whisper`, optional `audio-separator[cpu]`, and Whisper models are downloaded on demand.
+For packaged users, Python packages are installed automatically into the user's app data directory on first use. First-run setup needs internet access because `yt-dlp`, `faster-whisper`, `whisper-timestamped`, optional `audio-separator[cpu]`, and Whisper models are downloaded on demand. `whisper-timestamped` is used as the preferred word-alignment engine for karaoke JSON/ASS output and is distributed through the runtime environment under its upstream license.
 
 ## Current Scope
 
