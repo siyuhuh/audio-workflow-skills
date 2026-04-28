@@ -103,6 +103,19 @@ interface ResourcePackage {
   duplicateIds: string[];
 }
 
+interface HoverFillOption<T extends string> {
+  value: T;
+  label: string;
+  disabled?: boolean;
+}
+
+interface HoverFillRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 const allFormats: OutputFormat[] = ["lrc", "srt", "vtt", "txt", "json", "ass"];
 const motionEase = [0.23, 1, 0.32, 1] as const;
 const lyricEffectOptions: Array<[LyricEffect, string]> = [
@@ -1628,7 +1641,7 @@ function KaraokeReview({
       <div className="playerPane">
         <div className="stemStatus" data-ready={hasBacking && hasVocal}>
           <strong>{hasBacking && hasVocal ? "Vocal split ready" : "No separated stems in this package"}</strong>
-          <span>{hasBacking && hasVocal ? "Use Karaoke Room to switch backing, vocal, and original tracks." : "Turn on Vocal split before running a Karaoke job."}</span>
+          <span>{hasBacking && hasVocal ? "Use Karaoke Room to switch Original and Backing; Vocal only is tucked into Room options." : "Turn on Vocal split before running a Karaoke job."}</span>
         </div>
         <div className="reviewControls">
           <div className="packageBindingField">
@@ -1846,7 +1859,8 @@ function KaraokeRoomScene({
   const hasPlayableMedia = Boolean(selectedMediaPath && playbackController.canControl);
   const hasStems = Boolean(trackAssets.backing && trackAssets.vocal);
   const displayTitle = reviewDisplayTitle(activeReview);
-  const trackRoleLabel = trackRole === "backing" ? "Backing track" : trackRole === "vocal" ? "Vocal track" : trackRole === "custom" ? "Custom track" : "Original mix";
+  const trackRoleLabel = trackRole === "backing" ? "Backing track" : trackRole === "vocal" ? "Vocal only" : trackRole === "custom" ? "Custom track" : "Original mix";
+  const mainTrackRole = trackRole === "vocal" || trackRole === "custom" ? (trackAssets.backing ? "backing" : "original") : trackRole;
   const cueKey = activeCue ? `${activeCue.start}-${activeCue.end}-${activeCue.text}` : "empty-cue";
   const microphoneMonitor = useMicrophoneMonitor();
   const selectedSubtitleName = selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : "No lyrics in package";
@@ -1981,34 +1995,33 @@ function KaraokeRoomScene({
               </div>
             </div>
             <div className="dockUtilityRow">
-              <div className="trackSelector" aria-label="Track role">
-                <button type="button" data-selected={trackRole === "original"} disabled={!trackAssets.original} onClick={() => onTrackRoleChange("original")}>
-                  Original
-                </button>
-                <button type="button" data-selected={trackRole === "backing"} disabled={!trackAssets.backing} onClick={() => onTrackRoleChange("backing")}>
-                  Backing
-                </button>
-                <button type="button" data-selected={trackRole === "vocal"} disabled={!trackAssets.vocal} onClick={() => onTrackRoleChange("vocal")}>
-                  Vocal
-                </button>
-              </div>
+              <HoverFillGroup<TrackRole>
+                ariaLabel="Track role"
+                className="trackSelector"
+                value={mainTrackRole}
+                onChange={onTrackRoleChange}
+                items={[
+                  { value: "original", label: "Original", disabled: !trackAssets.original },
+                  { value: "backing", label: "Backing", disabled: !trackAssets.backing }
+                ]}
+              />
               <details className="dockMenu">
                 <summary>Aa</summary>
                 <div className="dockMenuContent lyricStyleControls">
-                  <div className="lyricEffectSelector" aria-label="Lyric effect">
-                    {lyricEffectOptions.map(([effect, label]) => (
-                      <button key={effect} type="button" data-selected={lyricEffect === effect} onClick={() => onLyricEffectChange(effect)}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="lyricFontSelector" aria-label="Lyric font">
-                    {lyricFontOptions.map(([font, label]) => (
-                      <button key={font} type="button" data-selected={lyricFont === font} onClick={() => onLyricFontChange(font)}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  <HoverFillGroup<LyricEffect>
+                    ariaLabel="Lyric effect"
+                    className="lyricEffectSelector"
+                    value={lyricEffect}
+                    onChange={onLyricEffectChange}
+                    items={lyricEffectOptions.map(([value, label]) => ({ value, label }))}
+                  />
+                  <HoverFillGroup<LyricFont>
+                    ariaLabel="Lyric font"
+                    className="lyricFontSelector"
+                    value={lyricFont}
+                    onChange={onLyricFontChange}
+                    items={lyricFontOptions.map(([value, label]) => ({ value, label }))}
+                  />
                 </div>
               </details>
               {!hasStems ? (
@@ -2039,7 +2052,7 @@ function KaraokeRoomScene({
           ) : null}
 
           <details className="ktvSidePanel">
-            <summary>Panel</summary>
+            <summary>Room</summary>
             <div className="ktvSideContent">
               <MicrophoneMonitorPanel monitor={microphoneMonitor} />
 
@@ -2058,6 +2071,18 @@ function KaraokeRoomScene({
                 <span>Lyrics</span>
                 <strong>{selectedSubtitleName}</strong>
               </div>
+
+              {trackAssets.vocal ? (
+                <div className="hiddenVocalControl">
+                  <div>
+                    <span>Optional stem</span>
+                    <strong>Vocal only</strong>
+                  </div>
+                  <button type="button" data-selected={trackRole === "vocal"} onClick={() => onTrackRoleChange(trackRole === "vocal" ? (trackAssets.backing ? "backing" : "original") : "vocal")}>
+                    {trackRole === "vocal" ? "Return" : "Use"}
+                  </button>
+                </div>
+              ) : null}
 
               {!playbackController.mediaUrl ? <p className="emptyText">{playbackController.mediaStatus || playbackBundle?.unavailableReason || "No local audio track available."}</p> : null}
 
@@ -2081,6 +2106,97 @@ function KaraokeRoomScene({
         </aside>
       </section>
     </motion.main>
+  );
+}
+
+function HoverFillGroup<T extends string>({
+  ariaLabel,
+  className,
+  items,
+  value,
+  onChange
+}: {
+  ariaLabel: string;
+  className?: string;
+  items: Array<HoverFillOption<T>>;
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [fillRect, setFillRect] = useState<HoverFillRect | null>(null);
+  const itemSignature = items.map((item) => `${item.value}:${item.disabled ? "1" : "0"}`).join("|");
+
+  const setFillForTarget = useCallback((target: HTMLElement | null) => {
+    const container = containerRef.current;
+    if (!container || !target) {
+      setFillRect(null);
+      return;
+    }
+
+    const parentRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    setFillRect({
+      x: targetRect.left - parentRect.left,
+      y: targetRect.top - parentRect.top,
+      width: targetRect.width,
+      height: targetRect.height
+    });
+  }, []);
+
+  const setFillForSelected = useCallback(() => {
+    const container = containerRef.current;
+    const selectedButton = container?.querySelector<HTMLButtonElement>('button[data-selected="true"]:not(:disabled)') ?? null;
+    setFillForTarget(selectedButton);
+  }, [setFillForTarget]);
+
+  useEffect(() => {
+    setFillForSelected();
+  }, [itemSignature, setFillForSelected, value]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`hoverFillGroup ${className ?? ""}`}
+      role="group"
+      aria-label={ariaLabel}
+      onMouseLeave={() => {
+        if (!containerRef.current?.matches(":focus-within")) {
+          setFillForSelected();
+        }
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setFillForSelected();
+        }
+      }}
+      style={
+        {
+          "--hover-x": `${fillRect?.x ?? 0}px`,
+          "--hover-y": `${fillRect?.y ?? 0}px`,
+          "--hover-width": `${fillRect?.width ?? 0}px`,
+          "--hover-height": `${fillRect?.height ?? 0}px`
+        } as CSSProperties
+      }
+    >
+      <span className="hoverFillSurface" data-visible={Boolean(fillRect)} aria-hidden="true" />
+      {items.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          disabled={item.disabled}
+          aria-pressed={item.value === value}
+          data-selected={item.value === value}
+          onMouseEnter={(event) => setFillForTarget(event.currentTarget)}
+          onFocus={(event) => setFillForTarget(event.currentTarget)}
+          onClick={() => onChange(item.value)}
+        >
+          <span className="hoverFillLabel hoverFillLabelBase">{item.label}</span>
+          <span className="hoverFillLabel hoverFillLabelActive" aria-hidden="true">
+            {item.label}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 

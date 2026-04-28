@@ -79,6 +79,31 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
 - The right-side Karaoke Room selector is a song/package selector, not an audio-file selector. Track switching belongs only to Original / Backing / Vocal.
 - Karaoke Room visual priority: show the package preview/local video when available; otherwise show an abstract playback visualizer.
 
+## Desktop Design System Rules
+
+- Keep `apps/desktop/src/renderer/App.tsx` as the current component source of truth until the renderer is split into smaller modules.
+- Keep global styles in `apps/desktop/src/renderer/styles.css`; introduce reusable CSS variables before adding one-off colors, shadows, easing, or spacing.
+- Use React + TypeScript, plain CSS, and `motion/react`; do not add a UI framework unless the user explicitly asks.
+- Prefer package-level UI concepts: home resource cards, package detail/review, and Karaoke Room. Avoid exposing loose media/subtitle selectors as primary IA.
+- Default UI should be sparse and task-first. Advanced controls, logs, raw formats, command preview, model settings, and low-frequency options should be hidden behind drawers or popovers.
+- Buttons, inputs, selects, details summaries, and cue items need visible `:focus-visible` states. Do not use `outline: none` without a replacement.
+- Animations must use explicit `transform`/`opacity`/size transitions only. Never use `transition: all`.
+- Respect `prefers-reduced-motion`; reduce transform distance and duration or disable decorative motion.
+- Dense grouped controls should use one shared HoverFill surface per group. Do not create isolated hover backgrounds on every sibling item.
+- Keep text resilient: use `min-width: 0`, truncation, or wrapping on long song titles and filenames.
+- Use responsive layout rules even for the desktop app because the web fallback at `127.0.0.1:5174` can run in browser windows.
+
+## Karaoke Room UI Rules
+
+- The lyrics are the primary content. Default controls must not cover the active lyric line.
+- Use a small bottom-center transport dock, a compact left metadata card, and collapsed room settings. Open panels may temporarily overlay content, but closed state should stay lightweight.
+- Track role switching belongs inside Original / Backing / Vocal controls. Song/package switching belongs in the room settings panel.
+- The primary Karaoke Room track switch should only expose Original and Backing. Vocal-only stem playback is an optional advanced control inside the room settings panel.
+- Keep playback position stable across Original / Backing / Vocal switches.
+- Use package video as the background when available. If no video exists, show a music visualizer rather than an empty panel.
+- Karaoke font/effect controls should be available but not always visible; use an `Aa` popover or equivalent compact affordance.
+- Cue clicks must seek through `usePlaybackController().seek()` and never bypass the shared playback controller.
+
 ## Recently Addressed Problems
 
 - Old preview videos could be mixed with new song audio when several jobs shared one output directory.

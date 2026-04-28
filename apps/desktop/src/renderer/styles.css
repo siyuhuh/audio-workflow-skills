@@ -3,6 +3,17 @@
   background: #f7f7f3;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --springen-ease: cubic-bezier(0.34, 1.25, 0.52, 1);
+  --focus-ring: rgba(94, 176, 255, 0.78);
+  --paper: #f7f7f3;
+  --ink: #20201c;
+  --ktv-bg: #030403;
+  --ktv-surface: rgba(8, 9, 8, 0.5);
+  --ktv-surface-strong: rgba(8, 9, 8, 0.78);
+  --ktv-line: rgba(255, 255, 255, 0.15);
+  --ktv-text-muted: rgba(247, 247, 243, 0.66);
+  --ktv-accent: #57f1ff;
+  --ktv-accent-2: #1479ff;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
@@ -14,9 +25,19 @@
 }
 
 body {
-  min-width: 980px;
+  min-width: 0;
   margin: 0;
   background: #f7f7f3;
+  overflow-x: hidden;
+  color-scheme: light;
+}
+
+button,
+summary,
+input,
+select {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(87, 241, 255, 0.18);
 }
 
 button,
@@ -41,6 +62,15 @@ button:active:not(:disabled) {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .appShell {
@@ -403,8 +433,9 @@ button:disabled {
   overflow: hidden;
   min-height: 100vh;
   padding: 0;
-  background: #050604;
+  background: var(--ktv-bg);
   color: #f7f7f3;
+  color-scheme: dark;
 }
 
 .karaokeHeader {
@@ -415,8 +446,8 @@ button:disabled {
   z-index: 5;
   align-items: center;
   margin: 0;
-  padding: 12px 22px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0));
+  padding: 12px 20px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.64), rgba(0, 0, 0, 0));
   color: #f7f7f3;
 }
 
@@ -433,8 +464,9 @@ button:disabled {
 
 .karaokeHeader .secondaryButton {
   min-height: 32px;
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.24);
+  border-color: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.2);
   color: #ffffff;
   backdrop-filter: blur(14px);
 }
@@ -453,7 +485,7 @@ button:disabled {
   border-radius: 0;
   background:
     radial-gradient(circle at 50% 34%, rgba(255, 255, 255, 0.08), transparent 32%),
-    #050604;
+    var(--ktv-bg);
 }
 
 .karaokeVisualPane::after {
@@ -463,8 +495,9 @@ button:disabled {
   content: "";
   pointer-events: none;
   background:
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.26), transparent 24%, rgba(0, 0, 0, 0.76)),
-    linear-gradient(to right, rgba(0, 0, 0, 0.55), transparent 34%, rgba(0, 0, 0, 0.44));
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.34), transparent 25%, rgba(0, 0, 0, 0.78)),
+    linear-gradient(to right, rgba(0, 0, 0, 0.58), transparent 36%, rgba(0, 0, 0, 0.5)),
+    radial-gradient(circle at 50% 72%, rgba(87, 241, 255, 0.1), transparent 32%);
 }
 
 .roomVideo {
@@ -473,10 +506,10 @@ button:disabled {
   width: 100%;
   height: 100%;
   border: 0;
-  background: #050604;
+  background: var(--ktv-bg);
   object-fit: cover;
-  opacity: 0.82;
-  filter: saturate(0.9) contrast(1.06) brightness(0.82);
+  opacity: 0.86;
+  filter: saturate(0.92) contrast(1.08) brightness(0.84);
   transform: scale(1.01);
 }
 
@@ -761,9 +794,11 @@ button:disabled {
 .ktvMetaPanel,
 .ktvTransportDock,
 .ktvSidePanel {
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(7, 8, 7, 0.42);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--ktv-line);
+  background: var(--ktv-surface);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(22px) saturate(1.15);
   pointer-events: auto;
 }
@@ -778,8 +813,8 @@ button:disabled {
   width: min(300px, 100%);
   min-width: 240px;
   padding: 8px;
-  border-radius: 18px;
-  opacity: 0.9;
+  border-radius: 22px;
+  opacity: 0.88;
 }
 
 .ktvCover {
@@ -789,8 +824,9 @@ button:disabled {
   height: 68px;
   padding: 10px;
   overflow: hidden;
+  border-radius: 16px;
   background:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.68) 48%, rgba(238, 59, 112, 0.88) 49%, rgba(60, 147, 98, 0.5) 55%, rgba(9, 12, 10, 0.92)),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.68) 48%, rgba(87, 241, 255, 0.88) 49%, rgba(20, 121, 255, 0.5) 55%, rgba(9, 12, 10, 0.92)),
     #ffffff;
   color: #050604;
   font-size: 18px;
@@ -831,7 +867,7 @@ button:disabled {
   justify-self: center;
   width: min(520px, 42vw);
   min-width: 390px;
-  border-radius: 24px;
+  border-radius: 28px;
   padding: 9px 11px;
 }
 
@@ -840,63 +876,121 @@ button:disabled {
   gap: 7px;
 }
 
-.lyricEffectSelector,
-.lyricFontSelector {
+.hoverFillGroup {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 7px;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.055);
+  isolation: isolate;
 }
 
-.lyricEffectSelector button,
-.lyricFontSelector button {
-  min-height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 11px;
-  font-weight: 850;
+.hoverFillSurface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: var(--hover-width, 0);
+  height: var(--hover-height, 0);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(224, 248, 255, 0.92));
+  box-shadow:
+    0 8px 24px rgba(87, 241, 255, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(var(--hover-x, 0), var(--hover-y, 0), 0);
+  transition:
+    transform 260ms var(--springen-ease),
+    width 260ms var(--springen-ease),
+    height 260ms var(--springen-ease),
+    opacity 110ms var(--ease-out);
 }
 
-.lyricEffectSelector button[data-selected="true"],
-.lyricFontSelector button[data-selected="true"] {
-  border-color: rgba(255, 255, 255, 0.84);
-  background: rgba(255, 255, 255, 0.92);
+.hoverFillSurface[data-visible="true"] {
+  opacity: 1;
+}
+
+.hoverFillGroup button {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 29px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.hoverFillGroup button:disabled {
+  opacity: 0.35;
+}
+
+.hoverFillGroup button[data-selected="true"],
+.hoverFillGroup button:hover:not(:disabled),
+.hoverFillGroup button:focus-visible:not(:disabled) {
   color: #11130f;
+}
+
+.hoverFillLabel {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hoverFillLabelActive {
+  position: absolute;
+  inset: 0 10px;
+  display: grid;
+  place-items: center;
+  color: #11130f;
+  clip-path: inset(0 100% 0 0);
+  -webkit-clip-path: inset(0 100% 0 0);
+  pointer-events: none;
+  transition: clip-path 180ms var(--ease-out);
+}
+
+.hoverFillGroup button[data-selected="true"] .hoverFillLabelActive,
+.hoverFillGroup button:hover:not(:disabled) .hoverFillLabelActive,
+.hoverFillGroup button:focus-visible:not(:disabled) .hoverFillLabelActive {
+  clip-path: inset(0 0 0 0);
+  -webkit-clip-path: inset(0 0 0 0);
 }
 
 .trackSelector {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   flex: 1;
 }
 
-.trackSelector button {
-  min-height: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.76);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.trackSelector button[data-selected="true"] {
-  border-color: rgba(255, 255, 255, 0.86);
-  background: #ffffff;
-  color: #11130f;
+.lyricEffectSelector,
+.lyricFontSelector {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .splitInlineButton {
   min-height: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.76);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #11130f;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.78);
   font-size: 12px;
   font-weight: 900;
+}
+
+.splitInlineButton:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
 }
 
 .karaokeControlPane select {
@@ -923,10 +1017,10 @@ button:disabled {
 .ktvSidePanel summary {
   display: grid;
   place-items: center;
-  min-height: 30px;
+  min-height: 32px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  padding: 0 12px;
+  padding: 0 13px;
   color: rgba(255, 255, 255, 0.78);
   font-size: 12px;
   font-weight: 900;
@@ -946,9 +1040,9 @@ button:disabled {
   bottom: calc(100% + 10px);
   width: min(420px, 78vw);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 18px;
+  border-radius: 22px;
   padding: 10px;
-  background: rgba(7, 8, 7, 0.82);
+  background: var(--ktv-surface-strong);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.36);
   backdrop-filter: blur(24px);
 }
@@ -1044,15 +1138,25 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.055);
 }
 
 .transportButtons button {
-  min-height: 31px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
   color: #f7f7f3;
   font-weight: 800;
+}
+
+.transportButtons button:hover:not(:disabled),
+.transportButtons button:focus-visible:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .transportButtons button:disabled {
@@ -1067,13 +1171,13 @@ button:disabled {
   width: auto;
   min-width: 0;
   border-radius: 999px;
-  padding: 6px;
+  padding: 5px;
   background: rgba(7, 8, 7, 0.34);
 }
 
 .ktvSidePanel[open] {
-  border-radius: 20px;
-  background: rgba(7, 8, 7, 0.78);
+  border-radius: 22px;
+  background: var(--ktv-surface-strong);
 }
 
 .ktvSidePanel summary {
@@ -1089,10 +1193,10 @@ button:disabled {
   width: min(320px, calc(100vw - 40px));
   max-height: min(58vh, 480px);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 20px;
+  border-radius: 22px;
   padding: 12px;
   overflow: hidden;
-  background: rgba(7, 8, 7, 0.84);
+  background: var(--ktv-surface-strong);
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.38);
   backdrop-filter: blur(24px);
 }
@@ -1111,6 +1215,62 @@ button:disabled {
 .songPackageSelector select {
   min-width: 0;
   width: 100%;
+}
+
+.hiddenVocalControl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.hiddenVocalControl > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.hiddenVocalControl span,
+.hiddenVocalControl strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hiddenVocalControl span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.hiddenVocalControl strong {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.hiddenVocalControl button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.hiddenVocalControl button:hover,
+.hiddenVocalControl button:focus-visible,
+.hiddenVocalControl button[data-selected="true"] {
+  border-color: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.92);
+  color: #11130f;
 }
 
 .ktvSidePanel .emptyText {
@@ -1154,6 +1314,59 @@ button:disabled {
   }
 }
 
+@media (max-width: 720px) {
+  .karaokeHeader {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .karaokeHeader h1 {
+    max-width: 52vw;
+  }
+
+  .karaokeControlPane {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .ktvTransportDock {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ktvSidePanel {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .dockUtilityRow {
+    flex-wrap: wrap;
+  }
+
+  .trackSelector {
+    flex-basis: 100%;
+  }
+
+  .splitInlineButton {
+    flex: 1 1 auto;
+  }
+
+  .roomLyrics {
+    right: 3vw;
+    bottom: clamp(224px, 34vh, 300px);
+    left: 3vw;
+  }
+
+  .karaokeLyricLine {
+    font-size: clamp(30px, 9vw, 56px);
+  }
+}
+
 @media (max-height: 740px) {
   .roomLyrics {
     bottom: clamp(178px, 28vh, 260px);
@@ -1173,6 +1386,25 @@ button:disabled {
 
   .ktvTransportDock {
     padding: 8px 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
+  button,
+  .hoverFillSurface,
+  .hoverFillLabelActive,
+  .karaokeWord,
+  .karaokeWordFill,
+  .audioVisualBars span {
+    transition-duration: 1ms !important;
   }
 }
 
@@ -1283,11 +1515,12 @@ select {
   padding: 10px 11px;
   background: #ffffff;
   color: #20201c;
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
 }
 
-input:focus,
-select:focus {
+input:focus-visible,
+select:focus-visible {
   border-color: #517a9f;
   box-shadow: 0 0 0 3px rgba(81, 122, 159, 0.16);
 }
@@ -2006,6 +2239,7 @@ pre {
   color: #b7beab;
   font-size: 11px;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .stemStatus {
