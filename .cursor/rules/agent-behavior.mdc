@@ -1,0 +1,37 @@
+---
+description: Agent behavior rules for audio-workflow-skills
+alwaysApply: true
+---
+
+# Agent Behavior
+
+Work like a careful product engineer in `audio-workflow-skills`: keep the solution simple, make the smallest useful change, and verify from the agent user's point of view.
+
+## Default Stance
+
+- Start by translating the user's request into the concrete workflow they want to accomplish in VocalFlow Studio, the CLI, Cursor rules, or Linear.
+- Prefer simple, direct changes over new abstractions. Add structure only when repeated complexity already exists.
+- Make surgical edits in the files that own the behavior. Do not rewrite unrelated UI, docs, packaging, or lockfiles.
+- Treat existing uncommitted work as the current baseline. Do not revert or "clean up" changes outside the task.
+- Keep names and behavior aligned with the project: desktop app orchestration lives under `apps/desktop`, subtitle/media processing lives under `skills/audio-subtitles`, and repo-level commands live at the workspace root.
+
+## Skill Triggers
+
+- Use the `audio-subtitles` skill when the task involves audio/video URLs, subtitle generation, lyrics, karaoke files, stems, SRT/VTT/LRC/JSON outputs, or the `generate_subtitles.py` CLI.
+- Use the Linear workflow when the user asks to read, create, update, triage, plan, or document Linear issues/projects. Read Linear data before writing, confirm team/project/issue identifiers when ambiguous, then summarize the applied changes.
+- Use the Cursor rule workflow when adding or changing `.cursor/rules/*.mdc`, `AGENT.md`, or persistent agent guidance. Prefer project rules for behavior that should survive future chats.
+- Use UI/design/performance skills only when the request actually touches UI behavior, React/Next.js patterns, accessibility, animation, browser testing, or visual fidelity.
+- Read `DESIGN.md` at the repo root **before** any change to `apps/desktop/src/renderer/styles.css`, any new `className` in `apps/desktop/src/renderer/App.tsx`, any color / radius / type / motion choice, or any Karaoke Room (Stage) layout work. If the token or rule you need is missing, extend `DESIGN.md` first (with a Decisions Log entry) and then write the code.
+
+## Development Mode
+
+- When Linear is part of the task, keep implementation work tied to the Linear issue or project context: identify the target item, note the intended code/docs change, and report any remaining blocker.
+- For desktop app changes, favor repo-root scripts such as `pnpm dev`, `pnpm dev:ui`, and targeted TypeScript checks. Do not run `pnpm build` unless the user asks.
+- For Python CLI changes, preserve the CLI as the media-processing source of truth and avoid coupling it to Electron-only assumptions.
+- If a change touches both the Electron UI and the subtitle CLI, verify the handoff contract through shared types, preload APIs, command arguments, or output files.
+
+## Verification
+
+- After editing, verify the path a real agent user would take: run the relevant command, type-check, inspect the generated rule/file, or describe the manual UI flow when execution is intentionally skipped.
+- Validate behavior, not just syntax. Ask: can a future agent understand when to use the skill, what to edit, and how to confirm success?
+- Report exactly what was verified and what was not. Keep the final answer concise and include the local paths or Linear identifiers that matter.

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -13,10 +13,15 @@ import type {
   GeneratedAsset,
   GeneratedAssetRole,
   JobOptions,
+  JobProgressStage,
   JobResult,
   OutputFormat,
   PlaybackBundle,
-  SavedJobHistory
+  RoomQueueItem,
+  RoomStatus,
+  SavedJobHistory,
+  UserSettings,
+  YoutubeSearchResult
 } from "../shared/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,9 +30,16 @@ const knownFilePaths = new Set<string>();
 const knownOutputDirs = new Set<string>();
 const mediaUrlTokens = new Map<string, string>();
 const webLogClients = new Set<ServerResponse>();
+const roomEventClients = new Set<ServerResponse>();
 let savedHistory: SavedJobHistory[] = [];
 let hiddenSampleIds = new Set<string>();
+let userSettings: UserSettings = { locale: null, themeMode: "system", accentColor: "green" };
 let webApiServer: Server | null = null;
+const roomToken = randomUUID().replaceAll("-", "").slice(0, 12);
+let roomQueue: RoomQueueItem[] = [];
+let roomNowPlaying: RoomQueueItem | null = null;
+
+const jobProgressClients = new Set<Electron.WebContents>();
 
 interface CommandInvocation {
   command: string;
@@ -76,9 +88,10 @@ const subtitleExtensions = new Set([".srt", ".vtt", ".lrc", ".txt", ".json", ".a
 const mediaExtensions = new Set([".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".opus", ".aiff", ".aif", ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"]);
 const reviewExtensions = new Set([...subtitleExtensions, ...mediaExtensions]);
 const mediaProtocol = "vocalflow-media";
-const webApiHost = "127.0.0.1";
+const webApiHost = "0.0.0.0";
+const webApiLocalHost = "127.0.0.1";
 const webApiPort = 5175;
-const webApiOrigin = `http://${webApiHost}:${webApiPort}`;
+const webApiOrigin = `http://${webApiLocalHost}:${webApiPort}`;
 const mediaMimeTypes = new Map([
   [".mp3", "audio/mpeg"],
   [".wav", "audio/wav"],
@@ -190,6 +203,7 @@ app.whenReady().then(() => {
   ].join(path.delimiter);
 
   loadSavedHistory();
+  loadUserSettings();
   registerMediaProtocol();
   registerIpcHandlers();
   registerMediaPermissions();
@@ -297,6 +311,152 @@ function registerIpcHandlers(): void {
     const history = removeHistoryById(historyId);
     return history;
   });
+
+  ipcMain.handle("youtube:search", (_event, query: string, appendKaraoke: boolean) => {
+    return runYoutubeSearch(String(query ?? ""), Boolean(appendKaraoke));
+  });
+
+  ipcMain.handle("bilibili:search", (_event, query: string, appendKaraoke: boolean) => {
+    return runBilibiliSearch(String(query ?? ""), Boolean(appendKaraoke));
+  });
+
+  ipcMain.handle("room:status", () => roomStatus());
+
+  ipcMain.handle("room:enqueue", (_event, input: string, title: string, requestedBy: string) => {
+    return enqueueRoomSong(input, title, requestedBy);
+  });
+
+  ipcMain.handle("room:start-item", (_event, itemId: string) => {
+    return startRoomQueueItem(itemId);
+  });
+
+  ipcMain.handle("room:finish-item", (_event, itemId: string, status: RoomQueueItem["status"], resultHistoryId?: string | null, error?: string | null) => {
+    return finishRoomQueueItem(itemId, status, resultHistoryId, error);
+  });
+
+  ipcMain.handle("room:remove-item", (_event, itemId: string) => {
+    return removeRoomQueueItem(itemId);
+  });
+
+  ipcMain.handle("room:clear", () => clearRoomQueue());
+
+  ipcMain.handle("app:get-locale", () => {
+    try {
+      return app.getLocale();
+    } catch {
+      return "en-US";
+    }
+  });
+
+  ipcMain.handle("settings:get", () => userSettings);
+
+  ipcMain.handle("settings:set", (_event, patch: Partial<UserSettings>): UserSettings => {
+    userSettings = mergeUserSettings(userSettings, patch);
+    writeUserSettings();
+    return userSettings;
+  });
+}
+
+function loadUserSettings(): void {
+  try {
+    if (!existsSync(userSettingsFilePath())) {
+      userSettings = { locale: null, themeMode: "system", accentColor: "green" };
+      return;
+    }
+    const parsed = JSON.parse(readFileSync(userSettingsFilePath(), "utf-8")) as Partial<UserSettings>;
+    userSettings = mergeUserSettings({ locale: null, themeMode: "system", accentColor: "green" }, parsed);
+  } catch {
+    userSettings = { locale: null, themeMode: "system", accentColor: "green" };
+  }
+}
+
+function writeUserSettings(): void {
+  try {
+    mkdirSync(path.dirname(userSettingsFilePath()), { recursive: true });
+    writeFileSync(userSettingsFilePath(), JSON.stringify(userSettings, null, 2), "utf-8");
+  } catch (error) {
+    console.warn(`[settings] Failed to persist settings: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+function userSettingsFilePath(): string {
+  return path.join(app.getPath("userData"), "settings.json");
+}
+
+function mergeUserSettings(current: UserSettings, patch: Partial<UserSettings> | null | undefined): UserSettings {
+  if (!patch || typeof patch !== "object") {
+    return current;
+  }
+  const next: UserSettings = { ...current };
+  if ("locale" in patch) {
+    const locale = patch.locale;
+    next.locale = locale === "en" || locale === "zh" || locale === null ? locale : current.locale;
+  }
+  if ("themeMode" in patch) {
+    const themeMode = patch.themeMode;
+    next.themeMode = themeMode === "system" || themeMode === "light" || themeMode === "dark" ? themeMode : current.themeMode;
+  }
+  if ("accentColor" in patch) {
+    const accentColor = patch.accentColor;
+    next.accentColor =
+      accentColor === "amber" || accentColor === "blue" || accentColor === "green" || accentColor === "pink" || accentColor === "purple"
+        ? accentColor
+        : current.accentColor;
+  }
+  return next;
+}
+
+function broadcastJobProgress(event: JobProgressStage): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    try {
+      if (!window.isDestroyed()) {
+        window.webContents.send("job:progress", event);
+      }
+    } catch {
+      // Ignore detached renderer windows.
+    }
+  }
+  for (const sender of jobProgressClients) {
+    try {
+      if (!sender.isDestroyed()) {
+        sender.send("job:progress", event);
+      }
+    } catch {
+      // Ignore.
+    }
+  }
+}
+
+// Re-export so D-01 can drive structured stage events from the job runner.
+export { broadcastJobProgress };
+
+function parseProgressEvent(jobId: string, rawLine: string): JobProgressStage | null {
+  const trimmed = rawLine.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return null;
+  }
+  try {
+    const value = JSON.parse(trimmed) as Record<string, unknown>;
+    if (value.event !== "stage") {
+      return null;
+    }
+    const name = typeof value.name === "string" ? value.name : null;
+    const progress = typeof value.progress === "number" ? value.progress : -1;
+    if (!name) {
+      return null;
+    }
+    return {
+      jobId,
+      name,
+      progress,
+      message: typeof value.message === "string" ? value.message : undefined,
+      etaSec: typeof value.etaSec === "number" ? value.etaSec : null,
+      done: value.done === true,
+      failed: value.failed === true
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: (log: { jobId: string; stream: "stdout" | "stderr"; chunk: string }) => void): Promise<JobResult> {
@@ -315,6 +475,7 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
     runningJobs.set(jobId, child);
 
     let output = "";
+    let stderrBuffer = "";
 
     child.stdout.on("data", (buffer: Buffer) => {
       const chunk = buffer.toString();
@@ -325,7 +486,29 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
     child.stderr.on("data", (buffer: Buffer) => {
       const chunk = buffer.toString();
       output += chunk;
-      emitLog({ jobId, stream: "stderr", chunk });
+      stderrBuffer += chunk;
+      const newlineIndex = stderrBuffer.lastIndexOf("\n");
+      if (newlineIndex < 0) {
+        return;
+      }
+      const completeLines = stderrBuffer.slice(0, newlineIndex);
+      stderrBuffer = stderrBuffer.slice(newlineIndex + 1);
+      let logCarry = "";
+      for (const rawLine of completeLines.split("\n")) {
+        const event = parseProgressEvent(jobId, rawLine);
+        if (event) {
+          if (logCarry) {
+            emitLog({ jobId, stream: "stderr", chunk: logCarry });
+            logCarry = "";
+          }
+          broadcastJobProgress(event);
+          continue;
+        }
+        logCarry += `${rawLine}\n`;
+      }
+      if (logCarry) {
+        emitLog({ jobId, stream: "stderr", chunk: logCarry });
+      }
     });
 
     child.on("error", (error) => {
@@ -335,6 +518,15 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
 
     child.on("close", (exitCode, signal) => {
       runningJobs.delete(jobId);
+      if (stderrBuffer.length > 0) {
+        const event = parseProgressEvent(jobId, stderrBuffer);
+        if (event) {
+          broadcastJobProgress(event);
+        } else {
+          emitLog({ jobId, stream: "stderr", chunk: stderrBuffer });
+        }
+        stderrBuffer = "";
+      }
       const parsed = parseGeneratedOutput(output);
       const success = exitCode === 0 && signal === null;
       let historyEntry = success ? createSavedHistoryEntry(jobId, options, parsed, startedAtMs) : null;
@@ -384,8 +576,311 @@ function startWebApiServer(): void {
   });
 
   webApiServer.listen(webApiPort, webApiHost, () => {
-    console.log(`[web-api] Listening on ${webApiOrigin}`);
+    console.log(`[web-api] Listening on ${webApiOrigin}; remote room ${roomStatus().remoteUrl}`);
   });
+}
+
+function primaryLanAddress(): string {
+  for (const nets of Object.values(networkInterfaces())) {
+    for (const net of nets ?? []) {
+      if (net.family === "IPv4" && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return webApiLocalHost;
+}
+
+function roomStatus(): RoomStatus {
+  const base = `http://${primaryLanAddress()}:${webApiPort}`;
+  return {
+    token: roomToken,
+    remoteUrl: `${base}/remote?token=${encodeURIComponent(roomToken)}`,
+    localUrl: `${webApiOrigin}/remote?token=${encodeURIComponent(roomToken)}`,
+    queue: roomQueue,
+    nowPlaying: roomNowPlaying
+  };
+}
+
+function isLocalRequest(request: IncomingMessage): boolean {
+  const address = request.socket.remoteAddress ?? "";
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+function roomTokenFromRequest(request: IncomingMessage, url: URL, body?: { token?: string }): string {
+  const header = request.headers["x-vocalflow-room-token"];
+  return (
+    (Array.isArray(header) ? header[0] : header) ??
+    body?.token ??
+    url.searchParams.get("token") ??
+    ""
+  );
+}
+
+function assertRoomAccess(request: IncomingMessage, url: URL, body?: { token?: string }): void {
+  if (isLocalRequest(request)) {
+    return;
+  }
+  if (roomTokenFromRequest(request, url, body) !== roomToken) {
+    throw new Error("Invalid room token.");
+  }
+}
+
+function enqueueRoomSong(input: string, title: string, requestedBy: string): RoomStatus {
+  const safeInput = input.trim();
+  if (!safeInput) {
+    throw new Error("Song URL or input is required.");
+  }
+  const safeTitle = title.trim() || shortTitleFromInput(safeInput);
+  roomQueue = [
+    ...roomQueue,
+    {
+      id: randomUUID(),
+      input: safeInput,
+      title: safeTitle,
+      requestedBy: requestedBy.trim() || "Guest",
+      createdAt: new Date().toISOString(),
+      status: "queued",
+      resultHistoryId: null,
+      error: null
+    }
+  ];
+  broadcastRoomStatus();
+  return roomStatus();
+}
+
+function startRoomQueueItem(itemId: string): RoomStatus {
+  const item = roomQueue.find((entry) => entry.id === itemId);
+  if (!item) {
+    throw new Error("Queue item not found.");
+  }
+  roomQueue = roomQueue.map((entry) => (entry.id === itemId ? { ...entry, status: "running", error: null } : entry));
+  roomNowPlaying = { ...item, status: "running", error: null };
+  broadcastRoomStatus();
+  return roomStatus();
+}
+
+function finishRoomQueueItem(itemId: string, status: RoomQueueItem["status"], resultHistoryId?: string | null, error?: string | null): RoomStatus {
+  const finishedStatus = status === "complete" || status === "failed" || status === "canceled" ? status : "complete";
+  roomQueue = roomQueue.map((entry) =>
+    entry.id === itemId
+      ? {
+          ...entry,
+          status: finishedStatus,
+          resultHistoryId: resultHistoryId ?? entry.resultHistoryId ?? null,
+          error: error ?? null
+        }
+      : entry
+  );
+  if (roomNowPlaying?.id === itemId) {
+    roomNowPlaying = roomQueue.find((entry) => entry.id === itemId) ?? null;
+  }
+  broadcastRoomStatus();
+  return roomStatus();
+}
+
+function removeRoomQueueItem(itemId: string): RoomStatus {
+  roomQueue = roomQueue.filter((entry) => entry.id !== itemId);
+  if (roomNowPlaying?.id === itemId) {
+    roomNowPlaying = null;
+  }
+  broadcastRoomStatus();
+  return roomStatus();
+}
+
+function clearRoomQueue(): RoomStatus {
+  roomQueue = roomQueue.filter((entry) => entry.status === "running");
+  broadcastRoomStatus();
+  return roomStatus();
+}
+
+function shortTitleFromInput(input: string): string {
+  try {
+    const url = new URL(input);
+    const videoId = url.searchParams.get("v");
+    return videoId ? `YouTube ${videoId}` : url.hostname;
+  } catch {
+    return path.basename(input) || input;
+  }
+}
+
+function attachRoomEventClient(request: IncomingMessage, response: ServerResponse): void {
+  response.writeHead(200, {
+    ...corsHeaders(),
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "Content-Type": "text/event-stream"
+  });
+  response.write(`event: room\ndata: ${JSON.stringify(roomStatus())}\n\n`);
+  roomEventClients.add(response);
+  request.on("close", () => {
+    roomEventClients.delete(response);
+  });
+}
+
+function broadcastRoomStatus(): void {
+  const payload = `event: room\ndata: ${JSON.stringify(roomStatus())}\n\n`;
+  for (const client of roomEventClients) {
+    client.write(payload);
+  }
+}
+
+function remoteRoomHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VocalFlow Remote</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #10110d; color: #f6f2e8; }
+    main { width: min(720px, calc(100% - 28px)); margin: 0 auto; padding: 22px 0 36px; display: grid; gap: 18px; }
+    h1, h2, p { margin: 0; }
+    .card { border: 1px solid #3a3d30; border-radius: 18px; padding: 16px; background: #1a1c15; box-shadow: 0 20px 70px rgba(0,0,0,.24); }
+    .muted { color: #b9b49f; font-size: 14px; line-height: 1.45; }
+    label { display: grid; gap: 6px; font-size: 13px; color: #cbc5b0; font-weight: 700; }
+    input { min-height: 44px; border: 1px solid #4a4e3d; border-radius: 12px; padding: 0 12px; background: #11120e; color: #fff7e8; font: inherit; }
+    button { min-height: 42px; border: 0; border-radius: 999px; padding: 0 16px; font-weight: 900; background: #e6f36b; color: #17180f; }
+    button.secondary { background: #2b2f22; color: #f6f2e8; border: 1px solid #4a4e3d; }
+    button:disabled { opacity: .5; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+    .row > label { flex: 1 1 220px; }
+    .status { color: #e6f36b; font-size: 13px; min-height: 18px; }
+    .results, .queue { list-style: none; display: grid; gap: 10px; padding: 0; margin: 12px 0 0; }
+    li { border: 1px solid #34382b; border-radius: 14px; padding: 12px; background: #13140f; }
+    .title { font-weight: 900; line-height: 1.3; }
+    .sub { color: #a9a38e; font-size: 12px; margin-top: 4px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <h1>VocalFlow Remote</h1>
+      <p class="muted">Search YouTube, request a song, and let the desktop host process the room queue.</p>
+      <p id="status" class="status">Connecting...</p>
+    </section>
+
+    <section class="card">
+      <h2>Request a Song</h2>
+      <div class="row" style="margin-top: 12px;">
+        <label>Your name <input id="name" autocomplete="name" placeholder="Guest" /></label>
+        <label>Direct URL <input id="directUrl" inputmode="url" placeholder="https://www.youtube.com/watch?v=..." /></label>
+        <button id="addDirect" type="button">Add</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Media Search</h2>
+      <div class="row" style="margin-top: 12px;">
+        <label style="display:flex;align-items:center;gap:8px;"><input type="radio" name="platform" value="youtube" checked /> YouTube</label>
+        <label style="display:flex;align-items:center;gap:8px;"><input type="radio" name="platform" value="bilibili" /> Bilibili</label>
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <label>Keywords <input id="query" placeholder="artist song title" /></label>
+        <button id="search" type="button">Search</button>
+      </div>
+      <ul id="results" class="results"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Room Queue</h2>
+      <ul id="queue" class="queue"></ul>
+    </section>
+  </main>
+  <script>
+    const token = new URLSearchParams(location.search).get("token") || "";
+    const statusEl = document.getElementById("status");
+    const queueEl = document.getElementById("queue");
+    const resultsEl = document.getElementById("results");
+    const nameEl = document.getElementById("name");
+    const directUrlEl = document.getElementById("directUrl");
+    const queryEl = document.getElementById("query");
+    const savedName = localStorage.getItem("vocalflow-remote-name") || "";
+    nameEl.value = savedName;
+    nameEl.addEventListener("change", () => localStorage.setItem("vocalflow-remote-name", nameEl.value.trim()));
+
+    async function post(path, body) {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-vocalflow-room-token": token },
+        body: JSON.stringify({ token, ...body })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    }
+
+    function who() { return nameEl.value.trim() || "Guest"; }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    async function enqueue(input, title) {
+      await post("/api/room/enqueue", { input, title, requestedBy: who() });
+      directUrlEl.value = "";
+      statusEl.textContent = "Added to queue.";
+    }
+
+    document.getElementById("addDirect").addEventListener("click", async () => {
+      try {
+        const value = directUrlEl.value.trim();
+        if (!value) return;
+        await enqueue(value, value);
+      } catch (error) {
+        statusEl.textContent = error.message || "Failed to add song.";
+      }
+    });
+
+    document.getElementById("search").addEventListener("click", async () => {
+      const query = queryEl.value.trim();
+      if (!query) return;
+      resultsEl.innerHTML = "";
+      statusEl.textContent = "Searching...";
+      try {
+        const platform = document.querySelector('input[name="platform"]:checked')?.value || "youtube";
+        const endpoint = platform === "bilibili" ? "/api/bilibili-search" : "/api/youtube-search";
+        const results = await post(endpoint, { query, appendKaraoke: true });
+        statusEl.textContent = results.length ? "Pick a result to add it." : "No results.";
+        resultsEl.innerHTML = results.map(row => \`
+          <li>
+            <div class="title">\${escapeHtml(row.title)}</div>
+            <div class="sub">\${escapeHtml(row.channel || "")} \${escapeHtml(row.durationLabel || "")}</div>
+            <div class="actions">
+              <button type="button" data-url="\${escapeHtml(row.url)}" data-title="\${escapeHtml(row.title)}">Add to queue</button>
+            </div>
+          </li>\`).join("");
+      } catch (error) {
+        statusEl.textContent = error.message || "Search failed.";
+      }
+    });
+
+    resultsEl.addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-url]");
+      if (!button) return;
+      try {
+        await enqueue(button.dataset.url, button.dataset.title);
+      } catch (error) {
+        statusEl.textContent = error.message || "Failed to add song.";
+      }
+    });
+
+    function renderQueue(status) {
+      const items = status.queue || [];
+      queueEl.innerHTML = items.length ? items.map((item, index) => \`
+        <li>
+          <div class="title">\${index + 1}. \${escapeHtml(item.title)}</div>
+          <div class="sub">Requested by \${escapeHtml(item.requestedBy)} · \${escapeHtml(item.status)}</div>
+        </li>\`).join("") : '<li class="sub">Queue is empty.</li>';
+    }
+
+    const events = new EventSource("/api/room/events?token=" + encodeURIComponent(token));
+    events.addEventListener("room", (event) => renderQueue(JSON.parse(event.data)));
+    events.onerror = () => { statusEl.textContent = "Disconnected. Check Wi-Fi and room link."; };
+    fetch("/api/room/status?token=" + encodeURIComponent(token)).then(r => r.json()).then(renderQueue).catch(() => {});
+  </script>
+</body>
+</html>`;
 }
 
 async function handleWebApiRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -400,8 +895,29 @@ async function handleWebApiRequest(request: IncomingMessage, response: ServerRes
     const url = new URL(request.url ?? "/", webApiOrigin);
     const pathname = url.pathname;
 
+    if (request.method === "GET" && pathname === "/remote") {
+      response.writeHead(200, {
+        ...corsHeaders(),
+        "Content-Type": "text/html; charset=utf-8"
+      });
+      response.end(remoteRoomHtml());
+      return;
+    }
+
     if (request.method === "GET" && pathname === "/api/health") {
       sendJson(response, { ok: true });
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/room/status") {
+      assertRoomAccess(request, url);
+      sendJson(response, roomStatus());
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/room/events") {
+      assertRoomAccess(request, url);
+      attachRoomEventClient(request, response);
       return;
     }
 
@@ -438,6 +954,11 @@ async function handleWebApiRequest(request: IncomingMessage, response: ServerRes
       return;
     }
 
+    if (request.method === "GET" && pathname === "/api/thumbnail") {
+      await proxyThumbnail(url, response);
+      return;
+    }
+
     if (request.method !== "POST") {
       sendText(response, 404, "Not found.");
       return;
@@ -453,6 +974,41 @@ async function handleWebApiRequest(request: IncomingMessage, response: ServerRes
       const { jobId, options } = await readJsonBody<{ jobId: string; options: JobOptions }>(request);
       const result = await runAudioWorkflowJob(jobId, options, broadcastWebJobLog);
       sendJson(response, result);
+      return;
+    }
+
+    if (pathname === "/api/room/enqueue") {
+      const body = await readJsonBody<{ token?: string; input?: string; title?: string; requestedBy?: string }>(request);
+      assertRoomAccess(request, url, body);
+      sendJson(response, enqueueRoomSong(String(body.input ?? ""), String(body.title ?? ""), String(body.requestedBy ?? "")));
+      return;
+    }
+
+    if (pathname === "/api/room/start-item") {
+      const body = await readJsonBody<{ token?: string; itemId?: string }>(request);
+      assertRoomAccess(request, url, body);
+      sendJson(response, startRoomQueueItem(String(body.itemId ?? "")));
+      return;
+    }
+
+    if (pathname === "/api/room/finish-item") {
+      const body = await readJsonBody<{ token?: string; itemId?: string; status?: RoomQueueItem["status"]; resultHistoryId?: string | null; error?: string | null }>(request);
+      assertRoomAccess(request, url, body);
+      sendJson(response, finishRoomQueueItem(String(body.itemId ?? ""), body.status ?? "complete", body.resultHistoryId, body.error));
+      return;
+    }
+
+    if (pathname === "/api/room/remove-item") {
+      const body = await readJsonBody<{ token?: string; itemId?: string }>(request);
+      assertRoomAccess(request, url, body);
+      sendJson(response, removeRoomQueueItem(String(body.itemId ?? "")));
+      return;
+    }
+
+    if (pathname === "/api/room/clear") {
+      const body = await readJsonBody<{ token?: string }>(request);
+      assertRoomAccess(request, url, body);
+      sendJson(response, clearRoomQueue());
       return;
     }
 
@@ -500,6 +1056,38 @@ async function handleWebApiRequest(request: IncomingMessage, response: ServerRes
       const { targetPath } = await readJsonBody<{ targetPath: string }>(request);
       const safePath = assertKnownReviewFile(targetPath, mediaExtensions);
       sendJson(response, { url: createWebMediaUrl(safePath) });
+      return;
+    }
+
+    if (pathname === "/api/youtube-search") {
+      const { query, appendKaraoke } = await readJsonBody<{ query?: string; appendKaraoke?: boolean }>(request);
+      const q = String(query ?? "").trim();
+      if (!q) {
+        sendText(response, 400, "Search query is empty.");
+        return;
+      }
+      if (q.length > MEDIA_SEARCH_MAX_QUERY_CHARS) {
+        sendText(response, 400, `Search query is too long (max ${MEDIA_SEARCH_MAX_QUERY_CHARS} characters).`);
+        return;
+      }
+      const results = await runYoutubeSearch(q, Boolean(appendKaraoke));
+      sendJson(response, results);
+      return;
+    }
+
+    if (pathname === "/api/bilibili-search") {
+      const { query, appendKaraoke } = await readJsonBody<{ query?: string; appendKaraoke?: boolean }>(request);
+      const q = String(query ?? "").trim();
+      if (!q) {
+        sendText(response, 400, "Search query is empty.");
+        return;
+      }
+      if (q.length > MEDIA_SEARCH_MAX_QUERY_CHARS) {
+        sendText(response, 400, `Search query is too long (max ${MEDIA_SEARCH_MAX_QUERY_CHARS} characters).`);
+        return;
+      }
+      const results = await runBilibiliSearch(q, Boolean(appendKaraoke));
+      sendJson(response, results);
       return;
     }
 
@@ -566,6 +1154,46 @@ function sendHttpMediaFile(filePath: string, request: IncomingMessage, response:
     "Content-Type": contentType
   });
   createReadStream(filePath, { start, end }).pipe(response);
+}
+
+async function proxyThumbnail(url: URL, response: ServerResponse): Promise<void> {
+  const target = url.searchParams.get("url") ?? "";
+  let parsed: URL;
+  try {
+    parsed = new URL(target);
+  } catch {
+    sendText(response, 400, "Invalid thumbnail URL.");
+    return;
+  }
+
+  if (parsed.protocol !== "https:" || !/(\.|^)hdslb\.com$/i.test(parsed.hostname)) {
+    sendText(response, 400, "Unsupported thumbnail host.");
+    return;
+  }
+
+  const upstream = await fetch(parsed, {
+    headers: {
+      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      Referer: "https://www.bilibili.com/",
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+  });
+
+  if (!upstream.ok) {
+    sendText(response, upstream.status, "Thumbnail unavailable.");
+    return;
+  }
+
+  const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+  const buffer = Buffer.from(await upstream.arrayBuffer());
+  response.writeHead(200, {
+    ...corsHeaders(),
+    "Cache-Control": "public, max-age=86400",
+    "Content-Length": String(buffer.byteLength),
+    "Content-Type": contentType
+  });
+  response.end(buffer);
 }
 
 function readJsonBody<T>(request: IncomingMessage): Promise<T> {
@@ -1008,7 +1636,7 @@ function keysReferToSameMedia(left: string, right: string): boolean {
 }
 
 function sourceUrlForInput(input: string): string | null {
-  const trimmed = input.trim();
+  const trimmed = normalizeMediaInput(input.trim());
   return isHttpUrl(trimmed) ? trimmed : null;
 }
 
@@ -1290,6 +1918,9 @@ function readSamplePackage(directory: string): SavedJobHistory | null {
       primaryMedia: resolveSampleAssetPath(directory, manifest.primaryMedia) ?? selectPrimaryMedia({ input: manifest.input ?? "", workflowMode: manifest.workflowMode ?? "karaoke" }, assets),
       playbackBundle: buildPlaybackBundle({ input: manifest.input ?? "", workflowMode: manifest.workflowMode ?? "karaoke" }, assets)
     };
+    if (!entry.playbackBundle.controllable || !entry.primarySubtitle) {
+      return null;
+    }
     registerHistoryAccess(entry);
     return refreshHistoryEntry(entry);
   } catch {
@@ -1438,6 +2069,281 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
   return { env: runtimeEnv, python: venvPythonInvocation };
 }
 
+const YOUTUBE_SEARCH_PLACEHOLDER_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
+const MEDIA_SEARCH_MAX_QUERY_CHARS = 200;
+const MEDIA_SEARCH_MAX_RESULTS = 12;
+const MEDIA_SEARCH_TIMEOUT_MS = 55_000;
+
+function ytdlpSearchPlaceholderOptions(): JobOptions {
+  return {
+    input: YOUTUBE_SEARCH_PLACEHOLDER_URL,
+    workflowMode: "subtitle",
+    outputDir: "",
+    subtitleSource: "platform",
+    localFallback: false,
+    separate: false,
+    saveAudio: false,
+    keepPlatformSubs: false,
+    model: "medium",
+    language: "",
+    subLangs: "",
+    browser: "",
+    cookies: "",
+    formats: ["srt"]
+  };
+}
+
+function normalizeYoutubeWatchUrl(entry: Record<string, unknown>, fallbackId: string): string {
+  const page = entry.webpage_url;
+  if (typeof page === "string" && page.startsWith("http")) {
+    return page;
+  }
+  const u = entry.url;
+  if (typeof u === "string" && u.startsWith("http")) {
+    return u;
+  }
+  if (typeof u === "string" && u.startsWith("//")) {
+    return `https:${u}`;
+  }
+  return `https://www.youtube.com/watch?v=${fallbackId}`;
+}
+
+function normalizeBilibiliWatchUrl(entry: Record<string, unknown>, fallbackId: string): string {
+  const page = entry.webpage_url;
+  if (typeof page === "string" && page.startsWith("http")) {
+    return page;
+  }
+  const u = entry.url;
+  if (typeof u === "string" && u.startsWith("http")) {
+    return u;
+  }
+  if (typeof u === "string" && u.startsWith("//")) {
+    return `https:${u}`;
+  }
+  if (typeof u === "string" && /^BV[0-9A-Za-z]+$/i.test(u)) {
+    return `https://www.bilibili.com/video/${u}`;
+  }
+  return `https://www.bilibili.com/video/${fallbackId}`;
+}
+
+function entryThumbnail(entry: Record<string, unknown>): string | undefined {
+  const thumbnail = entry.thumbnail;
+  if (typeof thumbnail !== "string") {
+    return undefined;
+  }
+  if (thumbnail.startsWith("http")) {
+    return thumbnail;
+  }
+  return thumbnail.startsWith("//") ? `https:${thumbnail}` : undefined;
+}
+
+function parseMediaSearchStdout(stdout: string, platform: "youtube" | "bilibili"): YoutubeSearchResult[] {
+  const results: YoutubeSearchResult[] = [];
+  for (const line of stdout.split("\n")) {
+    if (line.trim().length < 3) {
+      continue;
+    }
+    let j: Record<string, unknown>;
+    try {
+      j = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const idRaw = j.id;
+    if (typeof idRaw !== "string" || !idRaw) {
+      continue;
+    }
+    const title = typeof j.title === "string" ? j.title : "Untitled";
+    const channel =
+      (typeof j.channel === "string" && j.channel) || (typeof j.uploader === "string" && j.uploader) || "";
+    let durationLabel = "";
+    const durationRaw = j.duration;
+    if (typeof durationRaw === "number" && Number.isFinite(durationRaw)) {
+      const seconds = Math.floor(durationRaw);
+      durationLabel = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    }
+    results.push({
+      videoId: idRaw,
+      title,
+      url: platform === "bilibili" ? normalizeBilibiliWatchUrl(j, idRaw) : normalizeYoutubeWatchUrl(j, idRaw),
+      channel,
+      durationLabel,
+      platform,
+      thumbnailUrl: entryThumbnail(j)
+    });
+  }
+  return results;
+}
+
+async function runMediaSearch(platform: "youtube" | "bilibili", query: string, appendKaraoke: boolean): Promise<YoutubeSearchResult[]> {
+  const trimmed = query.trim().replace(/\s+/g, " ");
+  if (!trimmed) {
+    throw new Error("Search query is empty.");
+  }
+  if (trimmed.length > MEDIA_SEARCH_MAX_QUERY_CHARS) {
+    throw new Error(`Search query is too long (max ${MEDIA_SEARCH_MAX_QUERY_CHARS} characters).`);
+  }
+  let effective = appendKaraoke ? `${trimmed} karaoke` : trimmed;
+  if (effective.length > MEDIA_SEARCH_MAX_QUERY_CHARS) {
+    effective = effective.slice(0, MEDIA_SEARCH_MAX_QUERY_CHARS);
+  }
+
+  const runtime = await prepareAudioRuntime(ytdlpSearchPlaceholderOptions(), () => {});
+  const python = runtime.python?.command;
+  if (!python) {
+    throw new Error("Python runtime is not available for yt-dlp.");
+  }
+
+  const searchPrefix = platform === "bilibili" ? "bilisearch" : "ytsearch";
+  const searchArg = `${searchPrefix}${MEDIA_SEARCH_MAX_RESULTS}:${effective}`;
+  const args = ["-m", "yt_dlp", "-j", "--no-playlist", "--flat-playlist", "--socket-timeout", "20", searchArg];
+
+  const stdout = await new Promise<string>((resolve, reject) => {
+    const child = spawn(python, args, {
+      env: runtime.env,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`${platform === "bilibili" ? "Bilibili" : "YouTube"} search timed out.`));
+    }, MEDIA_SEARCH_TIMEOUT_MS);
+    child.stdout.on("data", (b: Buffer) => {
+      out += b.toString();
+    });
+    child.stderr.on("data", (b: Buffer) => {
+      err += b.toString();
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve(out);
+        return;
+      }
+      reject(new Error(err.trim() || `yt-dlp ${platform} search failed (exit ${code ?? "unknown"}).`));
+    });
+  });
+
+  return parseMediaSearchStdout(stdout, platform);
+}
+
+async function runYoutubeSearch(query: string, appendKaraoke: boolean): Promise<YoutubeSearchResult[]> {
+  return runMediaSearch("youtube", query, appendKaraoke);
+}
+
+async function runBilibiliSearch(query: string, appendKaraoke: boolean): Promise<YoutubeSearchResult[]> {
+  try {
+    return await runBilibiliWebSearch(query, appendKaraoke);
+  } catch (error) {
+    console.warn(`[bilibili-search] web API search failed; using yt-dlp fallback. ${error instanceof Error ? error.message : ""}`);
+    return runMediaSearch("bilibili", query, appendKaraoke);
+  }
+}
+
+async function runBilibiliWebSearch(query: string, appendKaraoke: boolean): Promise<YoutubeSearchResult[]> {
+  const trimmed = query.trim().replace(/\s+/g, " ");
+  if (!trimmed) {
+    throw new Error("Search query is empty.");
+  }
+  let effective = appendKaraoke ? `${trimmed} karaoke` : trimmed;
+  if (effective.length > MEDIA_SEARCH_MAX_QUERY_CHARS) {
+    effective = effective.slice(0, MEDIA_SEARCH_MAX_QUERY_CHARS);
+  }
+
+  const url = new URL("https://api.bilibili.com/x/web-interface/search/type");
+  url.searchParams.set("search_type", "video");
+  url.searchParams.set("keyword", effective);
+  url.searchParams.set("page", "1");
+  url.searchParams.set("page_size", String(MEDIA_SEARCH_MAX_RESULTS));
+
+  const buvid = `XY${randomUUID().replaceAll("-", "").toUpperCase()}`;
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json, text/plain, */*",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      Cookie: `buvid3=${buvid}; buvid4=${buvid}; b_nut=${Math.floor(Date.now() / 1000)};`,
+      Origin: "https://search.bilibili.com",
+      Referer: `https://search.bilibili.com/all?keyword=${encodeURIComponent(effective)}`,
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Bilibili search failed with HTTP ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as {
+    code?: number;
+    message?: string;
+    data?: {
+      result?: Array<{
+        bvid?: string;
+        aid?: number;
+        title?: string;
+        author?: string;
+        duration?: string;
+        pic?: string;
+        arcurl?: string;
+      }>;
+    };
+  };
+
+  if (payload.code !== 0) {
+    throw new Error(payload.message || "Bilibili search failed.");
+  }
+
+  return (payload.data?.result ?? [])
+    .filter((item) => item.bvid || item.aid)
+    .slice(0, MEDIA_SEARCH_MAX_RESULTS)
+    .map((item) => {
+      const videoId = item.bvid || `av${item.aid}`;
+      const title = stripHtmlTags(item.title || "Untitled");
+      return {
+        videoId,
+        title,
+        url: `https://www.bilibili.com/video/${videoId}`,
+        channel: item.author || "",
+        durationLabel: item.duration || "",
+        platform: "bilibili" as const,
+        thumbnailUrl: proxiedBilibiliThumbnailUrl(normalizeMaybeProtocolRelativeUrl(item.pic))
+      };
+    });
+}
+
+function proxiedBilibiliThumbnailUrl(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return `${webApiOrigin}/api/thumbnail?url=${encodeURIComponent(value)}`;
+}
+
+function stripHtmlTags(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, "")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .trim();
+}
+
+function normalizeMaybeProtocolRelativeUrl(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (value.startsWith("http")) {
+    return value;
+  }
+  return value.startsWith("//") ? `https:${value}` : undefined;
+}
+
 async function ensurePip(python: string, env: NodeJS.ProcessEnv, log: RuntimeLog): Promise<void> {
   if (await pythonCheck(python, "import pip", env)) {
     return;
@@ -1452,7 +2358,7 @@ async function ensurePip(python: string, env: NodeJS.ProcessEnv, log: RuntimeLog
 }
 
 function runtimeNeeds(options: JobOptions): RuntimeNeeds {
-  const input = options.input.trim();
+  const input = normalizeMediaInput(options.input.trim());
   const urlInput = isHttpUrl(input);
   const bilibiliInput = isBilibiliUrl(input);
   const needsLocalTranscription =
@@ -1463,6 +2369,20 @@ function runtimeNeeds(options: JobOptions): RuntimeNeeds {
     whisper: needsLocalTranscription,
     separator: options.separate
   };
+}
+
+function normalizeMediaInput(input: string): string {
+  const value = input.trim();
+  if (!value) {
+    return value;
+  }
+  if (/^(www\.)?(bilibili\.com|youtube\.com)\//i.test(value) || /^b23\.tv\//i.test(value) || /^youtu\.be\//i.test(value)) {
+    return `https://${value}`;
+  }
+  if (/^BV[0-9A-Za-z]+$/i.test(value) || /^av\d+$/i.test(value)) {
+    return `https://www.bilibili.com/video/${value}`;
+  }
+  return value;
 }
 
 function runtimeVenvDir(): string {
@@ -1635,7 +2555,7 @@ function formatSpawnError(error: Error, command: string): string {
 }
 
 function buildAudioSubtitlesArgs(options: JobOptions): string[] {
-  const input = options.input.trim();
+  const input = normalizeMediaInput(options.input.trim());
   if (!input) {
     throw new Error("Input is required.");
   }

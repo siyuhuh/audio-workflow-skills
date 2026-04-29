@@ -1,0 +1,45 @@
+{
+  "current": "当前歌曲包",
+  "openPackage": "打开歌曲包",
+  "splitVocals": "分离人声",
+  "splitRunning": "分离中…",
+  "enterKaraoke": "进入演唱",
+  "openOriginal": "打开原视频",
+  "openFolder": "打开文件夹",
+  "saveAndEnter": "保存并进入演唱",
+  "contents": "歌曲包内容",
+  "detail": "歌曲包详情",
+  "detailHint": "进入演唱前，可先编辑歌词与时间轴。",
+  "playbackTrack": "播放轨道",
+  "lyricsBound": "绑定到歌曲包的歌词",
+  "timedLines": "时间轴歌词",
+  "noTimedLines": "还没有解析出时间轴歌词。",
+  "noTimedSubtitles": "还没有加载时间轴字幕。",
+  "filesEmpty": "生成的文件会显示在这里。",
+  "noPlayableMedia": "歌曲包里没有可播放媒体",
+  "noLocalMedia": "当前 review 没有可用的本地媒体。",
+  "playToFollow": "播放媒体后可跟随当前歌词。",
+  "split": {
+    "ready": "人声分离已就绪",
+    "missing": "这个歌曲包还没有分离分轨",
+    "readyHint": "可在演唱房间切换原曲和伴奏；仅人声放在房间选项里。",
+    "missingHint": "运行卡拉 OK 任务前开启人声分离。"
+  },
+  "badges": {
+    "localPlayback": "本地播放",
+    "playbackMissing": "缺少播放资源",
+    "backingStem": "伴奏分轨",
+    "vocalStem": "人声分轨",
+    "videoPreview": "视频预览",
+    "stems": "分轨",
+    "original": "原曲",
+    "lyrics": "歌词",
+    "noLyrics": "无歌词",
+    "needsMedia": "缺少媒体"
+  },
+  "tabs": {
+    "karaoke": "演唱",
+    "script": "文本",
+    "files": "文件"
+  }
+}

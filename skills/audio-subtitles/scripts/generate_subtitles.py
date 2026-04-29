@@ -35,6 +35,42 @@ SKILL_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_VENV = Path.home() / ".local/share/audio-subtitles-venv"
 
 
+def emit_progress(
+    name: str,
+    *,
+    progress: float = -1.0,
+    message: str | None = None,
+    done: bool = False,
+    failed: bool = False,
+    eta_sec: float | None = None,
+) -> None:
+    """Emit a structured pipeline event on stderr for the desktop main process.
+
+    The Electron main process parses each stderr line: lines that successfully
+    JSON-decode and carry an ``event`` field are routed to ``onJobProgress``;
+    everything else stays as a plain log chunk. CLI users still see normal text
+    output because non-JSON prints are unaffected.
+    """
+    payload: dict[str, object] = {
+        "event": "stage",
+        "name": name,
+        "progress": float(progress),
+    }
+    if message is not None:
+        payload["message"] = message
+    if eta_sec is not None:
+        payload["etaSec"] = float(eta_sec)
+    if done:
+        payload["done"] = True
+    if failed:
+        payload["failed"] = True
+    try:
+        print(json.dumps(payload, ensure_ascii=False), file=sys.stderr, flush=True)
+    except Exception:
+        # Never let progress reporting break a real job.
+        pass
+
+
 @dataclass
 class TimedWord:
     text: str
@@ -52,6 +88,7 @@ class Cue:
 
 
 def main() -> int:
+    emit_progress("prepare", progress=0.0, message="Preparing job")
     maybe_reexec_venv()
     args = parse_args()
     if args.subtitle_source == "youtube":
@@ -61,21 +98,30 @@ def main() -> int:
 
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else default_output_dir(args.input)
     output_dir.mkdir(parents=True, exist_ok=True)
+    emit_progress("prepare", progress=1.0, message=f"Output: {output_dir}", done=True)
 
     formats = parse_formats(args.formats)
     if is_url(args.input) and args.subtitle_source != "local" and not args.separate:
+        emit_progress("download", progress=0.0, message="Fetching platform subtitles")
         platform_result = download_url_subtitles(args.input, output_dir, args)
         if platform_result is not None:
             base_name, cues, metadata = platform_result
+            emit_progress("download", progress=1.0, message="Platform subtitles ready", done=True)
+            emit_progress("write", progress=0.0, message="Writing subtitle files")
             outputs = write_outputs(output_dir, base_name, cues, metadata, formats)
+            emit_progress("write", progress=1.0, done=True)
             if args.save_audio:
+                emit_progress("download", progress=0.0, message="Saving audio copy")
                 saved_audio, saved_audio_cleanup = download_url_audio(args.input, output_dir, args)
                 outputs.append(saved_audio)
                 saved_audio_cleanup()
+                emit_progress("download", progress=1.0, done=True)
             if args.save_video_preview:
+                emit_progress("preview", progress=0.0, message="Downloading preview video")
                 saved_video = maybe_download_url_video_preview(args.input, output_dir, args)
                 if saved_video:
                     outputs.append(saved_video)
+                emit_progress("preview", progress=1.0, done=True)
             print(f"Source: {args.input}")
             print("Subtitle source: Platform")
             print(f"Output directory: {output_dir}")
@@ -84,34 +130,54 @@ def main() -> int:
             return 0
         local_fallback = args.local_fallback or should_default_to_local_fallback(args.input, args)
         if args.subtitle_source == "platform" or not local_fallback:
+            emit_progress("download", progress=1.0, message="No platform subtitles", failed=True, done=True)
             raise SystemExit(
                 "No platform subtitles found for the requested language(s). "
                 "Rerun with --local-fallback to use the local Whisper model, "
                 "or use --subtitle-source local to skip platform subtitles."
             )
+        emit_progress("download", progress=1.0, message="No platform subtitles, using local transcription", done=True)
         print("No platform subtitles found; falling back to local transcription.", file=sys.stderr)
 
     cleanups: list[Callable[[], None]] = []
+    emit_progress("download", progress=0.0, message="Fetching media")
     source, source_cleanup = resolve_source(args.input, args.stem, output_dir, args)
     cleanups.append(source_cleanup)
+    emit_progress("download", progress=1.0, message="Media ready", done=True)
     if args.separate:
+        emit_progress("separate", progress=0.0, message="Separating vocals")
         source = separate_source(source, output_dir, args)
+        emit_progress("separate", progress=1.0, done=True)
     base_name = safe_stem(source)
+    emit_progress("convert", progress=0.0, message="Converting to 16 kHz mono")
     audio_path, cleanup = prepare_audio(source, output_dir, base_name, args.save_audio)
     cleanups.append(cleanup)
+    emit_progress("convert", progress=1.0, done=True)
     try:
+        emit_progress("transcribe", progress=0.0, message="Running speech-to-text")
         cues, metadata = transcribe(audio_path, args)
+        emit_progress("transcribe", progress=1.0, done=True)
+    except SystemExit:
+        emit_progress("transcribe", progress=1.0, failed=True, done=True)
+        raise
+    except Exception:
+        emit_progress("transcribe", progress=1.0, failed=True, done=True)
+        raise
     finally:
         for cleanup_func in reversed(cleanups):
             cleanup_func()
 
+    emit_progress("write", progress=0.0, message="Writing subtitle files")
     outputs = write_outputs(output_dir, base_name, cues, metadata, formats)
+    emit_progress("write", progress=1.0, done=True)
     if args.save_audio:
         outputs.append(audio_path)
     if args.save_video_preview and is_url(args.input):
+        emit_progress("preview", progress=0.0, message="Downloading preview video")
         saved_video = maybe_download_url_video_preview(args.input, output_dir, args)
         if saved_video:
             outputs.append(saved_video)
+        emit_progress("preview", progress=1.0, done=True)
 
     print(f"Source: {source}")
     print(f"Output directory: {output_dir}")
@@ -312,7 +378,9 @@ def download_url_video_preview(url: str, output_dir: Path, args: argparse.Namesp
         "yt-dlp",
         "--no-playlist",
         "-f",
-        "bv*[height<=720][ext=mp4]/bv*[height<=720]/bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/best[height<=720][ext=mp4]/best[height<=720]",
+        "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720][ext=mp4]/b[height<=720]/best[height<=720]",
+        "--merge-output-format",
+        "mp4",
         "-P",
         str(output_dir),
         "-o",

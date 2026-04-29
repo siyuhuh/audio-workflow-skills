@@ -1,0 +1,9 @@
+packages:
+  - "apps/desktop"
+
+# pnpm v10+ blocks dependency lifecycle scripts unless allowlisted here.
+onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
+  - esbuild
+  - ffmpeg-static

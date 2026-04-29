@@ -1,0 +1,14 @@
+{
+  "name": "audio-workflow-skills",
+  "private": true,
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "dev": "pnpm --filter @vocalflow/desktop dev",
+    "dev:ui": "pnpm --filter @vocalflow/desktop dev:ui",
+    "build": "pnpm --filter @vocalflow/desktop build",
+    "dist": "pnpm --filter @vocalflow/desktop dist",
+    "dist:mac": "pnpm --filter @vocalflow/desktop dist:mac",
+    "dist:win": "pnpm --filter @vocalflow/desktop dist:win",
+    "start": "pnpm --filter @vocalflow/desktop start"
+  }
+}

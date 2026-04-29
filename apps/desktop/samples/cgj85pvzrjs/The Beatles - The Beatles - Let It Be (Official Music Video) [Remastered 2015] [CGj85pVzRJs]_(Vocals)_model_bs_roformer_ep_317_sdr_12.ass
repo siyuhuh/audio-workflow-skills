@@ -1,0 +1,57 @@
+[Script Info]
+Title: VocalFlow Karaoke
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,58,&H00FFFFFF,&H000078FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,80,80,54,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:13.72,0:00:17.96,Default,,0,0,0,,{\kf100}When{\kf20} I{\kf42} find{\kf66} myself{\kf50} in{\kf50} times{\kf38} of{\kf58} trouble
+Dialogue: 0,0:00:17.96,0:00:21.14,Default,,0,0,0,,{\kf68}Mother{\kf82} Mary{\kf44} comes{\kf36} to{\kf88} me
+Dialogue: 0,0:00:21.14,0:00:27.92,Default,,0,0,0,,{\kf82}Speaking{\kf62} words{\kf24} of{\kf78} wisdom,{\k36}{\kf12} let{\kf24} it{\kf114} be{\kf220} And{\kf26} in
+Dialogue: 0,0:00:27.92,0:00:29.68,Default,,0,0,0,,{\kf62}my{\kf34} hour{\kf26} of{\kf54} darkness
+Dialogue: 0,0:00:29.68,0:00:33.82,Default,,0,0,0,,{\kf52}She{\kf40} is{\kf64} standing{\kf94} right{\kf38} in{\kf20} front{\kf22} of{\kf84} me
+Dialogue: 0,0:00:33.82,0:00:38.32,Default,,0,0,0,,{\kf80}Speaking{\kf64} words{\kf32} of{\kf60} wisdom,{\k58}{\kf8} let{\kf26} it{\kf122} be
+Dialogue: 0,0:00:38.32,0:00:42.52,Default,,0,0,0,,{\kf150}Let{\kf32} it{\kf100} be,{\k14}{\kf26} let{\kf22} it{\kf76} be
+Dialogue: 0,0:00:42.52,0:00:46.94,Default,,0,0,0,,{\kf60}Let{\kf26} it{\kf108} be,{\kf46} let{\kf32} it{\kf170} be
+Dialogue: 0,0:00:46.94,0:00:51.80,Default,,0,0,0,,{\kf84}Whisper{\kf54} words{\kf38} of{\kf70} wisdom,{\k30}{\kf28} let{\kf26} it{\kf156} be
+Dialogue: 0,0:00:52.68,0:00:56.68,Default,,0,0,0,,{\kf114}And{\kf30} when{\kf28} the{\kf58} broken{\kf94} hearted{\kf76} people
+Dialogue: 0,0:00:56.68,0:01:01.78,Default,,0,0,0,,{\kf52}Living{\kf80} in{\kf40} the{\kf50} world{\kf88} agree{\kf98} there{\kf30} will{\kf44} be{\kf28} an
+Dialogue: 0,0:01:01.78,0:01:04.76,Default,,0,0,0,,{\kf80}answer{\kf48} let{\kf30} it{\kf140} be
+Dialogue: 0,0:01:05.78,0:01:10.04,Default,,0,0,0,,{\kf92}For{\kf40} though{\kf26} they{\kf40} may{\kf38} be{\kf104} parted{\kf50} there{\kf36} is
+Dialogue: 0,0:01:10.04,0:01:12.62,Default,,0,0,0,,{\kf24}still{\kf34} a{\kf58} chance{\kf38} that{\kf18} they{\kf40} will{\kf46} see
+Dialogue: 0,0:01:12.96,0:01:15.58,Default,,0,0,0,,{\kf100}There{\kf26} will{\kf42} be{\kf40} an{\kf54} answer
+Dialogue: 0,0:01:15.58,0:01:17.92,Default,,0,0,0,,{\kf76}Let{\kf34} it{\kf124} be
+Dialogue: 0,0:01:18.92,0:01:24.38,Default,,0,0,0,,{\kf66}Let{\kf40} it{\kf86} be{\kf42} let{\kf202} it{\kf110} be
+Dialogue: 0,0:01:24.38,0:01:25.90,Default,,0,0,0,,{\kf32}Let{\kf42} it{\kf78} be
+Dialogue: 0,0:01:25.90,0:01:26.66,Default,,0,0,0,,{\kf76}Be
+Dialogue: 0,0:01:26.68,0:01:31.42,Default,,0,0,0,,{\kf30}Yeah,{\kf36} there{\kf56} will{\kf42} be{\kf38} an{\kf54} answer,{\k50}{\kf14} let{\kf28} it{\kf126} be,
+Dialogue: 0,0:01:33.08,0:01:38.04,Default,,0,0,0,,{\kf12}let{\kf28} it{\kf78} be,{\k8}{\kf32} let{\kf18} it{\kf92} be,{\k20}{\kf38} let{\kf30} it{\kf112} be,{\k2}{\kf26} let
+Dialogue: 0,0:01:38.04,0:01:39.42,Default,,0,0,0,,{\kf30}it{\kf108} be.
+Dialogue: 0,0:01:40.40,0:01:44.66,Default,,0,0,0,,{\kf54}Whisper{\kf60} words{\kf38} of{\kf58} wisdom,{\k50}{\kf28} let{\kf32} it{\kf106} be.
+Dialogue: 0,0:02:10.74,0:02:12.14,Default,,0,0,0,,{\kf140}You
+Dialogue: 0,0:02:27.04,0:02:32.98,Default,,0,0,0,,{\kf82}Let{\kf38} it{\kf88} be,{\k24}{\kf26} let{\kf30} it{\kf58} be,{\k56}{\kf28} let{\kf32} it{\kf88} be,{\k4}{\kf40} yeah,
+Dialogue: 0,0:02:32.98,0:02:34.68,Default,,0,0,0,,{\kf26}let{\kf36} it{\kf108} be.
+Dialogue: 0,0:02:35.78,0:02:40.16,Default,,0,0,0,,{\kf54}Whisper{\kf84} words{\kf38} of{\kf68} wisdom,{\k28}{\kf28} let{\kf38} it{\kf100} be.
+Dialogue: 0,0:02:42.24,0:02:46.26,Default,,0,0,0,,{\kf52}And{\kf42} when{\kf32} the{\kf32} night{\kf48} is{\kf54} cloudy,{\k70}{\kf20} there{\kf52} is
+Dialogue: 0,0:02:46.26,0:02:49.01,Default,,0,0,0,,{\kf26}still{\kf42} a{\kf58} light{\kf40} that{\kf30} shines{\kf38} on{\kf41} me.
+Dialogue: 0,0:02:49.70,0:02:54.22,Default,,0,0,0,,{\kf66}Shine{\kf36} on{\kf24} till{\kf90} tomorrow,{\k64}{\kf28} let{\kf28} it{\kf116} be.
+Dialogue: 0,0:02:55.68,0:03:00.66,Default,,0,0,0,,{\kf88}I{\kf44} wake{\kf56} up{\kf50} to{\kf26} the{\kf56} sound{\kf38} of{\kf78} music,{\k38}{\kf24} Mother
+Dialogue: 0,0:03:00.66,0:03:03.44,Default,,0,0,0,,{\kf90}Mary{\kf50} comes{\kf40} to{\kf98} me,
+Dialogue: 0,0:03:03.76,0:03:08.12,Default,,0,0,0,,{\kf64}speaking{\kf72} words{\kf34} of{\kf64} wisdom,{\k48}{\kf16} let{\kf30} it{\kf108} be,
+Dialogue: 0,0:03:09.56,0:03:12.84,Default,,0,0,0,,{\kf24}let{\kf48} it{\kf84} be,{\k26}{\kf26} let{\kf34} it{\kf86} be,
+Dialogue: 0,0:03:13.18,0:03:16.12,Default,,0,0,0,,{\kf24}let{\kf32} it{\kf80} be,{\k16}{\kf44} let{\kf28} it{\kf70} be,
+Dialogue: 0,0:03:17.34,0:03:22.22,Default,,0,0,0,,{\kf26}or{\kf56} there{\kf38} will{\kf40} be{\kf36} an{\kf46} answer,{\k56}{\kf26} let{\kf32} it{\kf132} be,
+Dialogue: 0,0:03:22.22,0:03:29.10,Default,,0,0,0,,{\kf164}Let{\kf44} it{\kf76} be,{\kf52} let{\kf30} it{\kf104} be,{\k14}{\kf28} let{\kf30} it{\kf84} be,{\kf62} let
+Dialogue: 0,0:03:29.10,0:03:30.26,Default,,0,0,0,,{\kf24}it{\kf92} be.
+Dialogue: 0,0:03:31.38,0:03:33.70,Default,,0,0,0,,{\kf64}There{\kf50} will{\kf36} be{\kf36} an{\kf46} answer.
+Dialogue: 0,0:03:34.34,0:03:36.00,Default,,0,0,0,,{\kf18}Let{\kf34} it{\kf114} be,
+Dialogue: 0,0:03:37.42,0:03:43.06,Default,,0,0,0,,{\kf5}let{\kf64} it{\kf84} be,{\k40}{\kf20} let{\kf24} it{\kf94} be,{\k26}{\kf30} let{\kf18} it{\kf104} be,{\k8}{\kf52} let
+Dialogue: 0,0:03:43.06,0:03:44.24,Default,,0,0,0,,{\kf26}it{\kf92} be.
+Dialogue: 0,0:03:44.24,0:03:50.22,Default,,0,0,0,,{\kf172}Fist{\kf52} blow{\kf30} it{\kf20} up{\kf60} with{\kf62} them,{\k30}{\kf5} let{\kf40} it{\kf130} be.

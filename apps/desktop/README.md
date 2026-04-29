@@ -14,25 +14,22 @@ The app is intentionally a thin shell:
 
 ## Run Locally
 
-Install the root CLI first:
+Install the root CLI first (optional for dev; the packaged app bundles its own script):
 
 ```bash
 cd ../..
 ./install.sh
 ```
 
-Install desktop dependencies:
+From the **repository root**, install dependencies and start the desktop app:
 
 ```bash
-cd apps/desktop
+cd ../..
 pnpm install
-```
-
-Start the app:
-
-```bash
 pnpm dev
 ```
+
+If you are already in `apps/desktop`, run `pnpm install` and `pnpm dev` there instead; the workspace resolves to the same install.
 
 The packaged app includes the `audio-subtitles` script, a bundled Python runtime, and bundled ffmpeg. During local development, the main process also prefers a user-installed CLI at:
 

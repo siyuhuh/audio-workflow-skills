@@ -1,0 +1,45 @@
+{
+  "current": "Current package",
+  "openPackage": "Open package",
+  "splitVocals": "Split vocals",
+  "splitRunning": "Splitting…",
+  "enterKaraoke": "Enter Karaoke",
+  "openOriginal": "Open original",
+  "openFolder": "Open folder",
+  "saveAndEnter": "Save and enter Karaoke",
+  "contents": "Package contents",
+  "detail": "Package Detail",
+  "detailHint": "Edit package lyrics and timing before entering Karaoke.",
+  "playbackTrack": "Playback track",
+  "lyricsBound": "Lyrics bound to package",
+  "timedLines": "Timed lines",
+  "noTimedLines": "No timed lines parsed yet.",
+  "noTimedSubtitles": "No timed subtitle lines loaded.",
+  "filesEmpty": "Generated files will appear here.",
+  "noPlayableMedia": "No playable media in package",
+  "noLocalMedia": "No local media available for this review.",
+  "playToFollow": "Play media to follow the lyric line.",
+  "split": {
+    "ready": "Vocal split ready",
+    "missing": "No separated stems in this package",
+    "readyHint": "Use Karaoke Room to switch Original and Backing; Vocal only is tucked into Room options.",
+    "missingHint": "Turn on Vocal split before running a Karaoke job."
+  },
+  "badges": {
+    "localPlayback": "Local playback",
+    "playbackMissing": "Playback missing",
+    "backingStem": "Backing stem",
+    "vocalStem": "Vocal stem",
+    "videoPreview": "Video preview",
+    "stems": "Stems",
+    "original": "Original",
+    "lyrics": "Lyrics",
+    "noLyrics": "No lyrics",
+    "needsMedia": "Needs media"
+  },
+  "tabs": {
+    "karaoke": "Karaoke",
+    "script": "Script",
+    "files": "Files"
+  }
+}

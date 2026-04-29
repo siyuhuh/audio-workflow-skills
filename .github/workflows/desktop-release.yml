@@ -49,11 +49,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install desktop dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: apps/desktop
 
       - name: Download bundled Python runtime
         shell: bash
@@ -70,7 +69,6 @@ jobs:
 
       - name: Build installer
         run: ${{ matrix.command }}
-        working-directory: apps/desktop
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

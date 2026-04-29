@@ -1,6 +1,10 @@
 import { type CSSProperties, type DragEvent, type ReactNode, type RefObject, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import QRCode from "qrcode";
+import { useTranslation } from "react-i18next";
 import type {
+  AccentColor,
+  AppLocale,
   AudioWorkflowApi,
   CommandPreview,
   GeneratedAsset,
@@ -8,9 +12,249 @@ import type {
   JobResult,
   OutputFormat,
   PlaybackBundle,
+  RoomQueueItem,
+  RoomStatus,
   SavedJobHistory,
-  WorkflowMode
+  ThemeMode,
+  UserSettings,
+  WorkflowMode,
+  YoutubeSearchResult
 } from "../shared/types";
+import type { JobProgressStage } from "../shared/types";
+import { hydrateLocaleFromHost, setAppLocale, SUPPORTED_LOCALES } from "./i18n";
+
+interface StageProgress {
+  name: string;
+  progress: number;
+  message?: string;
+  done: boolean;
+  failed: boolean;
+}
+
+const PIPELINE_STAGES: ReadonlyArray<{ id: string; labelKey: string }> = [
+  { id: "prepare", labelKey: "capture:stages.prepare" },
+  { id: "download", labelKey: "capture:stages.download" },
+  { id: "separate", labelKey: "capture:stages.separate" },
+  { id: "convert", labelKey: "capture:stages.convert" },
+  { id: "transcribe", labelKey: "capture:stages.transcribe" },
+  { id: "write", labelKey: "capture:stages.write" },
+  { id: "preview", labelKey: "capture:stages.preview" }
+];
+
+function isSampleHistoryEntry(entry: SavedJobHistory): boolean {
+  return entry.input.startsWith("sample:") || entry.id.startsWith("sample:");
+}
+
+function clampProgress(value: number): number {
+  if (!Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  if (value > 1) {
+    return 1;
+  }
+  return value;
+}
+
+interface StageChainProps {
+  stages: Map<string, StageProgress>;
+  isRunning: boolean;
+  t: Translator;
+}
+
+function StageChain({ stages, isRunning, t }: StageChainProps) {
+  const visible = PIPELINE_STAGES.filter((stage) => stages.has(stage.id));
+  if (visible.length === 0) {
+    return null;
+  }
+  return (
+    <div className="stageChain" role="status" aria-live="polite" data-running={isRunning ? "true" : "false"}>
+      {visible.map((stage) => {
+        const progress = stages.get(stage.id);
+        if (!progress) {
+          return null;
+        }
+        const fraction = clampProgress(progress.progress);
+        const state = progress.failed ? "failed" : progress.done ? "done" : fraction > 0 ? "active" : "pending";
+        return (
+          <div key={stage.id} className="stageChainItem" data-state={state}>
+            <div className="stageChainLabel">{t(stage.labelKey)}</div>
+            <div className="stageChainBar">
+              <span className="stageChainFill" style={{ width: `${Math.round(fraction * 100)}%` }} />
+            </div>
+            {progress.message ? <div className="stageChainMessage">{progress.message}</div> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+type AppNavTarget = "home" | "add" | "karaoke";
+
+interface FloatingBottomNavProps {
+  active: AppNavTarget;
+  karaokeDisabled: boolean;
+  contextTitle: string;
+  contextSubtitle: string;
+  contextAction?: string;
+  onHome: () => void;
+  onAdd: () => void;
+  onKaraoke: () => void;
+  t: Translator;
+}
+
+function FloatingBottomNav({ active, karaokeDisabled, contextTitle, contextSubtitle, contextAction, onHome, onAdd, onKaraoke, t }: FloatingBottomNavProps) {
+  return (
+    <aside className="floatingBottomDock" data-active-view={active} aria-label={t("common:nav.label")}>
+      <div className="floatingDockContext">
+        <div>
+          <p>{contextTitle}</p>
+          <span>{contextSubtitle}</span>
+        </div>
+        {contextAction ? <strong>{contextAction}</strong> : null}
+      </div>
+      <nav className="floatingBottomNav" aria-label={t("common:nav.label")}>
+        <button type="button" data-active={active === "home"} onClick={onHome}>
+          {t("common:nav.home")}
+        </button>
+        <button type="button" data-active={active === "add"} onClick={onAdd}>
+          {t("common:nav.add")}
+        </button>
+        <button type="button" data-active={active === "karaoke"} onClick={onKaraoke} disabled={karaokeDisabled}>
+          {t("common:nav.karaoke")}
+        </button>
+      </nav>
+    </aside>
+  );
+}
+
+interface SdfCircle {
+  x: number;
+  y: number;
+  r: number;
+  speed: number;
+  phase: number;
+}
+
+const SDF_CIRCLES: SdfCircle[] = [
+  { x: 0.22, y: 0.38, r: 0.24, speed: 0.32, phase: 0.4 },
+  { x: 0.52, y: 0.28, r: 0.18, speed: 0.24, phase: 2.1 },
+  { x: 0.78, y: 0.5, r: 0.26, speed: 0.28, phase: 3.2 },
+  { x: 0.36, y: 0.78, r: 0.2, speed: 0.36, phase: 4.6 },
+  { x: 0.68, y: 0.76, r: 0.15, speed: 0.42, phase: 5.3 }
+];
+
+function smoothMin(a: number, b: number, k: number): number {
+  const h = Math.max(k - Math.abs(a - b), 0) / k;
+  return Math.min(a, b) - h * h * k * 0.25;
+}
+
+function parseCssColor(value: string): [number, number, number] {
+  const trimmed = value.trim();
+  const hex = trimmed.match(/^#([0-9a-f]{6})$/i)?.[1];
+  if (hex) {
+    return [Number.parseInt(hex.slice(0, 2), 16), Number.parseInt(hex.slice(2, 4), 16), Number.parseInt(hex.slice(4, 6), 16)];
+  }
+  const rgb = trimmed.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (rgb) {
+    return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+  }
+  return [22, 138, 74];
+}
+
+function SdfHomeScene() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const context = canvas.getContext("2d", { alpha: true });
+    if (!context) {
+      return;
+    }
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+    let frame = 0;
+    let raf = 0;
+    let disposed = false;
+
+    const render = () => {
+      if (disposed) {
+        return;
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      const scale = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(180, Math.floor(rect.width * scale));
+      const height = Math.max(100, Math.floor(rect.height * scale));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      const sampleWidth = 220;
+      const sampleHeight = Math.max(90, Math.floor(sampleWidth * (height / width)));
+      const image = context.createImageData(sampleWidth, sampleHeight);
+      const styles = getComputedStyle(canvas);
+      const accent = parseCssColor(styles.getPropertyValue("--color-accent"));
+      const accentStrong = parseCssColor(styles.getPropertyValue("--color-accent-strong"));
+      const t = reduceMotion ? 0.8 : frame * 0.016;
+      const aspect = sampleWidth / sampleHeight;
+
+      for (let y = 0; y < sampleHeight; y += 1) {
+        for (let x = 0; x < sampleWidth; x += 1) {
+          const uvx = (x / sampleWidth - 0.5) * aspect;
+          const uvy = y / sampleHeight - 0.5;
+          let d = 10;
+          for (const circle of SDF_CIRCLES) {
+            const wobbleX = Math.sin(t * circle.speed + circle.phase) * 0.04;
+            const wobbleY = Math.cos(t * (circle.speed * 0.8) + circle.phase) * 0.035;
+            const cx = (circle.x - 0.5) * aspect + wobbleX;
+            const cy = circle.y - 0.5 + wobbleY;
+            const dist = Math.hypot(uvx - cx, uvy - cy) - circle.r;
+            d = smoothMin(d, dist, 0.08);
+          }
+
+          const edge = Math.max(0, Math.min(1, (0.018 - d) / 0.036));
+          const glow = Math.max(0, Math.min(1, (0.18 - d) / 0.18));
+          const shade = Math.max(0, Math.min(1, 0.55 + (uvx + uvy) * 0.28));
+          const alpha = Math.max(edge, glow * 0.28);
+          const idx = (y * sampleWidth + x) * 4;
+          image.data[idx] = Math.round(accentStrong[0] * (1 - shade) + accent[0] * shade);
+          image.data[idx + 1] = Math.round(accentStrong[1] * (1 - shade) + accent[1] * shade);
+          image.data[idx + 2] = Math.round(accentStrong[2] * (1 - shade) + accent[2] * shade);
+          image.data[idx + 3] = Math.round(alpha * 220);
+        }
+      }
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width = sampleWidth;
+      offscreen.height = sampleHeight;
+      offscreen.getContext("2d")?.putImageData(image, 0, 0);
+      context.clearRect(0, 0, width, height);
+      context.imageSmoothingEnabled = true;
+      context.drawImage(offscreen, 0, 0, width, height);
+
+      frame += 1;
+      if (!reduceMotion) {
+        raf = window.requestAnimationFrame(render);
+      }
+    };
+
+    render();
+    return () => {
+      disposed = true;
+      if (raf) {
+        window.cancelAnimationFrame(raf);
+      }
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="homeSdfCanvas" aria-hidden="true" />;
+}
 
 declare global {
   interface Window {
@@ -91,10 +335,12 @@ interface MicrophoneMonitorController {
   selectedDeviceId: string;
   isMonitoring: boolean;
   monitorGain: number;
+  noiseReduction: boolean;
   status: string;
   setSelectedDeviceId: (deviceId: string) => void;
   setIsMonitoring: (enabled: boolean) => void;
   setMonitorGain: (gain: number) => void;
+  setNoiseReduction: (enabled: boolean) => void;
   refreshDevices: () => void;
 }
 
@@ -118,6 +364,13 @@ interface HoverFillRect {
 
 const allFormats: OutputFormat[] = ["lrc", "srt", "vtt", "txt", "json", "ass"];
 const motionEase = [0.23, 1, 0.32, 1] as const;
+const motionDuration = {
+  instant: 0.01,
+  fast: 0.14,
+  base: 0.18,
+  panel: 0.2,
+  drawer: 0.22
+} as const;
 const lyricEffectOptions: Array<[LyricEffect, string]> = [
   ["sweep", "Blue sweep"],
   ["outline", "Outline"],
@@ -131,7 +384,22 @@ const lyricFontOptions: Array<[LyricFont, string]> = [
   ["mono", "Mono"]
 ];
 const hasNativeAudioWorkflow = Boolean(window.audioWorkflow);
-const audioWorkflow: AudioWorkflowApi = window.audioWorkflow ?? createHttpAudioWorkflowApi();
+const httpAudioWorkflow = createHttpAudioWorkflowApi();
+const audioWorkflow: AudioWorkflowApi = {
+  ...httpAudioWorkflow,
+  ...window.audioWorkflow,
+  youtubeSearch: window.audioWorkflow?.youtubeSearch ?? httpAudioWorkflow.youtubeSearch,
+  bilibiliSearch: window.audioWorkflow?.bilibiliSearch ?? httpAudioWorkflow.bilibiliSearch,
+  getRoomStatus: window.audioWorkflow?.getRoomStatus ?? httpAudioWorkflow.getRoomStatus,
+  enqueueRoomSong: window.audioWorkflow?.enqueueRoomSong ?? httpAudioWorkflow.enqueueRoomSong,
+  startRoomQueueItem: window.audioWorkflow?.startRoomQueueItem ?? httpAudioWorkflow.startRoomQueueItem,
+  finishRoomQueueItem: window.audioWorkflow?.finishRoomQueueItem ?? httpAudioWorkflow.finishRoomQueueItem,
+  removeRoomQueueItem: window.audioWorkflow?.removeRoomQueueItem ?? httpAudioWorkflow.removeRoomQueueItem,
+  clearRoomQueue: window.audioWorkflow?.clearRoomQueue ?? httpAudioWorkflow.clearRoomQueue,
+  getSystemLocale: window.audioWorkflow?.getSystemLocale ?? httpAudioWorkflow.getSystemLocale,
+  getSettings: window.audioWorkflow?.getSettings ?? httpAudioWorkflow.getSettings,
+  setSettings: window.audioWorkflow?.setSettings ?? httpAudioWorkflow.setSettings
+};
 
 const defaultOptions: JobOptions = {
   input: "",
@@ -139,7 +407,7 @@ const defaultOptions: JobOptions = {
   outputDir: "",
   subtitleSource: "auto",
   localFallback: true,
-  separate: false,
+  separate: true,
   saveAudio: false,
   keepPlatformSubs: false,
   model: "medium",
@@ -152,6 +420,25 @@ const defaultOptions: JobOptions = {
 
 function createHttpAudioWorkflowApi(): AudioWorkflowApi {
   const baseUrl = "http://127.0.0.1:5175";
+  const readFallbackSettings = (): UserSettings => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("vocalflow.settings") ?? "{}") as Partial<UserSettings>;
+      return {
+        locale: parsed.locale === "en" || parsed.locale === "zh" ? parsed.locale : null,
+        themeMode: parsed.themeMode === "light" || parsed.themeMode === "dark" || parsed.themeMode === "system" ? parsed.themeMode : "system",
+        accentColor:
+          parsed.accentColor === "amber" ||
+          parsed.accentColor === "blue" ||
+          parsed.accentColor === "green" ||
+          parsed.accentColor === "pink" ||
+          parsed.accentColor === "purple"
+            ? parsed.accentColor
+            : "amber"
+      };
+    } catch {
+      return { locale: null, themeMode: "system", accentColor: "green" };
+    }
+  };
 
   return {
     selectInput: async () => null,
@@ -184,6 +471,30 @@ function createHttpAudioWorkflowApi(): AudioWorkflowApi {
         callback(JSON.parse((event as MessageEvent<string>).data));
       });
       return () => source.close();
+    },
+    youtubeSearch: (query, opts) =>
+      postJson<YoutubeSearchResult[]>(baseUrl, "/api/youtube-search", {
+        query,
+        appendKaraoke: opts?.appendKaraoke ?? false
+      }),
+    bilibiliSearch: (query, opts) =>
+      postJson<YoutubeSearchResult[]>(baseUrl, "/api/bilibili-search", {
+        query,
+        appendKaraoke: opts?.appendKaraoke ?? false
+      }),
+    getRoomStatus: () => getJson<RoomStatus>(baseUrl, "/api/room/status"),
+    enqueueRoomSong: (input, title, requestedBy) => postJson<RoomStatus>(baseUrl, "/api/room/enqueue", { input, title, requestedBy }),
+    startRoomQueueItem: (itemId) => postJson<RoomStatus>(baseUrl, "/api/room/start-item", { itemId }),
+    finishRoomQueueItem: (itemId, status, resultHistoryId, error) =>
+      postJson<RoomStatus>(baseUrl, "/api/room/finish-item", { itemId, status, resultHistoryId, error }),
+    removeRoomQueueItem: (itemId) => postJson<RoomStatus>(baseUrl, "/api/room/remove-item", { itemId }),
+    clearRoomQueue: () => postJson<RoomStatus>(baseUrl, "/api/room/clear", {}),
+    getSystemLocale: async () => window.navigator.language || "en-US",
+    getSettings: async () => readFallbackSettings(),
+    setSettings: async (patch) => {
+      const next = { ...readFallbackSettings(), ...patch };
+      window.localStorage.setItem("vocalflow.settings", JSON.stringify(next));
+      return next;
     }
   };
 }
@@ -213,7 +524,257 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+type Translator = (key: string, options?: Record<string, unknown>) => string;
+
+interface RoomRemoteDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  roomStatus: RoomStatus | null;
+  roomQrDataUrl: string;
+  roomMessage: string;
+  roomQueue: RoomQueueItem[];
+  nextRoomRequest: RoomQueueItem | null;
+  isRunning: boolean;
+  onCopyLink: () => void | Promise<void>;
+  onProcessItem: (item: RoomQueueItem) => void | Promise<void>;
+  onRemoveItem: (itemId: string) => void | Promise<void>;
+  onClearQueue: () => void | Promise<void>;
+  t: Translator;
+}
+
+function RoomRemoteDrawer({
+  open,
+  onClose,
+  roomStatus,
+  roomQrDataUrl,
+  roomMessage,
+  roomQueue,
+  nextRoomRequest,
+  isRunning,
+  onCopyLink,
+  onProcessItem,
+  onRemoveItem,
+  onClearQueue,
+  t
+}: RoomRemoteDrawerProps) {
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.aside
+          key="roomDrawer"
+          id="vocalflow-room-drawer"
+          className="roomDrawer"
+          role="dialog"
+          aria-label={t("room:panelTitle")}
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 24 }}
+          transition={{ duration: motionDuration.panel, ease: motionEase }}
+        >
+          <div className="roomDrawerScrim" onClick={onClose} aria-hidden="true" />
+          <div className="roomDrawerPanel">
+            <div className="roomDrawerHeader">
+              <div>
+                <p className="eyebrow">{t("room:drawerToggle")}</p>
+                <h2>{t("room:panelTitle")}</h2>
+                <p className="roomHint">{t("room:panelHint")}</p>
+              </div>
+              <button type="button" className="secondaryButton" onClick={onClose} aria-label={t("common:actions.cancel")}>
+                {t("room:drawerToggleOpen")}
+              </button>
+            </div>
+            <div className="roomDrawerBody">
+              <div className="roomQrCard">
+                {roomQrDataUrl ? <img src={roomQrDataUrl} alt={t("room:drawerToggle")} /> : <div className="roomQrPlaceholder">QR</div>}
+                <button type="button" className="secondaryButton" onClick={() => void onCopyLink()} disabled={!roomStatus?.remoteUrl}>
+                  {t("room:copyLink")}
+                </button>
+              </div>
+              <div className="roomQueueCard">
+                <div className="roomLinkLine">{roomStatus?.remoteUrl ?? t("room:starting")}</div>
+                {roomMessage ? <p className="roomMessage">{roomMessage}</p> : null}
+                <div className="roomQueueActions">
+                  <button
+                    type="button"
+                    className="primaryButton"
+                    onClick={() => nextRoomRequest && void onProcessItem(nextRoomRequest)}
+                    disabled={!nextRoomRequest || isRunning}
+                  >
+                    {t("room:runNext")}
+                  </button>
+                  <button type="button" className="secondaryButton" onClick={() => void onClearQueue()} disabled={roomQueue.length === 0}>
+                    {t("room:clearQueue")}
+                  </button>
+                </div>
+                <ul className="roomQueueList" aria-label={t("room:panelTitle")}>
+                  {roomQueue.length > 0 ? (
+                    roomQueue.map((item, index) => (
+                      <li key={item.id} className="roomQueueItem" data-status={item.status}>
+                        <div>
+                          <div className="roomQueueTitle">
+                            {index + 1}. {item.title}
+                          </div>
+                          <div className="roomQueueMeta">
+                            {item.requestedBy} · {item.status}
+                          </div>
+                        </div>
+                        <div className="roomQueueItemActions">
+                          {item.status === "queued" ? (
+                            <button type="button" className="secondaryButton" onClick={() => void onProcessItem(item)} disabled={isRunning}>
+                              {t("room:queueRun")}
+                            </button>
+                          ) : null}
+                          <button type="button" className="secondaryButton" onClick={() => void onRemoveItem(item.id)} disabled={item.status === "running"}>
+                            {t("room:queueRemove")}
+                          </button>
+                        </div>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="roomQueueEmpty">{t("room:queueEmpty")}</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </motion.aside>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+interface LanguageSwitcherProps {
+  value: AppLocale;
+  onChange: (next: AppLocale) => void | Promise<void>;
+  t: Translator;
+}
+
+function LanguageSwitcher({ value, onChange, t }: LanguageSwitcherProps) {
+  return (
+    <div className="languageSwitcher" role="group" aria-label={t("common:language.label")}>
+      {SUPPORTED_LOCALES.map((locale) => (
+        <button
+          key={locale}
+          type="button"
+          className="languageSwitcherButton"
+          data-selected={locale === value}
+          onClick={() => void onChange(locale)}
+          aria-pressed={locale === value}
+        >
+          {locale === "en" ? t("common:language.english") : t("common:language.chinese")}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const THEME_MODES: readonly ThemeMode[] = ["system", "light", "dark"] as const;
+const ACCENT_COLORS: readonly AccentColor[] = ["amber", "blue", "green", "pink", "purple"] as const;
+
+interface SettingsPanelProps {
+  open: boolean;
+  onClose: () => void;
+  themeMode: ThemeMode;
+  accentColor: AccentColor;
+  locale: AppLocale;
+  onThemeModeChange: (themeMode: ThemeMode) => void | Promise<void>;
+  onAccentColorChange: (accentColor: AccentColor) => void | Promise<void>;
+  onLocaleChange: (locale: AppLocale) => void | Promise<void>;
+  t: Translator;
+}
+
+function SettingsPanel({
+  open,
+  onClose,
+  themeMode,
+  accentColor,
+  locale,
+  onThemeModeChange,
+  onAccentColorChange,
+  onLocaleChange,
+  t
+}: SettingsPanelProps) {
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.aside
+          key="settingsPanel"
+          className="settingsPanel"
+          role="dialog"
+          aria-label={t("settings:title")}
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 24 }}
+          transition={{ duration: motionDuration.panel, ease: motionEase }}
+        >
+          <div className="settingsScrim" onClick={onClose} aria-hidden="true" />
+          <div className="settingsSurface">
+            <div className="settingsHeader">
+              <div>
+                <p className="eyebrow">{t("settings:eyebrow")}</p>
+                <h2>{t("settings:title")}</h2>
+              </div>
+              <button type="button" className="secondaryButton" onClick={onClose}>
+                {t("common:actions.cancel")}
+              </button>
+            </div>
+
+            <section className="settingsSection">
+              <div>
+                <h3>{t("settings:appearance.title")}</h3>
+                <p>{t("settings:appearance.description")}</p>
+              </div>
+              <div className="settingsButtonGrid" role="group" aria-label={t("settings:appearance.modeLabel")}>
+                {THEME_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className="settingsChoiceButton"
+                    data-selected={mode === themeMode}
+                    onClick={() => void onThemeModeChange(mode)}
+                  >
+                    {t(`settings:appearance.modes.${mode}`)}
+                  </button>
+                ))}
+              </div>
+              <div className="accentGrid" role="group" aria-label={t("settings:appearance.accentLabel")}>
+                {ACCENT_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className="accentChoice"
+                    data-accent={color}
+                    data-selected={color === accentColor}
+                    onClick={() => void onAccentColorChange(color)}
+                  >
+                    <span className="accentSwatch" />
+                    {t(`settings:appearance.accents.${color}`)}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="settingsSection">
+              <div>
+                <h3>{t("settings:language.title")}</h3>
+                <p>{t("settings:language.description")}</p>
+              </div>
+              <LanguageSwitcher value={locale} onChange={onLocaleChange} t={t} />
+            </section>
+          </div>
+        </motion.aside>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
 export default function App() {
+  const { t, i18n } = useTranslation();
+  const currentLocale = (i18n.resolvedLanguage ?? i18n.language ?? "en") as AppLocale;
+  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
+  const [accentColor, setAccentColor] = useState<AccentColor>("green");
+  const [systemPrefersDark, setSystemPrefersDark] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [options, setOptions] = useState<JobOptions>(defaultOptions);
   const [preview, setPreview] = useState<CommandPreview | null>(null);
   const [jobs, setJobs] = useState<JobRecord[]>([]);
@@ -221,7 +782,8 @@ export default function App() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [logs, setLogs] = useState("");
-  const [statusMessage, setStatusMessage] = useState("Ready");
+  const logsRef = useRef("");
+  const [statusMessage, setStatusMessage] = useState<string>(() => t("common:status.ready"));
   const [appScene, setAppScene] = useState<AppScene>("workspace");
   const [reviewTab, setReviewTab] = useState<ReviewTab>("karaoke");
   const [trackRole, setTrackRole] = useState<TrackRole>("backing");
@@ -233,6 +795,19 @@ export default function App() {
   const [lyricEffect, setLyricEffect] = useState<LyricEffect>("sweep");
   const [lyricFont, setLyricFont] = useState<LyricFont>("rounded");
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [youtubePanelOpen, setYoutubePanelOpen] = useState(false);
+  const [mediaSearchPlatform, setMediaSearchPlatform] = useState<"youtube" | "bilibili">("youtube");
+  const [youtubeQuery, setYoutubeQuery] = useState("");
+  const [youtubeAppendKaraoke, setYoutubeAppendKaraoke] = useState(true);
+  const [youtubeResults, setYoutubeResults] = useState<YoutubeSearchResult[]>([]);
+  const [youtubeSearching, setYoutubeSearching] = useState(false);
+  const [youtubeError, setYoutubeError] = useState("");
+  const [roomStatus, setRoomStatus] = useState<RoomStatus | null>(null);
+  const [roomMessage, setRoomMessage] = useState("");
+  const [roomQrDataUrl, setRoomQrDataUrl] = useState("");
+  const [progressStages, setProgressStages] = useState<Map<string, StageProgress>>(() => new Map());
+  const [roomDrawerOpen, setRoomDrawerOpen] = useState(false);
+  const captureInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeJob = useMemo(
     () => (activeJobId ? jobs.find((job) => job.id === activeJobId) ?? null : selectedHistoryId ? null : jobs[0] ?? null),
@@ -272,8 +847,43 @@ export default function App() {
   const resourcePackages = useMemo(() => groupResourcePackages(history.filter((entry) => entry.workflowMode === "karaoke")), [history]);
   const karaokePackages = useMemo(() => resourcePackages.map((resource) => resource.entry), [resourcePackages]);
   const processedResources = useMemo(() => resourcePackages.slice(0, 6), [resourcePackages]);
+  const userPackages = useMemo(
+    () => processedResources.filter((resource) => !isSampleHistoryEntry(resource.entry)),
+    [processedResources]
+  );
+  const samplePackages = useMemo(
+    () => processedResources.filter((resource) => isSampleHistoryEntry(resource.entry)),
+    [processedResources]
+  );
+  const featuredVariant: "continue" | "sample" = userPackages[0] ? "continue" : "sample";
+  const featuredPackage = userPackages[0] ?? samplePackages[0] ?? null;
+  const shelfPackages = useMemo(
+    () => processedResources.filter((resource) => resource !== featuredPackage),
+    [processedResources, featuredPackage]
+  );
+  const cachedPackageForInput = useMemo(() => {
+    const sourceUrl = sourceUrlForKey(options.input);
+    if (!sourceUrl) {
+      return null;
+    }
+    const key = normalizeSourceUrlForKey(sourceUrl);
+    return (
+      history.find((entry) => {
+        if (isSampleHistoryEntry(entry)) {
+          return false;
+        }
+        const entryUrl = entry.sourceUrl || sourceUrlForKey(entry.input);
+        return entryUrl ? normalizeSourceUrlForKey(entryUrl) === key : false;
+      }) ?? null
+    );
+  }, [history, options.input]);
+  const roomQueue = roomStatus?.queue ?? [];
+  const nextRoomRequest = roomQueue.find((item) => item.status === "queued") ?? null;
   const showWorkspace = Boolean(activeReview || jobs.length > 0 || advancedOpen);
   const showActivityPane = Boolean(jobs.length > 0 || advancedOpen);
+  const effectiveTheme = themeMode === "system" ? (systemPrefersDark ? "dark" : "light") : themeMode;
+  const currentNavTarget: AppNavTarget = appScene === "karaoke-room" ? "karaoke" : youtubePanelOpen || document.activeElement === captureInputRef.current ? "add" : "home";
+  const canNavigateToKaraoke = Boolean(activeReview?.workflowMode === "karaoke" && activeReview.playbackBundle.controllable && selectedSubtitlePath);
 
   useEffect(() => {
     audioWorkflow
@@ -287,10 +897,155 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    void hydrateLocaleFromHost(audioWorkflow);
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    audioWorkflow
+      .getSettings?.()
+      .then((settings) => {
+        if (ignore) {
+          return;
+        }
+        setThemeMode(settings?.themeMode ?? "system");
+        setAccentColor(settings?.accentColor ?? "green");
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mediaQuery) {
+      setSystemPrefersDark(false);
+      return;
+    }
+    const update = () => setSystemPrefersDark(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener?.("change", update);
+    return () => mediaQuery.removeEventListener?.("change", update);
+  }, []);
+
+  const handleLanguageChange = useCallback(
+    async (nextLocale: AppLocale) => {
+      if (nextLocale === currentLocale) {
+        return;
+      }
+      try {
+        await setAppLocale(nextLocale, audioWorkflow);
+      } catch {
+        // Locale is best-effort; renderer keeps current language on failure.
+      }
+    },
+    [currentLocale]
+  );
+
+  const handleThemeModeChange = useCallback(async (nextThemeMode: ThemeMode) => {
+    setThemeMode(nextThemeMode);
+    try {
+      await audioWorkflow.setSettings?.({ themeMode: nextThemeMode });
+    } catch {
+      // Theme still updates for this session.
+    }
+  }, []);
+
+  const handleAccentColorChange = useCallback(async (nextAccentColor: AccentColor) => {
+    setAccentColor(nextAccentColor);
+    try {
+      await audioWorkflow.setSettings?.({ accentColor: nextAccentColor });
+    } catch {
+      // Accent still updates for this session.
+    }
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    const refresh = () => {
+      audioWorkflow
+        .getRoomStatus()
+        .then((nextStatus) => {
+          if (!ignore) {
+            setRoomStatus(nextStatus);
+          }
+        })
+        .catch((error: Error) => {
+          if (!ignore) {
+            setRoomMessage(error.message);
+          }
+        });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 3000);
+    return () => {
+      ignore = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!roomStatus?.remoteUrl) {
+      setRoomQrDataUrl("");
+      return;
+    }
+    QRCode.toDataURL(roomStatus.remoteUrl, {
+      color: {
+        dark: "#11120e",
+        light: "#ffffff"
+      },
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 220
+    })
+      .then((url) => {
+        if (!ignore) {
+          setRoomQrDataUrl(url);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setRoomQrDataUrl("");
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [roomStatus?.remoteUrl]);
+
+  useEffect(() => {
     const stopListening = audioWorkflow.onJobLog((log) => {
-      setLogs((current) => current + log.chunk);
+      setLogs((current) => {
+        const next = current + log.chunk;
+        logsRef.current = next;
+        return next;
+      });
     });
     return stopListening;
+  }, []);
+
+  useEffect(() => {
+    const stop = audioWorkflow.onJobProgress?.((event: JobProgressStage) => {
+      setProgressStages((current) => {
+        const next = new Map(current);
+        const existing = next.get(event.name);
+        next.set(event.name, {
+          name: event.name,
+          progress: clampProgress(event.progress >= 0 ? event.progress : existing?.progress ?? 0),
+          message: event.message ?? existing?.message,
+          done: event.done ?? existing?.done ?? false,
+          failed: event.failed ?? existing?.failed ?? false
+        });
+        return next;
+      });
+    });
+    return () => {
+      if (stop) {
+        stop();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -429,6 +1184,99 @@ export default function App() {
     }
   }
 
+  async function runYoutubeDiscovery() {
+    setYoutubeError("");
+    setYoutubeSearching(true);
+    setYoutubeResults([]);
+    try {
+      const search = mediaSearchPlatform === "bilibili" ? audioWorkflow.bilibiliSearch : audioWorkflow.youtubeSearch;
+      const rows = await search(youtubeQuery, { appendKaraoke: youtubeAppendKaraoke });
+      setYoutubeResults(rows);
+      if (!rows.length) {
+        setYoutubeError(t("capture:search.noResults"));
+      }
+    } catch (error) {
+      setYoutubeResults([]);
+      setYoutubeError(
+        error instanceof Error
+          ? error.message
+          : t("capture:search.failed", { platform: mediaSearchPlatform === "bilibili" ? t("capture:search.bilibili") : t("capture:search.youtube") })
+      );
+    } finally {
+      setYoutubeSearching(false);
+    }
+  }
+
+  function applyYoutubeResult(row: YoutubeSearchResult) {
+    updateOptions({ input: row.url });
+    setYoutubeError("");
+  }
+
+  function openCachedInputPackage() {
+    if (!cachedPackageForInput) {
+      return;
+    }
+    setSelectedHistoryId(cachedPackageForInput.id);
+    setActiveJobId(null);
+    setReviewTab("karaoke");
+    setAppScene(cachedPackageForInput.workflowMode === "karaoke" ? "lyrics-review" : "workspace");
+    setStatusMessage(t("capture:cache.openedExisting"));
+  }
+
+  function navigateHome() {
+    setAppScene("workspace");
+    setYoutubePanelOpen(false);
+  }
+
+  function navigateAdd() {
+    setAppScene("workspace");
+    setYoutubePanelOpen(true);
+    window.setTimeout(() => captureInputRef.current?.focus(), 0);
+  }
+
+  function navigateKaraoke() {
+    if (!canNavigateToKaraoke) {
+      return;
+    }
+    setReviewTab("karaoke");
+    setAppScene("karaoke-room");
+  }
+
+  const dockTitle =
+    currentNavTarget === "add"
+      ? t("common:dock.addTitle")
+      : currentNavTarget === "karaoke"
+        ? t("common:dock.karaokeTitle")
+        : t("common:dock.homeTitle");
+  const dockSubtitle =
+    currentNavTarget === "add"
+      ? options.input.trim() || t("common:dock.addEmpty")
+      : currentNavTarget === "karaoke"
+        ? activeReviewTitle || t("common:dock.karaokeEmpty")
+        : activeReviewTitle || t("common:dock.homeEmpty");
+  const dockAction =
+    currentNavTarget === "karaoke"
+      ? canNavigateToKaraoke
+        ? t("common:dock.ready")
+        : t("common:dock.needsPackage")
+      : currentNavTarget === "add" && cachedPackageForInput
+        ? t("common:dock.cached")
+        : undefined;
+
+  const floatingNav = (
+    <FloatingBottomNav
+      active={currentNavTarget}
+      karaokeDisabled={!canNavigateToKaraoke}
+      contextTitle={dockTitle}
+      contextSubtitle={dockSubtitle}
+      contextAction={dockAction}
+      onHome={navigateHome}
+      onAdd={navigateAdd}
+      onKaraoke={navigateKaraoke}
+      t={t}
+    />
+  );
+
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     const firstFile = event.dataTransfer.files.item(0) as (File & { path?: string }) | null;
@@ -437,10 +1285,10 @@ export default function App() {
     }
   }
 
-  async function runJob(overrides: Partial<JobOptions> = {}) {
+  async function runJob(overrides: Partial<JobOptions> = {}): Promise<JobResult | null> {
     const runOptions = { ...options, ...overrides };
     if (!runOptions.input.trim() || isRunning) {
-      return;
+      return null;
     }
 
     const jobId = crypto.randomUUID();
@@ -454,8 +1302,10 @@ export default function App() {
     setJobs((current) => [nextJob, ...current]);
     setActiveJobId(jobId);
     setSelectedHistoryId(null);
+    logsRef.current = "";
     setLogs("");
-    setStatusMessage("Running");
+    setProgressStages(new Map());
+    setStatusMessage(t("common:status.running"));
 
     try {
       const result = await audioWorkflow.runJob(jobId, runOptions);
@@ -481,7 +1331,15 @@ export default function App() {
           setReviewTab("script");
         }
       }
-      setStatusMessage(nextStatus === "complete" ? "Complete" : nextStatus === "canceled" ? "Canceled" : `Failed with exit code ${result.exitCode ?? "unknown"}`);
+      const localizedFailure = nextStatus === "failed" ? localizeCliError(logsRef.current, t) : null;
+      setStatusMessage(
+        nextStatus === "complete"
+          ? t("common:status.complete")
+          : nextStatus === "canceled"
+            ? t("common:status.canceled")
+            : localizedFailure ?? t("common:status.failedWithCode", { code: result.exitCode ?? "?" })
+      );
+      return result;
     } catch (error) {
       setJobs((current) =>
         current.map((job) =>
@@ -493,7 +1351,66 @@ export default function App() {
             : job
         )
       );
-      setStatusMessage(error instanceof Error ? error.message : "Failed");
+      const rawMessage = error instanceof Error ? error.message : "";
+      setStatusMessage(localizeCliError(rawMessage, t) ?? rawMessage ?? t("common:status.failed"));
+      return null;
+    }
+  }
+
+  async function processRoomQueueItem(item: RoomQueueItem) {
+    if (isRunning || item.status !== "queued") {
+      return;
+    }
+    try {
+      setRoomMessage(t("capture:room.processing", { title: item.title }));
+      setRoomStatus(await audioWorkflow.startRoomQueueItem(item.id));
+      const result = await runJob({
+        input: item.input,
+        workflowMode: "karaoke",
+        localFallback: true,
+        formats: ["lrc", "json", "ass"]
+      });
+      const complete = Boolean(result && statusFromResult(result) === "complete");
+      setRoomStatus(
+        await audioWorkflow.finishRoomQueueItem(
+          item.id,
+          complete ? "complete" : "failed",
+          result?.historyEntry?.id ?? null,
+          complete ? null : t("capture:room.failed")
+        )
+      );
+      setRoomMessage(complete ? t("capture:room.processed") : t("capture:room.requestFailed"));
+    } catch (error) {
+      setRoomStatus(await audioWorkflow.finishRoomQueueItem(item.id, "failed", null, error instanceof Error ? error.message : t("capture:room.failed")));
+      setRoomMessage(error instanceof Error ? error.message : t("capture:room.failed"));
+    }
+  }
+
+  async function copyRemoteRoomLink() {
+    if (!roomStatus?.remoteUrl) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(roomStatus.remoteUrl);
+      setRoomMessage(t("room:copied"));
+    } catch {
+      setRoomMessage(roomStatus.remoteUrl);
+    }
+  }
+
+  async function removeRoomItem(itemId: string) {
+    try {
+      setRoomStatus(await audioWorkflow.removeRoomQueueItem(itemId));
+    } catch (error) {
+      setRoomMessage(error instanceof Error ? error.message : t("capture:room.removeFailed"));
+    }
+  }
+
+  async function clearRoomQueue() {
+    try {
+      setRoomStatus(await audioWorkflow.clearRoomQueue());
+    } catch (error) {
+      setRoomMessage(error instanceof Error ? error.message : t("capture:room.clearFailed"));
     }
   }
 
@@ -504,7 +1421,7 @@ export default function App() {
     const canceled = await audioWorkflow.cancelJob(runningJob.id);
     if (canceled) {
       setJobs((current) => current.map((job) => (job.id === runningJob.id ? { ...job, status: "canceled" } : job)));
-      setStatusMessage("Canceled");
+      setStatusMessage(t("common:status.canceled"));
     }
   }
 
@@ -584,8 +1501,14 @@ export default function App() {
     if (!activeReview || isRunning) {
       return;
     }
+    const reusableAudio =
+      activeReview.assets.find((asset) => asset.exists && asset.role === "original" && isAudioPath(asset.path))?.path ??
+      activeReview.playbackBundle.localAudioPath ??
+      activeReview.primaryMedia ??
+      activeReview.assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && isAudioPath(asset.path))?.path ??
+      activeReview.input;
     void runJob({
-      input: activeReview.input,
+      input: reusableAudio,
       workflowMode: "karaoke",
       separate: true,
       localFallback: true,
@@ -597,49 +1520,54 @@ export default function App() {
 
   if (appScene === "lyrics-review" && activeReview) {
     return (
-      <LyricsReviewScene
-        activeReview={activeReview}
-        cues={cues}
-        scriptStatus={scriptStatus}
-        scriptText={scriptText}
-        selectedSubtitlePath={selectedSubtitlePath}
-        subtitleAssets={subtitleAssets}
-        onBack={() => setAppScene("workspace")}
-        onEnterKaraoke={saveAndEnterKaraoke}
-        onOpenFolder={() => activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)}
-        onScriptChange={setScriptText}
-        onSave={saveScript}
-      />
+      <div className="appSceneFrame" data-theme={effectiveTheme} data-accent={accentColor}>
+        <LyricsReviewScene
+          activeReview={activeReview}
+          cues={cues}
+          scriptStatus={scriptStatus}
+          scriptText={scriptText}
+          selectedSubtitlePath={selectedSubtitlePath}
+          subtitleAssets={subtitleAssets}
+          onBack={() => setAppScene("workspace")}
+          onEnterKaraoke={saveAndEnterKaraoke}
+          onOpenFolder={() => activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)}
+          onScriptChange={setScriptText}
+          onSave={saveScript}
+        />
+        {floatingNav}
+      </div>
     );
   }
 
   if (appScene === "karaoke-room" && activeReview) {
     return (
-      <KaraokeRoomScene
-        activeCue={activeCue}
-        activeCueIndex={activeCueIndex}
-        activeReview={activeReview}
-        cues={cues}
-        playbackBundle={activeReview.playbackBundle}
-        playbackController={playbackController}
-        karaokePackages={karaokePackages}
-        playableAssets={playbackAssets}
-        selectedMediaPath={selectedMediaPath}
-        selectedSubtitlePath={selectedSubtitlePath}
-        trackAssets={trackAssets}
-        trackRole={trackRole}
-        lyricEffect={lyricEffect}
-        lyricFont={lyricFont}
-        onBackHome={() => setAppScene("workspace")}
-        onBackToLyrics={() => setAppScene("lyrics-review")}
-        onLyricEffectChange={setLyricEffect}
-        onLyricFontChange={setLyricFont}
-        onOpenOriginalVideo={() => activeReview.sourceUrl && audioWorkflow.openExternalUrl(activeReview.sourceUrl)}
-        onPackageChange={enterKaraokeFromHistory}
-        onSplitVocals={splitActiveReview}
-        onTrackRoleChange={setTrackRole}
-        isRunning={isRunning}
-      />
+      <div className="appSceneFrame" data-theme="dark" data-accent={accentColor}>
+        <KaraokeRoomScene
+          activeCue={activeCue}
+          activeCueIndex={activeCueIndex}
+          activeReview={activeReview}
+          cues={cues}
+          playbackBundle={activeReview.playbackBundle}
+          playbackController={playbackController}
+          karaokePackages={karaokePackages}
+          playableAssets={playbackAssets}
+          selectedMediaPath={selectedMediaPath}
+          selectedSubtitlePath={selectedSubtitlePath}
+          trackAssets={trackAssets}
+          trackRole={trackRole}
+          lyricEffect={lyricEffect}
+          lyricFont={lyricFont}
+          onBackHome={() => setAppScene("workspace")}
+          onBackToLyrics={() => setAppScene("lyrics-review")}
+          onLyricEffectChange={setLyricEffect}
+          onLyricFontChange={setLyricFont}
+          onOpenOriginalVideo={() => activeReview.sourceUrl && audioWorkflow.openExternalUrl(activeReview.sourceUrl)}
+          onPackageChange={enterKaraokeFromHistory}
+          onSplitVocals={splitActiveReview}
+          onTrackRoleChange={setTrackRole}
+          isRunning={isRunning}
+        />
+      </div>
     );
   }
 
@@ -647,26 +1575,224 @@ export default function App() {
     <motion.main
       className="appShell"
       data-has-workspace={showWorkspace}
+      data-theme={effectiveTheme}
+      data-accent={accentColor}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: motionEase }}
+      transition={{ duration: motionDuration.base, ease: motionEase }}
     >
-      <section className="startHero" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
-        <div className="startHeroTop">
-          <p className="eyebrow">VocalFlow Studio</p>
-          <div className="statusPill" data-state={activeJob?.status ?? "idle"}>
-            {statusMessage}
+      <section className="startHero libraryShell" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
+        <div className="libraryTopBar">
+          <div className="brandLockup" aria-label={t("common:appName")}>
+            <span className="brandMark" aria-hidden="true">
+              VF
+            </span>
+            <span className="brandWordmark">{t("common:appName")}</span>
+          </div>
+          <div className="libraryTopBarActions">
+            <button type="button" className="settingsButton" onClick={() => setSettingsOpen(true)}>
+              {t("settings:button")}
+            </button>
+            <button
+              type="button"
+              className="roomDrawerToggle"
+              data-active={roomDrawerOpen}
+              onClick={() => setRoomDrawerOpen((open) => !open)}
+              aria-expanded={roomDrawerOpen}
+              aria-controls="vocalflow-room-drawer"
+            >
+              <span>{t("room:drawerToggle")}</span>
+              {(roomQueue.length > 0 || roomStatus?.nowPlaying) ? (
+                <span className="roomDrawerStatusDot" aria-label={t("room:statusDot")} />
+              ) : null}
+            </button>
+            <div className="statusPill" data-state={activeJob?.status ?? "idle"}>
+              {statusMessage}
+            </div>
           </div>
         </div>
 
-        {processedResources.length > 0 ? (
-          <section className="resourceShelf" aria-label="Processed resources">
+        <div className="homeHeroScene" aria-hidden="true">
+          <SdfHomeScene />
+          <span className="homeShaderGrid" />
+          <span className="homeShaderWave" />
+        </div>
+
+        <div className="homeIntro">
+          <p className="eyebrow">{t("capture:heroSubtitle")}</p>
+          <h1>{t("home:title")}</h1>
+          <p>{t("home:subtitle")}</p>
+        </div>
+
+        <div className="captureBar homeCaptureBar">
+          <p className="captureTagline">{t("home:captureHint")}</p>
+          <div className="heroComposer">
+            <label className="inputLabel" htmlFor="input">
+              {t("capture:inputLabel")}
+            </label>
+            <div className="heroInputRow">
+              <input
+                id="input"
+                ref={captureInputRef}
+                value={options.input}
+                onChange={(event) => updateOptions({ input: event.target.value })}
+                placeholder={t("capture:inputPlaceholder")}
+              />
+              <button
+                type="button"
+                className="primaryButton"
+                onClick={() => (cachedPackageForInput ? openCachedInputPackage() : void runJob())}
+                disabled={!options.input.trim() || isRunning}
+              >
+                {cachedPackageForInput ? t("capture:cache.openExisting") : t("common:actions.run")}
+              </button>
+              {cachedPackageForInput ? (
+                <button type="button" className="secondaryButton" onClick={() => void runJob()} disabled={isRunning}>
+                  {t("capture:cache.redownload")}
+                </button>
+              ) : null}
+              <button type="button" className="secondaryButton" onClick={cancelJob} disabled={!isRunning}>
+                {t("common:actions.stop")}
+              </button>
+            </div>
+            {cachedPackageForInput ? <p className="cacheHint">{t("capture:cache.hint", { title: reviewDisplayTitle(cachedPackageForInput) })}</p> : null}
+
+            <div className="youtubeSearchHeader">
+              <button
+                type="button"
+                className="splitToggleButton"
+                data-selected={youtubePanelOpen}
+                onClick={() => setYoutubePanelOpen((open) => !open)}
+                aria-expanded={youtubePanelOpen}
+              >
+                {t("capture:search.toggle")}
+              </button>
+              <span className="youtubeSearchHint">{t("capture:search.hint")}</span>
+            </div>
+            {youtubePanelOpen ? (
+              <div className="youtubeSearchPanel">
+                <SegmentedControl
+                  value={mediaSearchPlatform}
+                  options={[
+                    ["youtube", t("capture:search.youtube")],
+                    ["bilibili", t("capture:search.bilibili")]
+                  ]}
+                  onChange={setMediaSearchPlatform}
+                />
+                <div className="youtubeSearchControls">
+                  <input
+                    className="youtubeSearchField"
+                    value={youtubeQuery}
+                    onChange={(event) => setYoutubeQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void runYoutubeDiscovery();
+                      }
+                    }}
+                    placeholder={t("capture:search.placeholder")}
+                    aria-label={t("capture:search.toggle")}
+                  />
+                  <label className="youtubeKaraokeBias">
+                    <input
+                      type="checkbox"
+                      checked={youtubeAppendKaraoke}
+                      onChange={(event) => setYoutubeAppendKaraoke(event.target.checked)}
+                    />
+                    <span>{t("capture:search.appendKaraoke")}</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="secondaryButton"
+                    onClick={() => void runYoutubeDiscovery()}
+                    disabled={youtubeSearching || !youtubeQuery.trim()}
+                  >
+                    {youtubeSearching ? t("common:actions.searching") : t("common:actions.search")}
+                  </button>
+                </div>
+                {youtubeError ? <p className="youtubeSearchError">{youtubeError}</p> : null}
+                {youtubeResults.length > 0 ? (
+                  <ul className="youtubeResultList" aria-label={t("capture:search.toggle")}>
+                    {youtubeResults.map((row) => (
+                      <li key={row.videoId} className="youtubeResultRow">
+                        <div className="youtubeResultThumb">
+                          {searchResultThumbnail(row) ? (
+                            <img src={searchResultThumbnail(row)} alt="" loading="lazy" width={160} height={90} />
+                          ) : (
+                            <span>{row.platform === "bilibili" ? t("capture:search.bilibili") : t("capture:search.youtube")}</span>
+                          )}
+                        </div>
+                        <div className="youtubeResultMeta">
+                          <div className="youtubeResultTitle">{row.title}</div>
+                          <div className="youtubeResultSub">
+                            {row.channel ? `${row.channel} · ` : ""}
+                            {row.durationLabel || "—"}
+                          </div>
+                          <div className="youtubeResultActions">
+                            <button type="button" className="secondaryButton" onClick={() => applyYoutubeResult(row)}>
+                              {t("capture:search.useThisLink")}
+                            </button>
+                            <button
+                              type="button"
+                              className="secondaryButton"
+                              onClick={() => void audioWorkflow.openExternalUrl(row.url)}
+                            >
+                              {t("capture:search.openInBrowser")}
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="heroControlRow">
+              <div className="heroModeControl">
+                <SegmentedControl
+                  value={options.workflowMode}
+                  options={[
+                    ["karaoke", t("capture:modes.karaoke")],
+                    ["subtitle", t("capture:modes.subtitle")]
+                  ]}
+                  onChange={setWorkflowMode}
+                />
+              </div>
+              <label className="languageControl">
+                <span>{t("common:language.label")}</span>
+                <input value={options.language} onChange={(event) => updateOptions({ language: event.target.value })} placeholder={t("capture:languageHint")} />
+              </label>
+              <button type="button" className="secondaryButton" onClick={chooseInput}>
+                {t("capture:selectFile")}
+              </button>
+              <button type="button" className="secondaryButton" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
+                {advancedOpen ? t("capture:advanced.hide") : t("capture:advanced.show")}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <StageChain stages={progressStages} isRunning={isRunning} t={t} />
+
+        {featuredPackage ? (
+          <FeaturedPackageCard
+            entry={featuredPackage.entry}
+            variant={featuredVariant}
+            onEnter={() => enterKaraokeFromHistory(featuredPackage.entry.id)}
+            onOpen={() => selectHistoryEntry(featuredPackage.entry.id)}
+            t={t}
+          />
+        ) : null}
+
+        {shelfPackages.length > 0 ? (
+          <section className="resourceShelf libraryShelf" aria-label={t("library:shelfHeader")}>
             <div className="resourceShelfHeader">
-              <p className="eyebrow">Processed resources</p>
-              <span>{processedResources.length}</span>
+              <p className="eyebrow">{t("library:shelfHeader")}</p>
+              <span>{shelfPackages.length}</span>
             </div>
             <div className="resourceGrid">
-              {processedResources.map(({ entry, duplicateIds }) => (
+              {shelfPackages.map(({ entry, duplicateIds }) => (
                 <ProcessedResourceCard
                   key={entry.id}
                   entry={entry}
@@ -679,56 +1805,41 @@ export default function App() {
           </section>
         ) : null}
 
-        <div className="startHeroMain">
-          <div className="startTitleBlock">
-            <h1>Paste a song link</h1>
-            <p>Karaoke / Subtitle / Local package</p>
-          </div>
-
-          <div className="heroComposer">
-            <label className="inputLabel" htmlFor="input">
-              YouTube, Bilibili, or local media
-            </label>
-            <div className="heroInputRow">
-              <input
-                id="input"
-                value={options.input}
-                onChange={(event) => updateOptions({ input: event.target.value })}
-                placeholder="Paste URL or drop a file/folder"
-              />
-              <button type="button" className="primaryButton" onClick={() => void runJob()} disabled={!options.input.trim() || isRunning}>
-                Run
-              </button>
-              <button type="button" className="secondaryButton" onClick={cancelJob} disabled={!isRunning}>
-                Stop
-              </button>
-            </div>
-
-            <div className="heroControlRow">
-              <div className="heroModeControl">
-                <SegmentedControl
-                  value={options.workflowMode}
-                  options={[
-                    ["karaoke", "Karaoke"],
-                    ["subtitle", "Subtitle"]
-                  ]}
-                  onChange={setWorkflowMode}
-                />
-              </div>
-              <label className="languageControl">
-                <span>Language</span>
-                <input value={options.language} onChange={(event) => updateOptions({ language: event.target.value })} placeholder="Auto, en, zh, ja" />
-              </label>
-              <button type="button" className="secondaryButton" onClick={chooseInput}>
-                Select file
-              </button>
-              <button type="button" className="secondaryButton" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
-                {advancedOpen ? "Hide desktop options" : "Desktop options"}
-              </button>
-            </div>
-          </div>
-        </div>
+        {!featuredPackage && shelfPackages.length === 0 ? (
+          <section className="libraryEmpty" aria-label={t("library:emptyTitle")}>
+            <h2>{t("library:emptyTitle")}</h2>
+            <p>{t("library:emptyBody")}</p>
+          </section>
+        ) : null}
       </section>
+
+      <RoomRemoteDrawer
+        open={roomDrawerOpen}
+        onClose={() => setRoomDrawerOpen(false)}
+        roomStatus={roomStatus}
+        roomQrDataUrl={roomQrDataUrl}
+        roomMessage={roomMessage}
+        roomQueue={roomQueue}
+        nextRoomRequest={nextRoomRequest}
+        isRunning={isRunning}
+        onCopyLink={copyRemoteRoomLink}
+        onProcessItem={processRoomQueueItem}
+        onRemoveItem={removeRoomItem}
+        onClearQueue={clearRoomQueue}
+        t={t}
+      />
+
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        themeMode={themeMode}
+        accentColor={accentColor}
+        locale={currentLocale}
+        onThemeModeChange={handleThemeModeChange}
+        onAccentColorChange={handleAccentColorChange}
+        onLocaleChange={handleLanguageChange}
+        t={t}
+      />
 
       {showWorkspace ? (
         <section className={`workspace guidedWorkspace ${showActivityPane ? "" : "workspaceSolo"}`}>
@@ -736,7 +1847,7 @@ export default function App() {
             {activeReview ? (
               <section className="resultOverview">
                 <div>
-                  <p className="eyebrow">Current package</p>
+                  <p className="eyebrow">{t("package:current")}</p>
                   <h2>{activeReviewTitle}</h2>
                   <p className="reviewMeta">{playbackSummary(activeReview.playbackBundle)}</p>
                   <PackageBadges playbackBundle={activeReview.playbackBundle} trackAssets={trackAssets} />
@@ -745,10 +1856,10 @@ export default function App() {
                   {activeReview.workflowMode === "karaoke" ? (
                     <>
                       <button type="button" className="secondaryButton" onClick={() => setAppScene("lyrics-review")}>
-                        Open package
+                        {t("package:openPackage")}
                       </button>
                       <button type="button" className="secondaryButton" onClick={splitActiveReview} disabled={isRunning || Boolean(trackAssets.backing && trackAssets.vocal)}>
-                        Split vocals
+                        {t("package:splitVocals")}
                       </button>
                       <button
                         type="button"
@@ -756,13 +1867,13 @@ export default function App() {
                         onClick={() => setAppScene("karaoke-room")}
                         disabled={!selectedSubtitlePath || !activeReview.playbackBundle.controllable}
                       >
-                        Enter Karaoke
+                        {t("package:enterKaraoke")}
                       </button>
                     </>
                   ) : null}
                   {activeReview.sourceUrl ? (
                     <button type="button" className="secondaryButton" onClick={() => audioWorkflow.openExternalUrl(activeReview.sourceUrl!)}>
-                      Open original
+                      {t("package:openOriginal")}
                     </button>
                   ) : null}
                   <button
@@ -771,7 +1882,7 @@ export default function App() {
                     disabled={!activeReview.outputDir}
                     onClick={() => activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)}
                   >
-                    Open folder
+                    {t("package:openFolder")}
                   </button>
                 </div>
               </section>
@@ -782,14 +1893,14 @@ export default function App() {
                 <div className="tabRow">
                   {(["karaoke", "script", "files"] as ReviewTab[]).map((tab) => (
                     <button key={tab} type="button" data-selected={reviewTab === tab} onClick={() => setReviewTab(tab)}>
-                      {tab[0].toUpperCase() + tab.slice(1)}
+                      {t(`package:tabs.${tab}`)}
                     </button>
                   ))}
                 </div>
 
                 <AnimatePresence mode="wait">
                   {reviewTab === "karaoke" ? (
-                    <motion.div key="karaoke" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16, ease: motionEase }}>
+                    <motion.div key="karaoke" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: motionDuration.fast, ease: motionEase }}>
                       <KaraokeReview
                         activeCue={activeCue}
                         activeCueIndex={activeCueIndex}
@@ -805,7 +1916,7 @@ export default function App() {
                   ) : null}
 
                   {reviewTab === "script" ? (
-                    <motion.div key="script" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16, ease: motionEase }}>
+                    <motion.div key="script" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: motionDuration.fast, ease: motionEase }}>
                       <ScriptReview
                         selectedSubtitlePath={selectedSubtitlePath}
                         subtitleAssets={subtitleAssets}
@@ -818,7 +1929,7 @@ export default function App() {
                   ) : null}
 
                   {reviewTab === "files" ? (
-                    <motion.div key="files" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16, ease: motionEase }}>
+                    <motion.div key="files" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: motionDuration.fast, ease: motionEase }}>
                       <FilesReview assets={activeReview.assets} />
                     </motion.div>
                   ) : null}
@@ -833,7 +1944,7 @@ export default function App() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.22, ease: motionEase }}
+                transition={{ duration: motionDuration.drawer, ease: motionEase }}
               >
                 <div className="settingsGrid">
                   <Field label="Subtitle source">
@@ -911,16 +2022,16 @@ export default function App() {
 
                 <section className="commandPane">
                   <div className="paneHeader">
-                    <h2>Command</h2>
+                    <h2>{t("capture:advanced.command")}</h2>
                   </div>
-                  <pre>{preview?.display ?? "Enter input to preview the CLI command."}</pre>
+                  <pre>{preview?.display ?? t("capture:advanced.commandPlaceholder")}</pre>
                 </section>
 
                 <section className="logPane">
                   <div className="paneHeader">
-                    <h2>Logs</h2>
+                    <h2>{t("capture:advanced.logs")}</h2>
                   </div>
-                  <pre>{logs || "Logs will stream here while a job is running."}</pre>
+                  <pre>{logs || t("capture:advanced.logsPlaceholder")}</pre>
                 </section>
               </motion.section>
             ) : null}
@@ -930,12 +2041,12 @@ export default function App() {
           {showActivityPane ? (
             <aside className="queuePane activityPane">
               <div className="paneHeader">
-                <h2>Activity</h2>
+                <h2>{t("capture:activity.title")}</h2>
                 <span>{jobs.length}</span>
               </div>
               <div className="queueList compactList">
                 {jobs.length === 0 ? (
-                  <p className="emptyText">No active jobs.</p>
+                  <p className="emptyText">{t("capture:activity.empty")}</p>
                 ) : (
                   jobs.map((job) => (
                     <button key={job.id} type="button" className="queueItem" data-active={job.id === activeJobId} onClick={() => selectQueueJob(job.id)}>
@@ -949,12 +2060,12 @@ export default function App() {
               </div>
 
               <div className="historyHeader">
-                <h2>History</h2>
+                <h2>{t("capture:history.title")}</h2>
                 <span>{history.length}</span>
               </div>
               <div className="queueList compactList">
                 {history.length === 0 ? (
-                  <p className="emptyText">Successful jobs appear here.</p>
+                  <p className="emptyText">{t("capture:history.empty")}</p>
                 ) : (
                   history.map((entry) => (
                     <div key={entry.id} className="historyItem" data-active={entry.id === selectedHistoryId}>
@@ -965,7 +2076,7 @@ export default function App() {
                         </span>
                       </button>
                       <button type="button" className="removeButton" onClick={() => removeHistoryEntry(entry.id)}>
-                        Remove
+                        {t("common:actions.remove")}
                       </button>
                     </div>
                   ))
@@ -975,6 +2086,7 @@ export default function App() {
           ) : null}
         </section>
       ) : null}
+      {floatingNav}
     </motion.main>
   );
 }
@@ -1358,11 +2470,12 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const selectedDeviceIdRef = useRef("");
-  const monitorGainRef = useRef(0.85);
+  const monitorGainRef = useRef(0.35);
   const [devices, setDevices] = useState<AudioInputDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const [monitorGain, setMonitorGainState] = useState(0.85);
+  const [monitorGain, setMonitorGainState] = useState(0.35);
+  const [noiseReduction, setNoiseReduction] = useState(false);
   const [status, setStatus] = useState("Monitor off");
 
   const closeCurrentMonitor = useCallback(() => {
@@ -1433,9 +2546,9 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
 
     try {
       const audioConstraints: MediaTrackConstraints = {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false
+        echoCancellation: noiseReduction,
+        noiseSuppression: noiseReduction,
+        autoGainControl: noiseReduction
       };
       if (selectedDeviceIdRef.current) {
         audioConstraints.deviceId = { exact: selectedDeviceIdRef.current };
@@ -1454,14 +2567,14 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
       audioContextRef.current = audioContext;
       sourceRef.current = source;
       gainNodeRef.current = gainNode;
-      setStatus("Monitoring input");
+      setStatus("Monitoring input. Use headphones to avoid feedback.");
       refreshDevices();
     } catch (error) {
       closeCurrentMonitor();
       setIsMonitoring(false);
       setStatus(error instanceof Error ? error.message : "Failed to start microphone monitor");
     }
-  }, [closeCurrentMonitor, refreshDevices]);
+  }, [closeCurrentMonitor, noiseReduction, refreshDevices]);
 
   const setMonitorGain = useCallback((gain: number) => {
     setMonitorGainState(Math.max(0, Math.min(1.5, gain)));
@@ -1488,23 +2601,29 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
   useEffect(() => {
     if (isMonitoring) {
       void startMonitor();
-    } else {
-      closeCurrentMonitor();
-      setStatus((current) => (current === "Monitoring input" ? "Monitor off" : current));
+      return undefined;
     }
 
+    closeCurrentMonitor();
+    setStatus("Monitor off");
+    return undefined;
+  }, [closeCurrentMonitor, isMonitoring, noiseReduction, selectedDeviceId, startMonitor]);
+
+  useEffect(() => {
     return () => closeCurrentMonitor();
-  }, [closeCurrentMonitor, isMonitoring, selectedDeviceId, startMonitor]);
+  }, [closeCurrentMonitor]);
 
   return {
     devices,
     selectedDeviceId,
     isMonitoring,
     monitorGain,
+    noiseReduction,
     status,
     setSelectedDeviceId,
     setIsMonitoring,
     setMonitorGain,
+    setNoiseReduction,
     refreshDevices
   };
 }
@@ -1542,15 +2661,16 @@ function useMediaUrl(targetPath: string | null): string {
 }
 
 function PackageBadges({ playbackBundle, trackAssets }: { playbackBundle: PlaybackBundle; trackAssets: TrackAssets }) {
+  const { t } = useTranslation();
   const badges = [
-    playbackBundle.controllable ? "Local playback" : "Playback missing",
-    trackAssets.backing ? "Backing stem" : null,
-    trackAssets.vocal ? "Vocal stem" : null,
-    playbackBundle.videoPreviewPath ? "Video preview" : null
+    playbackBundle.controllable ? t("package:badges.localPlayback") : t("package:badges.playbackMissing"),
+    trackAssets.backing ? t("package:badges.backingStem") : null,
+    trackAssets.vocal ? t("package:badges.vocalStem") : null,
+    playbackBundle.videoPreviewPath ? t("package:badges.videoPreview") : null
   ].filter((badge): badge is string => Boolean(badge));
 
   return (
-    <div className="packageBadges" aria-label="Package contents">
+    <div className="packageBadges" aria-label={t("package:contents")}>
       {badges.map((badge) => (
         <span key={badge}>{badge}</span>
       ))}
@@ -1569,40 +2689,85 @@ function ProcessedResourceCard({
   onReview: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const title = reviewDisplayTitle(entry);
   const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
   const hasStems = entry.assets.some((asset) => asset.exists && (asset.role === "backing" || asset.role === "vocal"));
-  const isSample = entry.input.startsWith("sample:");
+  const isSample = entry.input.startsWith("sample:") || entry.id.startsWith("sample:");
   const coverPath =
     entry.playbackBundle.videoPreviewPath ??
     (entry.playbackBundle.localVideoPath && isVideoPath(entry.playbackBundle.localVideoPath) ? entry.playbackBundle.localVideoPath : null);
   const coverUrl = useMediaUrl(coverPath);
 
   return (
-    <article className="resourceCard" data-disabled={!canEnter}>
+    <article className="resourceCard" data-disabled={!canEnter} data-variant={isSample ? "sample" : "user"}>
+      {isSample ? <span className="resourceCardBadge">{t("library:tagSample")}</span> : null}
       <button type="button" className="resourceCoverButton" disabled={!canEnter} onClick={onEnter}>
         <div className="resourceCover" aria-hidden="true">
           {coverUrl ? <video src={coverUrl} muted playsInline preload="metadata" /> : <div className="resourceCoverFallback">{title.slice(0, 2).toUpperCase()}</div>}
         </div>
         <div className="resourceCoverOverlay">
           <strong>{title}</strong>
-          <span>{isSample ? "Bundled sample" : playbackSummary(entry.playbackBundle)}</span>
+          <span>{isSample ? t("library:tagSample") : playbackSummary(entry.playbackBundle)}</span>
           <div className="resourceMeta">
-            <span>{hasStems ? "Stems" : "Original"}</span>
-            <span>{entry.primarySubtitle ? "Lyrics" : "No lyrics"}</span>
+            <span>{hasStems ? t("package:badges.stems") : t("package:badges.original")}</span>
+            <span>{entry.primarySubtitle ? t("package:badges.lyrics") : t("package:badges.noLyrics")}</span>
           </div>
         </div>
       </button>
       <div className="resourceActions">
         <button type="button" className="primaryButton" disabled={!canEnter} onClick={onEnter}>
-          {canEnter ? "Enter Karaoke" : "Needs media"}
+          {canEnter ? t("package:enterKaraoke") : t("package:badges.needsMedia")}
         </button>
         <button type="button" className="secondaryButton" onClick={onReview}>
-          Open package
+          {t("package:openPackage")}
         </button>
         <button type="button" className="secondaryButton resourceDeleteButton" onClick={onDelete}>
-          Delete
+          {t("common:actions.remove")}
         </button>
+      </div>
+    </article>
+  );
+}
+
+interface FeaturedPackageCardProps {
+  entry: SavedJobHistory;
+  variant: "continue" | "sample";
+  onEnter: () => void;
+  onOpen: () => void;
+  t: Translator;
+}
+
+function FeaturedPackageCard({ entry, variant, onEnter, onOpen, t }: FeaturedPackageCardProps) {
+  const title = reviewDisplayTitle(entry);
+  const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
+  const coverPath =
+    entry.playbackBundle.videoPreviewPath ??
+    (entry.playbackBundle.localVideoPath && isVideoPath(entry.playbackBundle.localVideoPath) ? entry.playbackBundle.localVideoPath : null);
+  const coverUrl = useMediaUrl(coverPath);
+  const eyebrowKey = variant === "continue" ? "library:continueHeader" : "library:sampleHeader";
+  const enterLabel = variant === "continue" ? t("common:actions.enterKaraoke") : t("common:actions.tryInKaraoke");
+  return (
+    <article className="featuredCard" data-variant={variant} data-enabled={canEnter}>
+      <div className="featuredCover" aria-hidden="true">
+        {coverUrl ? (
+          <video src={coverUrl} muted playsInline preload="metadata" />
+        ) : (
+          <div className="resourceCoverFallback">{title.slice(0, 2).toUpperCase()}</div>
+        )}
+      </div>
+      <div className="featuredBody">
+        <p className="eyebrow">{t(eyebrowKey)}</p>
+        <h2>{title}</h2>
+        <p className="featuredMeta">{playbackSummary(entry.playbackBundle)}</p>
+        <div className="featuredActions">
+          <button type="button" className="primaryButton" onClick={onEnter} disabled={!canEnter}>
+            {enterLabel}
+          </button>
+          <button type="button" className="secondaryButton" onClick={onOpen}>
+            {t("library:openPackage")}
+          </button>
+        </div>
       </div>
     </article>
   );
@@ -1629,27 +2794,28 @@ function KaraokeReview({
   selectedSubtitlePath: string;
   onSeek: (cue: Cue) => void;
 }) {
+  const { t } = useTranslation();
   const previousCue = activeCueIndex > 0 ? cues[activeCueIndex - 1] : null;
   const nextCue = activeCueIndex >= 0 ? cues[activeCueIndex + 1] : cues[0] ?? null;
   const isVideo = isVideoPath(selectedMediaPath);
   const hasBacking = playableAssets.some((asset) => asset.role === "backing");
   const hasVocal = playableAssets.some((asset) => asset.role === "vocal");
-  const selectedSubtitleName = selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : "No lyrics in package";
+  const selectedSubtitleName = selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : t("package:badges.noLyrics");
 
   return (
     <div className="karaokeGrid">
       <div className="playerPane">
         <div className="stemStatus" data-ready={hasBacking && hasVocal}>
-          <strong>{hasBacking && hasVocal ? "Vocal split ready" : "No separated stems in this package"}</strong>
-          <span>{hasBacking && hasVocal ? "Use Karaoke Room to switch Original and Backing; Vocal only is tucked into Room options." : "Turn on Vocal split before running a Karaoke job."}</span>
+          <strong>{hasBacking && hasVocal ? t("package:split.ready") : t("package:split.missing")}</strong>
+          <span>{hasBacking && hasVocal ? t("package:split.readyHint") : t("package:split.missingHint")}</span>
         </div>
         <div className="reviewControls">
           <div className="packageBindingField">
-            <span>Playback track</span>
-            <strong>{selectedMediaPath ? fileNameFromPath(selectedMediaPath) : "No playable media in package"}</strong>
+            <span>{t("package:playbackTrack")}</span>
+            <strong>{selectedMediaPath ? fileNameFromPath(selectedMediaPath) : t("package:noPlayableMedia")}</strong>
           </div>
           <div className="packageBindingField">
-            <span>Lyrics bound to package</span>
+            <span>{t("package:lyricsBound")}</span>
             <strong>{selectedSubtitleName}</strong>
           </div>
         </div>
@@ -1693,19 +2859,19 @@ function KaraokeReview({
             />
           )
         ) : (
-          <p className="emptyText">{playbackController.mediaStatus || playbackBundle.unavailableReason || "No local media available for this review."}</p>
+          <p className="emptyText">{playbackController.mediaStatus || playbackBundle.unavailableReason || t("package:noLocalMedia")}</p>
         )}
 
         <div className="karaokeStage">
           <p className="surroundingLyric">{previousCue?.text ?? ""}</p>
-          <p className="currentLyric">{activeCue?.text ?? "Play media to follow the lyric line."}</p>
+          <p className="currentLyric">{activeCue?.text ?? t("package:playToFollow")}</p>
           <p className="surroundingLyric">{nextCue?.text ?? ""}</p>
         </div>
       </div>
 
-      <div className="cueList" aria-label="Timed subtitle lines">
+      <div className="cueList" aria-label={t("package:timedLines")}>
         {cues.length === 0 ? (
-          <p className="emptyText">No timed subtitle lines loaded.</p>
+          <p className="emptyText">{t("package:noTimedSubtitles")}</p>
         ) : (
           cues.map((cue, index) => (
             <button key={`${cue.start}-${index}`} type="button" data-active={index === activeCueIndex} onClick={() => onSeek(cue)}>
@@ -1744,25 +2910,26 @@ function LyricsReviewScene({
   onScriptChange: (content: string) => void;
   onSave: () => void;
 }) {
+  const { t } = useTranslation();
   const title = reviewDisplayTitle(activeReview);
 
   return (
     <main className="sceneShell">
       <header className="sceneHeader">
         <div>
-          <p className="eyebrow">Package Detail</p>
+          <p className="eyebrow">{t("package:detail")}</p>
           <h1>{title}</h1>
-          <p className="reviewMeta">Edit package lyrics and timing before entering Karaoke.</p>
+          <p className="reviewMeta">{t("package:detailHint")}</p>
         </div>
         <div className="resultActions">
           <button type="button" className="secondaryButton" onClick={onBack}>
-            Back
+            {t("common:actions.back")}
           </button>
           <button type="button" className="secondaryButton" onClick={onOpenFolder}>
-            Open folder
+            {t("package:openFolder")}
           </button>
           <button type="button" className="primaryButton" onClick={onEnterKaraoke} disabled={!selectedSubtitlePath}>
-            Save and enter Karaoke
+            {t("package:saveAndEnter")}
           </button>
         </div>
       </header>
@@ -1778,12 +2945,12 @@ function LyricsReviewScene({
         />
         <div className="lyricsPreviewPane">
           <div className="paneHeader">
-            <h2>Timed lines</h2>
+            <h2>{t("package:timedLines")}</h2>
             <span>{cues.length}</span>
           </div>
           <div className="cueList reviewCueList">
             {cues.length === 0 ? (
-              <p className="emptyText">No timed lines parsed yet.</p>
+              <p className="emptyText">{t("package:noTimedLines")}</p>
             ) : (
               cues.map((cue, index) => (
                 <button key={`${cue.start}-${index}`} type="button">
@@ -1848,22 +3015,30 @@ function KaraokeRoomScene({
   onTrackRoleChange: (role: TrackRole) => void;
   isRunning: boolean;
 }) {
+  const { t } = useTranslation();
   const previousCue = activeCueIndex > 0 ? cues[activeCueIndex - 1] : null;
   const nextCue = activeCueIndex >= 0 ? cues[activeCueIndex + 1] : cues[0] ?? null;
   const showVisualPreview = Boolean(playbackController.previewUrl);
   const showLocalVideo = !showVisualPreview && playbackController.mediaUrl && isVideoPath(selectedMediaPath);
-  const selectedMediaName = playableAssets.find((asset) => asset.path === selectedMediaPath)?.name ?? "No local track";
+  const selectedMediaName = playableAssets.find((asset) => asset.path === selectedMediaPath)?.name ?? t("room:noLocalTrack");
   const cueDuration = cues.at(-1)?.end ?? 0;
   const progressMax = Math.max(playbackController.duration, cueDuration, playbackController.currentTime, 0);
   const progressValue = progressMax > 0 ? Math.min(playbackController.currentTime, progressMax) : 0;
   const hasPlayableMedia = Boolean(selectedMediaPath && playbackController.canControl);
   const hasStems = Boolean(trackAssets.backing && trackAssets.vocal);
   const displayTitle = reviewDisplayTitle(activeReview);
-  const trackRoleLabel = trackRole === "backing" ? "Backing track" : trackRole === "vocal" ? "Vocal only" : trackRole === "custom" ? "Custom track" : "Original mix";
+  const trackRoleLabel =
+    trackRole === "backing"
+      ? t("room:trackLabels.backingTrack")
+      : trackRole === "vocal"
+        ? t("room:trackLabels.vocalOnly")
+        : trackRole === "custom"
+          ? t("room:trackLabels.customTrack")
+          : t("room:trackLabels.originalMix");
   const mainTrackRole = trackRole === "vocal" || trackRole === "custom" ? (trackAssets.backing ? "backing" : "original") : trackRole;
   const cueKey = activeCue ? `${activeCue.start}-${activeCue.end}-${activeCue.text}` : "empty-cue";
   const microphoneMonitor = useMicrophoneMonitor();
-  const selectedSubtitleName = selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : "No lyrics in package";
+  const selectedSubtitleName = selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : t("package:badges.noLyrics");
   const songOptions = karaokePackages.some((entry) => entry.id === activeReview.id) ? karaokePackages : [activeReview, ...karaokePackages];
   const visualizerBars = useMemo(
     () =>
@@ -1876,23 +3051,23 @@ function KaraokeRoomScene({
   );
 
   return (
-    <motion.main className="karaokeRoom" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18, ease: motionEase }}>
+    <motion.main className="karaokeRoom" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: motionDuration.base, ease: motionEase }}>
       <header className="sceneHeader karaokeHeader">
         <div>
-          <p className="eyebrow">Karaoke Room</p>
+          <p className="eyebrow">{t("room:title")}</p>
           <h1>{displayTitle}</h1>
         </div>
         <div className="resultActions">
           <button type="button" className="secondaryButton" onClick={onBackHome}>
-            Home
+            {t("common:nav.home")}
           </button>
           {activeReview.sourceUrl ? (
             <button type="button" className="secondaryButton" onClick={onOpenOriginalVideo}>
-              Open original video
+              {t("package:openOriginal")}
             </button>
           ) : null}
           <button type="button" className="secondaryButton" onClick={onBackToLyrics}>
-            Edit lyrics
+            {t("room:editLyrics")}
           </button>
         </div>
       </header>
@@ -1984,10 +3159,10 @@ function KaraokeRoomScene({
               </div>
               <div className="transportButtons">
                 <button type="button" disabled={!hasPlayableMedia} onClick={playbackController.restart}>
-                  Restart
+                  {t("room:transport.restart")}
                 </button>
                 <button type="button" disabled={!hasPlayableMedia} onClick={playbackController.isPlaying ? playbackController.pause : playbackController.play}>
-                  {playbackController.isPlaying ? "Pause" : "Play"}
+                  {playbackController.isPlaying ? t("room:transport.pause") : t("room:transport.play")}
                 </button>
                 <button type="button" disabled={!hasPlayableMedia} onClick={() => playbackController.seek(Math.max(0, playbackController.currentTime - 5), playbackController.isPlaying)}>
                   -5s
@@ -1996,37 +3171,37 @@ function KaraokeRoomScene({
             </div>
             <div className="dockUtilityRow">
               <HoverFillGroup<TrackRole>
-                ariaLabel="Track role"
+                ariaLabel={t("room:trackRole")}
                 className="trackSelector"
                 value={mainTrackRole}
                 onChange={onTrackRoleChange}
                 items={[
-                  { value: "original", label: "Original", disabled: !trackAssets.original },
-                  { value: "backing", label: "Backing", disabled: !trackAssets.backing }
+                  { value: "original", label: t("room:tracks.original"), disabled: !trackAssets.original },
+                  { value: "backing", label: t("room:tracks.backing"), disabled: !trackAssets.backing }
                 ]}
               />
               <details className="dockMenu">
-                <summary>Aa</summary>
+                <summary>{t("room:style")}</summary>
                 <div className="dockMenuContent lyricStyleControls">
                   <HoverFillGroup<LyricEffect>
-                    ariaLabel="Lyric effect"
+                    ariaLabel={t("room:effect")}
                     className="lyricEffectSelector"
                     value={lyricEffect}
                     onChange={onLyricEffectChange}
-                    items={lyricEffectOptions.map(([value, label]) => ({ value, label }))}
+                    items={lyricEffectOptions.map(([value]) => ({ value, label: t(`room:effects.${value}`) }))}
                   />
                   <HoverFillGroup<LyricFont>
-                    ariaLabel="Lyric font"
+                    ariaLabel={t("room:font")}
                     className="lyricFontSelector"
                     value={lyricFont}
                     onChange={onLyricFontChange}
-                    items={lyricFontOptions.map(([value, label]) => ({ value, label }))}
+                    items={lyricFontOptions.map(([value]) => ({ value, label: t(`room:fonts.${value}`) }))}
                   />
                 </div>
               </details>
               {!hasStems ? (
                 <button type="button" className="splitInlineButton" onClick={onSplitVocals} disabled={isRunning}>
-                  {isRunning ? "Splitting..." : "Split vocals"}
+                  {isRunning ? t("package:splitRunning") : t("package:splitVocals")}
                 </button>
               ) : null}
             </div>
@@ -2052,12 +3227,12 @@ function KaraokeRoomScene({
           ) : null}
 
           <details className="ktvSidePanel">
-            <summary>Room</summary>
+            <summary>{t("room:settings")}</summary>
             <div className="ktvSideContent">
               <MicrophoneMonitorPanel monitor={microphoneMonitor} />
 
               <label className="songPackageSelector">
-                <span>Karaoke song</span>
+                <span>{t("room:song")}</span>
                 <select value={activeReview.id} onChange={(event) => onPackageChange(event.target.value)} disabled={songOptions.length <= 1}>
                   {songOptions.map((entry) => (
                     <option key={entry.id} value={entry.id}>
@@ -2068,23 +3243,23 @@ function KaraokeRoomScene({
               </label>
 
               <div className="packageBindingField roomBindingField">
-                <span>Lyrics</span>
+                <span>{t("room:lyrics")}</span>
                 <strong>{selectedSubtitleName}</strong>
               </div>
 
               {trackAssets.vocal ? (
                 <div className="hiddenVocalControl">
                   <div>
-                    <span>Optional stem</span>
-                    <strong>Vocal only</strong>
+                    <span>{t("room:optionalStem")}</span>
+                    <strong>{t("room:vocalOnly")}</strong>
                   </div>
                   <button type="button" data-selected={trackRole === "vocal"} onClick={() => onTrackRoleChange(trackRole === "vocal" ? (trackAssets.backing ? "backing" : "original") : "vocal")}>
-                    {trackRole === "vocal" ? "Return" : "Use"}
+                    {trackRole === "vocal" ? t("room:returnTrack") : t("room:useTrack")}
                   </button>
                 </div>
               ) : null}
 
-              {!playbackController.mediaUrl ? <p className="emptyText">{playbackController.mediaStatus || playbackBundle?.unavailableReason || "No local audio track available."}</p> : null}
+              {!playbackController.mediaUrl ? <p className="emptyText">{playbackController.mediaStatus || playbackBundle?.unavailableReason || t("room:noLocalAudio")}</p> : null}
 
               <div className="cueList roomCueList">
                 {cues.map((cue, index) => (
@@ -2094,7 +3269,7 @@ function KaraokeRoomScene({
                     data-active={index === activeCueIndex}
                     onClick={() => playbackController.seek(cue.start, true)}
                     animate={index === activeCueIndex ? { x: 2 } : { x: 0 }}
-                    transition={{ duration: 0.14, ease: motionEase }}
+                    transition={{ duration: motionDuration.fast, ease: motionEase }}
                   >
                     <span>{formatClock(cue.start)}</span>
                     <strong>{cue.text}</strong>
@@ -2201,20 +3376,22 @@ function HoverFillGroup<T extends string>({
 }
 
 function MicrophoneMonitorPanel({ monitor }: { monitor: MicrophoneMonitorController }) {
+  const { t } = useTranslation();
+  const displayStatus = monitor.status === "Monitoring input. Use headphones to avoid feedback." ? t("room:mic.headphones") : monitor.status;
   return (
     <section className="micMonitorPanel" data-monitoring={monitor.isMonitoring}>
       <div className="micMonitorHeader">
         <div>
-          <strong>Mic input</strong>
-          <span>{monitor.status}</span>
+          <strong>{t("room:mic.title")}</strong>
+          <span>{displayStatus}</span>
         </div>
         <button type="button" data-selected={monitor.isMonitoring} onClick={() => monitor.setIsMonitoring(!monitor.isMonitoring)}>
-          {monitor.isMonitoring ? "Monitor on" : "Monitor"}
+          {monitor.isMonitoring ? t("room:mic.monitorOn") : t("room:mic.monitor")}
         </button>
       </div>
 
       <select value={monitor.selectedDeviceId} onChange={(event) => monitor.setSelectedDeviceId(event.target.value)}>
-        <option value="">System default input</option>
+        <option value="">{t("room:mic.systemDefault")}</option>
         {monitor.devices.map((device) => (
           <option key={device.deviceId || device.label} value={device.deviceId}>
             {device.label}
@@ -2223,7 +3400,7 @@ function MicrophoneMonitorPanel({ monitor }: { monitor: MicrophoneMonitorControl
       </select>
 
       <label className="micGainControl">
-        <span>Monitor level</span>
+        <span>{t("room:mic.level")}</span>
         <input
           type="range"
           min="0"
@@ -2233,6 +3410,17 @@ function MicrophoneMonitorPanel({ monitor }: { monitor: MicrophoneMonitorControl
           disabled={!monitor.isMonitoring}
           onChange={(event) => monitor.setMonitorGain(Number(event.currentTarget.value))}
         />
+      </label>
+      <label className="micReductionToggle">
+        <input
+          type="checkbox"
+          checked={monitor.noiseReduction}
+          onChange={(event) => monitor.setNoiseReduction(event.currentTarget.checked)}
+        />
+        <span>
+          <strong>{t("room:mic.noiseReduction")}</strong>
+          <em>{t("room:mic.noiseReductionHint")}</em>
+        </span>
       </label>
     </section>
   );
@@ -2263,7 +3451,7 @@ function KaraokeLyricLine({ cue, currentTime, effect }: { cue: Cue | null; curre
       data-empty={!cue}
       initial={{ opacity: 0, y: 18, scale: effect === "impact" ? 0.92 : 1 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.18, ease: motionEase }}
+      transition={{ duration: motionDuration.base, ease: motionEase }}
     >
       {words.map((word) => {
         const progressPercent = `${Math.round(wordProgressForTime(word, currentTime) * 1000) / 10}%`;
@@ -2324,8 +3512,9 @@ function ScriptReview({
 }
 
 function FilesReview({ assets }: { assets: GeneratedAsset[] }) {
+  const { t } = useTranslation();
   if (assets.length === 0) {
-    return <p className="emptyText">Generated files will appear here.</p>;
+    return <p className="emptyText">{t("package:filesEmpty")}</p>;
   }
 
   return (
@@ -2352,6 +3541,38 @@ function statusFromResult(result: JobResult): JobStatus {
   return result.exitCode === 0 ? "complete" : "failed";
 }
 
+function localizeCliError(rawText: string, t: Translator): string | null {
+  const text = rawText.toLowerCase();
+  if (!text.trim()) {
+    return null;
+  }
+  if (text.includes("missing dependency: yt-dlp") || text.includes("yt-dlp was not found")) {
+    return t("common:errors.ytDlp");
+  }
+  if (text.includes("missing dependency: ffmpeg") || text.includes("ffmpeg")) {
+    return t("common:errors.ffmpeg");
+  }
+  if (text.includes("missing python package: faster-whisper") || text.includes("faster_whisper")) {
+    return t("common:errors.whisper");
+  }
+  if (text.includes("missing python package: whisper-timestamped") || text.includes("whisper_timestamped")) {
+    return t("common:errors.whisperTimestamped");
+  }
+  if (text.includes("missing dependency: audio-separator") || text.includes("audio_separator")) {
+    return t("common:errors.separator");
+  }
+  if (text.includes("no platform subtitles found")) {
+    return t("common:errors.noPlatformSubtitles");
+  }
+  if (text.includes("sign in") || text.includes("cookies") || text.includes("confirm you")) {
+    return t("common:errors.cookies");
+  }
+  if (text.includes("unsupported media file") || text.includes("no supported media files")) {
+    return t("common:errors.unsupportedMedia");
+  }
+  return null;
+}
+
 function shortInputLabel(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -2364,6 +3585,13 @@ function shortInputLabel(input: string): string {
     const normalized = trimmed.replace(/\\/g, "/");
     return normalized.split("/").filter(Boolean).at(-1) ?? trimmed;
   }
+}
+
+function searchResultThumbnail(row: YoutubeSearchResult): string | undefined {
+  if (row.thumbnailUrl) {
+    return row.thumbnailUrl;
+  }
+  return row.platform === "bilibili" ? undefined : `https://i.ytimg.com/vi/${row.videoId}/mqdefault.jpg`;
 }
 
 function fileNameFromPath(filePath: string): string {

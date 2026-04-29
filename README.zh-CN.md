@@ -113,12 +113,15 @@ setup-audio-separator
 
 ## 桌面 App
 
+在仓库根目录（pnpm workspace）执行：
+
 ```bash
 ./install.sh
-cd apps/desktop
 pnpm install
 pnpm dev
 ```
+
+也可以先 `cd apps/desktop` 再执行同样的 `pnpm` 命令。
 
 桌面 app 已内置 `audio-subtitles` 脚本、Python 和 ffmpeg。它会在首次使用时自动安装 Python packages，不需要普通用户手动运行 CLI setup 命令。它支持：
 

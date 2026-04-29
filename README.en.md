@@ -113,12 +113,15 @@ setup-audio-separator
 
 ## Desktop App
 
+From the repository root (pnpm workspace):
+
 ```bash
 ./install.sh
-cd apps/desktop
 pnpm install
 pnpm dev
 ```
+
+The same scripts work from `apps/desktop` if you prefer `cd apps/desktop` first.
 
 The desktop app includes the `audio-subtitles` script, bundled Python, and bundled ffmpeg. It auto-installs Python packages on first use instead of requiring users to run CLI setup commands. It supports:
 

@@ -17,9 +17,10 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
 
 - Do not run `pnpm build` unless the user explicitly asks.
 - Do not use Playwright/browser automation directly; let the user inspect the browser.
-- Type-check is allowed:
-  - `pnpm -C apps/desktop exec tsc --noEmit`
-  - `pnpm -C apps/desktop exec tsc -p tsconfig.electron.json --noEmit`
+- Type-check is allowed (from repo root):
+  - `pnpm --filter @vocalflow/desktop exec tsc --noEmit`
+  - `pnpm --filter @vocalflow/desktop exec tsc -p tsconfig.electron.json --noEmit`
+  - Equivalent: `pnpm -C apps/desktop exec tsc ...`
 - Treat existing uncommitted work as the current baseline. Do not revert unrelated changes.
 
 ## Current Architecture
@@ -81,8 +82,11 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
 
 ## Desktop Design System Rules
 
+> Read [`DESIGN.md`](./DESIGN.md) before any visual or UI change. It is the source of truth for color, typography, spacing, motion, surfaces (Studio vs Stage), and refactor priorities. The bullets below are the operational rules that complement it; visual decisions live in `DESIGN.md`.
+
+- Always consult `DESIGN.md` before adding colors, font sizes, radii, easing values, or new components. If a token you need is missing, add it to `DESIGN.md` first (with a Decisions Log entry), then use it.
 - Keep `apps/desktop/src/renderer/App.tsx` as the current component source of truth until the renderer is split into smaller modules.
-- Keep global styles in `apps/desktop/src/renderer/styles.css`; introduce reusable CSS variables before adding one-off colors, shadows, easing, or spacing.
+- Keep global styles in `apps/desktop/src/renderer/styles.css`; introduce reusable CSS variables before adding one-off colors, shadows, easing, or spacing. New tokens must come from `DESIGN.md`.
 - Use React + TypeScript, plain CSS, and `motion/react`; do not add a UI framework unless the user explicitly asks.
 - Prefer package-level UI concepts: home resource cards, package detail/review, and Karaoke Room. Avoid exposing loose media/subtitle selectors as primary IA.
 - Default UI should be sparse and task-first. Advanced controls, logs, raw formats, command preview, model settings, and low-frequency options should be hidden behind drawers or popovers.
@@ -92,6 +96,7 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
 - Dense grouped controls should use one shared HoverFill surface per group. Do not create isolated hover backgrounds on every sibling item.
 - Keep text resilient: use `min-width: 0`, truncation, or wrapping on long song titles and filenames.
 - Use responsive layout rules even for the desktop app because the web fallback at `127.0.0.1:5174` can run in browser windows.
+- When closing a UI task, log the converted styles in the `DESIGN.md` Refactor Budget so the next agent can see progress.
 
 ## Karaoke Room UI Rules
 
