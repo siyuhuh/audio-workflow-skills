@@ -5,6 +5,10 @@ __pycache__/
 node_modules/
 dist/
 build/
+!apps/desktop/build/
+!apps/desktop/build/icon.png
+!apps/desktop/build/icon.icns
+!apps/desktop/build/icon.ico
 *.egg-info/
 *.mp3
 *.wav
@@ -20,5 +24,6 @@ build/
 !package-lock.json
 !tsconfig.json
 !tsconfig.*.json
+!apps/desktop/src/renderer/i18n/locales/**/*.json
 *.txt
 cookies.txt

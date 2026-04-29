@@ -61,19 +61,15 @@ function isVideoPath(filePath: string): boolean {
   return /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(filePath);
 }
 
-const lyricEffectOptions: Array<[LyricEffect, string]> = [
-  ["sweep", "Blue sweep"],
-  ["outline", "Outline"],
-  ["neon", "Neon"],
-  ["impact", "Impact"]
-];
+const lyricEffectOptions: LyricEffect[] = ["sweep", "outline", "neon", "impact"];
+const lyricFontOptions: LyricFont[] = ["rounded", "poster", "serif", "mono"];
 
-const lyricFontOptions: Array<[LyricFont, string]> = [
-  ["rounded", "Rounded"],
-  ["poster", "Poster"],
-  ["serif", "Serif"],
-  ["mono", "Mono"]
-];
+const lyricFontPreviewClasses: Record<LyricFont, string> = {
+  rounded: "font-sans font-semibold",
+  poster: "font-black uppercase tracking-wide",
+  serif: "font-serif font-semibold",
+  mono: "font-mono font-semibold"
+};
 
 interface KaraokeRoomSceneProps {
   activeCue: Cue | null;
@@ -396,25 +392,101 @@ export function KaraokeRoomScene({
                 >
                   {t("room:style")}
                 </summary>
-                <div className="absolute bottom-full right-0 z-10 mb-2 grid gap-2 rounded-lg border border-ktv-line bg-ktv-surface p-3 shadow-[var(--shadow-overlay)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
-                  <HoverFillGroup<LyricEffect>
-                    ariaLabel={t("room:effect")}
-                    value={lyricEffect}
-                    onChange={onLyricEffectChange}
-                    items={lyricEffectOptions.map(([value]) => ({
-                      value,
-                      label: t(`room:effects.${value}`)
-                    }))}
-                  />
-                  <HoverFillGroup<LyricFont>
-                    ariaLabel={t("room:font")}
-                    value={lyricFont}
-                    onChange={onLyricFontChange}
-                    items={lyricFontOptions.map(([value]) => ({
-                      value,
-                      label: t(`room:fonts.${value}`)
-                    }))}
-                  />
+                <div className="absolute bottom-full right-0 z-10 mb-2 grid w-[min(380px,calc(100vw-32px))] gap-4 rounded-xl border border-ktv-line bg-ktv-surface p-4 shadow-[var(--shadow-overlay)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
+                  <header className="flex items-start justify-between gap-3">
+                    <div className="grid gap-1">
+                      <strong className="text-sm font-semibold text-white">{t("room:stylePanel")}</strong>
+                      <span className="text-xs font-medium text-ktv-text-muted">{t("room:styleHint")}</span>
+                    </div>
+                    <span className="rounded-full border border-ktv-line bg-ktv-surface-strong px-2 py-1 text-[11px] font-medium text-ktv-text-muted">
+                      {t("room:styleLive")}
+                    </span>
+                  </header>
+
+                  <div
+                    className="rounded-lg border border-ktv-line bg-ktv-surface-strong px-4 py-3"
+                    data-effect={lyricEffect}
+                    data-font={lyricFont}
+                  >
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-ktv-text-muted">
+                      {t("room:stylePreview")}
+                    </span>
+                    <strong
+                      className={cn(
+                        "stageStylePreview mt-2 block truncate text-2xl leading-tight",
+                        lyricFontPreviewClasses[lyricFont]
+                      )}
+                    >
+                      {t("room:styleSample")}
+                    </strong>
+                  </div>
+
+                  <section className="grid gap-2" aria-label={t("room:effect")}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-white">{t("room:effect")}</span>
+                      <span className="text-[11px] text-ktv-text-muted">{t("room:effectHint")}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {lyricEffectOptions.map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={lyricEffect === value}
+                          onClick={() => onLyricEffectChange(value)}
+                          className={cn(
+                            "group grid min-h-[68px] gap-1 rounded-lg border p-3 text-left transition-[background-color,border-color,color,transform] duration-150 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]",
+                            lyricEffect === value
+                              ? "border-ktv-accent bg-ktv-accent/15 text-white"
+                              : "border-ktv-line bg-ktv-surface-strong text-white/78 hover:border-white/30 hover:bg-white/5"
+                          )}
+                        >
+                          <span className="text-sm font-semibold">{t(`room:effects.${value}`)}</span>
+                          <span className="text-[11px] font-medium text-ktv-text-muted">
+                            {t(`room:effectDescriptions.${value}`)}
+                          </span>
+                          <span
+                            className={cn(
+                              "mt-1 h-1.5 rounded-full",
+                              value === "outline" && "bg-white/80",
+                              value === "sweep" && "bg-gradient-to-r from-white/25 via-ktv-accent to-ktv-accent/35",
+                              value === "neon" && "bg-ktv-accent shadow-[0_0_14px_color-mix(in_oklch,var(--color-ktv-accent)_80%,transparent)]",
+                              value === "impact" && "bg-gradient-to-r from-transparent via-ktv-accent to-transparent"
+                            )}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="grid gap-2" aria-label={t("room:font")}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-white">{t("room:font")}</span>
+                      <span className="text-[11px] text-ktv-text-muted">{t("room:fontHint")}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {lyricFontOptions.map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={lyricFont === value}
+                          onClick={() => onLyricFontChange(value)}
+                          className={cn(
+                            "grid min-h-[58px] gap-1 rounded-lg border p-3 text-left transition-[background-color,border-color,color,transform] duration-150 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]",
+                            lyricFont === value
+                              ? "border-ktv-accent bg-ktv-accent/15 text-white"
+                              : "border-ktv-line bg-ktv-surface-strong text-white/78 hover:border-white/30 hover:bg-white/5"
+                          )}
+                        >
+                          <span className={cn("text-lg leading-none", lyricFontPreviewClasses[value])}>
+                            Aa 字
+                          </span>
+                          <span className="text-[11px] font-medium text-ktv-text-muted">
+                            {t(`room:fonts.${value}`)} · {t(`room:fontDescriptions.${value}`)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
                 </div>
               </details>
 

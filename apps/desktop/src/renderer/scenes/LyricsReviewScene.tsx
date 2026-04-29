@@ -66,7 +66,7 @@ export function LyricsReviewScene({
             <h2 className="m-0 text-sm font-semibold text-foreground">{t("package:timedLines")}</h2>
             <span className="text-xs font-medium text-faint tabular-nums">{cues.length}</span>
           </header>
-          <div className="grid max-h-[560px] auto-rows-min gap-1 overflow-y-auto">
+          <div className="grid max-h-[560px] auto-rows-min gap-1 overflow-y-auto [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
             {cues.length === 0 ? (
               <p className="m-0 px-2 py-4 text-sm font-medium text-muted-foreground">
                 {t("package:noTimedLines")}

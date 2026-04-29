@@ -173,6 +173,13 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+  background: oklch(0.145 0.012 264.2926);
+}
+
 body {
   min-width: 0;
   margin: 0;
@@ -378,7 +385,10 @@ textarea:focus-visible {
 
 .appShell {
   min-height: 100vh;
-  padding: var(--space-xl) var(--space-xl) 104px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: clamp(16px, 2.4vw, 32px) clamp(16px, 3vw, 40px) 104px;
 }
 
 .appSceneFrame {
@@ -435,10 +445,10 @@ textarea:focus-visible {
   font-weight: 700;
   letter-spacing: 0;
   isolation: isolate;
-  --lyric-base: rgba(255, 255, 255, 0.76);
+  --lyric-base: rgba(247, 247, 250, 0.58);
   --lyric-fill: var(--ktv-accent);
-  --lyric-stroke: rgba(4, 8, 16, 0.58);
-  --lyric-glow: color-mix(in oklch, var(--ktv-accent) 32%, transparent);
+  --lyric-stroke: rgba(8, 10, 12, 0.72);
+  --lyric-glow: color-mix(in oklch, var(--ktv-accent) 42%, transparent);
 }
 
 .roomLyrics[data-font="rounded"] .karaokeLyricLine {
@@ -485,8 +495,8 @@ textarea:focus-visible {
   -webkit-text-stroke: 0.045em var(--lyric-stroke);
   paint-order: stroke fill;
   text-shadow:
-    0 0.035em 0 rgba(0, 0, 0, 0.34),
-    0 0.11em 0.32em rgba(0, 0, 0, 0.52);
+    0 0.035em 0 rgba(0, 0, 0, 0.42),
+    0 0.12em 0.34em rgba(0, 0, 0, 0.62);
 }
 
 .karaokeWordBase {
@@ -499,7 +509,7 @@ textarea:focus-visible {
   overflow: hidden;
   color: var(--lyric-fill);
   clip-path: inset(0 calc(100% - var(--word-progress, 0%)) 0 0);
-  filter: drop-shadow(0 0 0.14em var(--lyric-glow));
+  filter: drop-shadow(0 0 0.18em var(--lyric-glow));
   transition: clip-path 70ms linear;
   -webkit-clip-path: inset(0 calc(100% - var(--word-progress, 0%)) 0 0);
 }
@@ -514,35 +524,42 @@ textarea:focus-visible {
 }
 
 .roomLyrics[data-effect="outline"] .karaokeLyricLine {
-  --lyric-base: rgba(255, 255, 255, 0.72);
-  --lyric-fill: #ffffff;
-  --lyric-stroke: rgba(12, 18, 28, 0.7);
-  --lyric-glow: rgba(255, 255, 255, 0.16);
+  --lyric-base: rgba(247, 247, 250, 0.84);
+  --lyric-fill: #f7f7fa;
+  --lyric-stroke: rgba(8, 10, 12, 0.92);
+  --lyric-glow: rgba(247, 247, 250, 0.18);
 }
 
 .roomLyrics[data-effect="sweep"] .karaokeLyricLine,
 .roomLyrics[data-effect="neon"] .karaokeLyricLine,
 .roomLyrics[data-effect="impact"] .karaokeLyricLine {
-  --lyric-base: rgba(255, 255, 255, 0.78);
+  --lyric-base: rgba(247, 247, 250, 0.62);
   --lyric-fill: var(--ktv-accent);
-  --lyric-stroke: rgba(3, 8, 18, 0.58);
-  --lyric-glow: color-mix(in oklch, var(--ktv-accent) 38%, transparent);
+  --lyric-stroke: rgba(8, 10, 12, 0.76);
+  --lyric-glow: color-mix(in oklch, var(--ktv-accent) 58%, transparent);
 }
 
 .roomLyrics[data-effect="neon"] .karaokeLyricLine {
-  --lyric-base: rgba(235, 238, 255, 0.72);
-  --lyric-fill: var(--ktv-accent);
-  --lyric-stroke: rgba(24, 26, 64, 0.68);
-  --lyric-glow: color-mix(in oklch, var(--ktv-accent) 62%, transparent);
+  --lyric-base: rgba(235, 255, 241, 0.68);
+  --lyric-fill: color-mix(in oklch, var(--ktv-accent) 72%, white);
+  --lyric-stroke: rgba(8, 24, 16, 0.8);
+  --lyric-glow: color-mix(in oklch, var(--ktv-accent) 78%, transparent);
+}
+
+.roomLyrics[data-effect="neon"] .karaokeWordFill {
+  filter:
+    drop-shadow(0 0 0.18em var(--lyric-glow))
+    drop-shadow(0 0 0.42em color-mix(in oklch, var(--ktv-accent) 42%, transparent));
 }
 
 .roomLyrics[data-effect="impact"] .karaokeLyricLine {
-  --lyric-base: rgba(255, 244, 250, 0.75);
-  --lyric-fill: var(--ktv-accent);
-  --lyric-stroke: rgba(255, 255, 255, 0.86);
-  --lyric-glow: color-mix(in oklch, var(--ktv-accent) 48%, transparent);
+  --lyric-base: rgba(247, 247, 250, 0.7);
+  --lyric-fill: #ffffff;
+  --lyric-stroke: color-mix(in oklch, var(--ktv-accent) 62%, rgba(8, 10, 12, 0.84));
+  --lyric-glow: color-mix(in oklch, var(--ktv-accent) 64%, transparent);
   font-size: clamp(46px, 7.2vw, 96px);
   line-height: 1.02;
+  letter-spacing: -0.025em;
 }
 
 .roomLyrics[data-effect="impact"] .karaokeWord[data-active="true"]::after {
@@ -557,6 +574,44 @@ textarea:focus-visible {
   opacity: 0.76;
   transform: translateY(-50%);
   transition: right 80ms linear;
+}
+
+.stageStylePreview {
+  color: rgba(247, 247, 250, 0.72);
+  -webkit-text-stroke: 0.04em rgba(15, 15, 20, 0.72);
+  paint-order: stroke fill;
+  text-shadow:
+    0 0.04em 0 rgba(0, 0, 0, 0.32),
+    0 0.12em 0.34em rgba(0, 0, 0, 0.55);
+}
+
+[data-effect="sweep"] .stageStylePreview {
+  color: var(--ktv-accent);
+  text-shadow:
+    0 0 0.2em color-mix(in oklch, var(--ktv-accent) 52%, transparent),
+    0 0.1em 0.28em rgba(0, 0, 0, 0.55);
+}
+
+[data-effect="outline"] .stageStylePreview {
+  color: #f7f7fa;
+  -webkit-text-stroke: 0.055em rgba(8, 10, 12, 0.92);
+  text-shadow: 0 0.1em 0.32em rgba(0, 0, 0, 0.72);
+}
+
+[data-effect="neon"] .stageStylePreview {
+  color: color-mix(in oklch, var(--ktv-accent) 72%, white);
+  text-shadow:
+    0 0 0.18em color-mix(in oklch, var(--ktv-accent) 74%, transparent),
+    0 0 0.46em color-mix(in oklch, var(--ktv-accent) 44%, transparent),
+    0 0.1em 0.3em rgba(0, 0, 0, 0.7);
+}
+
+[data-effect="impact"] .stageStylePreview {
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  text-shadow:
+    0.04em 0.04em 0 var(--ktv-accent),
+    0 0.12em 0.3em rgba(0, 0, 0, 0.72);
 }
 
 .hoverFillGroup {

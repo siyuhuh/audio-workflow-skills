@@ -1,0 +1,23 @@
+{
+  "button": "Settings",
+  "eyebrow": "Preferences",
+  "title": "Settings",
+  "appearance": {
+    "title": "Appearance",
+    "description": "Dark Mode is the default. VocalFlow uses one green accent for controls and highlights.",
+    "modeLabel": "Theme mode",
+    "accentLabel": "Style token",
+    "modes": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "accents": {
+      "green": "Dashboard green"
+    }
+  },
+  "language": {
+    "title": "Language",
+    "description": "Switch the desktop UI between English and Chinese. CLI output remains English."
+  }
+}

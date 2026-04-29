@@ -213,18 +213,6 @@ interface ResourcePackage {
 }
 
 const allFormats: OutputFormat[] = ["lrc", "srt", "vtt", "txt", "json", "ass"];
-const lyricEffectOptions: Array<[LyricEffect, string]> = [
-  ["sweep", "Blue sweep"],
-  ["outline", "Outline"],
-  ["neon", "Neon"],
-  ["impact", "Impact"]
-];
-const lyricFontOptions: Array<[LyricFont, string]> = [
-  ["rounded", "Rounded"],
-  ["poster", "Poster"],
-  ["serif", "Serif"],
-  ["mono", "Mono"]
-];
 const hasNativeAudioWorkflow = Boolean(window.audioWorkflow);
 const httpAudioWorkflow = createHttpAudioWorkflowApi();
 const audioWorkflow: AudioWorkflowApi = {
@@ -1179,7 +1167,7 @@ export default function App() {
 
   return (
     <motion.main
-      className="appShell mx-auto grid min-h-screen max-w-[1200px] gap-6 px-6 pb-24 pt-6"
+      className="appShell grid min-h-screen w-full gap-6"
       data-has-workspace={showWorkspace}
       data-theme={effectiveTheme}
       data-accent={accentColor}

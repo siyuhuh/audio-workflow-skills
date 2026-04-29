@@ -1,0 +1,63 @@
+{
+  "heroTitle": "Paste a song link",
+  "heroSubtitle": "Karaoke / Subtitle / Local package",
+  "inputLabel": "YouTube, Bilibili, or local media",
+  "inputPlaceholder": "Paste URL or drop a file/folder",
+  "selectFile": "Select file",
+  "advanced": {
+    "show": "Desktop options",
+    "hide": "Hide desktop options",
+    "command": "Command",
+    "commandPlaceholder": "Enter input to preview the CLI command.",
+    "logs": "Logs",
+    "logsPlaceholder": "Logs will stream here while a job is running."
+  },
+  "modes": {
+    "karaoke": "Karaoke",
+    "subtitle": "Subtitle"
+  },
+  "languageHint": "Auto, en, zh, ja",
+  "search": {
+    "toggle": "Media search",
+    "hint": "YouTube and Bilibili discovery via yt-dlp (first run may install packages).",
+    "youtube": "YouTube",
+    "bilibili": "Bilibili",
+    "placeholder": "Artist, song title, or keywords",
+    "appendKaraoke": "Bias toward karaoke uploads",
+    "useThisLink": "Use this link",
+    "openInBrowser": "Open in browser",
+    "noResults": "No videos matched. Try different keywords.",
+    "failed": "{{platform}} search failed."
+  },
+  "stages": {
+    "prepare": "Prepare",
+    "download": "Download",
+    "separate": "Separate",
+    "convert": "Convert",
+    "transcribe": "Transcribe",
+    "write": "Write",
+    "preview": "Preview"
+  },
+  "room": {
+    "processing": "Processing {{title}}",
+    "processed": "Room request processed.",
+    "failed": "Processing failed",
+    "requestFailed": "Room request failed.",
+    "removeFailed": "Failed to remove queue item.",
+    "clearFailed": "Failed to clear queue."
+  },
+  "activity": {
+    "title": "Activity",
+    "empty": "No active jobs."
+  },
+  "history": {
+    "title": "History",
+    "empty": "Successful jobs appear here."
+  },
+  "cache": {
+    "hint": "Already in your library: {{title}}",
+    "openExisting": "Open existing",
+    "openedExisting": "Opened existing package.",
+    "redownload": "Re-download"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "button": "设置",
+  "eyebrow": "偏好设置",
+  "title": "设置",
+  "appearance": {
+    "title": "外观",
+    "description": "默认使用深色模式。VocalFlow 使用一枚绿色强调色承载控件与高亮。",
+    "modeLabel": "主题模式",
+    "accentLabel": "Style token",
+    "modes": {
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "accents": {
+      "green": "Dashboard 绿"
+    }
+  },
+  "language": {
+    "title": "语言",
+    "description": "在英文和中文之间切换桌面界面。CLI 输出仍保持英文。"
+  }
+}

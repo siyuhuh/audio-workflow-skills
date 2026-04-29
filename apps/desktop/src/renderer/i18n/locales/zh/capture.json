@@ -1,0 +1,63 @@
+{
+  "heroTitle": "贴入一首歌的链接",
+  "heroSubtitle": "卡拉 OK / 字幕 / 本地包",
+  "inputLabel": "YouTube、Bilibili 或本地媒体",
+  "inputPlaceholder": "粘贴 URL，或拖入文件 / 文件夹",
+  "selectFile": "选择文件",
+  "advanced": {
+    "show": "桌面选项",
+    "hide": "隐藏桌面选项",
+    "command": "命令",
+    "commandPlaceholder": "输入内容后会预览 CLI 命令。",
+    "logs": "日志",
+    "logsPlaceholder": "任务运行时日志会显示在这里。"
+  },
+  "modes": {
+    "karaoke": "卡拉 OK",
+    "subtitle": "字幕"
+  },
+  "languageHint": "Auto、en、zh、ja",
+  "search": {
+    "toggle": "媒体搜索",
+    "hint": "通过 yt-dlp 搜索 YouTube 与 Bilibili（首次运行可能需要安装依赖）。",
+    "youtube": "YouTube",
+    "bilibili": "Bilibili",
+    "placeholder": "歌手、歌名或关键词",
+    "appendKaraoke": "偏向卡拉 OK 版本",
+    "useThisLink": "使用此链接",
+    "openInBrowser": "在浏览器打开",
+    "noResults": "没有匹配的视频，试试换个关键词。",
+    "failed": "{{platform}} 搜索失败。"
+  },
+  "stages": {
+    "prepare": "准备",
+    "download": "下载",
+    "separate": "分离",
+    "convert": "转换",
+    "transcribe": "转写",
+    "write": "写入",
+    "preview": "预览"
+  },
+  "room": {
+    "processing": "正在处理 {{title}}",
+    "processed": "房间请求已处理。",
+    "failed": "处理失败",
+    "requestFailed": "房间请求失败。",
+    "removeFailed": "移除队列项目失败。",
+    "clearFailed": "清空队列失败。"
+  },
+  "activity": {
+    "title": "活动",
+    "empty": "暂无运行中的任务。"
+  },
+  "history": {
+    "title": "历史",
+    "empty": "成功完成的任务会显示在这里。"
+  },
+  "cache": {
+    "hint": "资源库里已有：{{title}}",
+    "openExisting": "打开已有",
+    "openedExisting": "已打开已有歌曲包。",
+    "redownload": "重新下载"
+  }
+}

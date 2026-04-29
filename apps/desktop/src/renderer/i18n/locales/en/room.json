@@ -1,0 +1,88 @@
+{
+  "drawerToggle": "Room Remote",
+  "drawerToggleOpen": "Hide room",
+  "drawerToggleClosed": "Show room",
+  "panelTitle": "Phone song requests",
+  "panelHint": "Scan this link on the same Wi-Fi to search YouTube and add songs to the room queue.",
+  "copyLink": "Copy link",
+  "copied": "Remote room link copied.",
+  "starting": "Starting room server…",
+  "runNext": "Run next request",
+  "clearQueue": "Clear completed/queued",
+  "queueEmpty": "No phone requests yet.",
+  "queueRun": "Run",
+  "queueRemove": "Remove",
+  "statusDot": "Active room request",
+  "title": "Karaoke Room",
+  "settings": "Room",
+  "song": "Karaoke song",
+  "lyrics": "Lyrics",
+  "optionalStem": "Optional stem",
+  "vocalOnly": "Vocal only",
+  "style": "Aa",
+  "stylePanel": "Text Style",
+  "styleHint": "Tune lyric rendering for this room.",
+  "styleLive": "Live",
+  "stylePreview": "Preview",
+  "styleSample": "Time waits for no one",
+  "tracks": {
+    "original": "Original",
+    "backing": "Backing",
+    "vocal": "Vocal"
+  },
+  "effects": {
+    "sweep": "Green sweep",
+    "outline": "Outline",
+    "neon": "Neon",
+    "impact": "Impact"
+  },
+  "effectDescriptions": {
+    "sweep": "Word-by-word fill",
+    "outline": "High contrast stroke",
+    "neon": "Soft stage glow",
+    "impact": "Beat punch"
+  },
+  "fonts": {
+    "rounded": "Rounded",
+    "poster": "Poster",
+    "serif": "Serif",
+    "mono": "Mono"
+  },
+  "fontDescriptions": {
+    "rounded": "Clean default",
+    "poster": "Big stage",
+    "serif": "Ballad feel",
+    "mono": "Timing grid"
+  },
+  "effectHint": "Fill & stroke",
+  "fontHint": "Voice of lyrics",
+  "mic": {
+    "title": "Mic input",
+    "monitor": "Monitor",
+    "monitorOn": "Monitor on",
+    "systemDefault": "System default input",
+    "level": "Monitor level",
+    "headphones": "Use headphones to avoid feedback.",
+    "noiseReduction": "Noise/Echo reduction",
+    "noiseReductionHint": "Can reduce feedback, but may change singing tone."
+  },
+  "editLyrics": "Edit lyrics",
+  "noLocalTrack": "No local track",
+  "noLocalAudio": "No local audio track available.",
+  "trackRole": "Track role",
+  "effect": "Lyric effect",
+  "font": "Lyric font",
+  "returnTrack": "Return",
+  "useTrack": "Use",
+  "trackLabels": {
+    "backingTrack": "Backing track",
+    "vocalOnly": "Vocal only",
+    "customTrack": "Custom track",
+    "originalMix": "Original mix"
+  },
+  "transport": {
+    "restart": "Restart",
+    "play": "Play",
+    "pause": "Pause"
+  }
+}

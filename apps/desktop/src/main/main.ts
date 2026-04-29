@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, session, shell } from "electron";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -25,6 +25,7 @@ import type {
 } from "../shared/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const appDisplayName = "VocalFlow";
 const runningJobs = new Map<string, ChildProcessByStdio<null, Readable, Readable>>();
 const knownFilePaths = new Set<string>();
 const knownOutputDirs = new Set<string>();
@@ -40,6 +41,10 @@ let roomQueue: RoomQueueItem[] = [];
 let roomNowPlaying: RoomQueueItem | null = null;
 
 const jobProgressClients = new Set<Electron.WebContents>();
+
+function desktopIconPath(): string {
+  return path.join(__dirname, "../../build/icon.png");
+}
 
 interface CommandInvocation {
   command: string;
@@ -134,7 +139,7 @@ function audioSubtitlesInvocation(runtime?: PreparedRuntime): CommandInvocation 
   if (bundledScript && app.isPackaged) {
     const python = pythonInvocation();
     if (!python) {
-      throw new Error("VocalFlow Studio could not find its bundled Python runtime. Reinstall the app and try again.");
+      throw new Error("VocalFlow could not find its bundled Python runtime. Reinstall the app and try again.");
     }
     return {
       command: python.command,
@@ -156,7 +161,7 @@ function audioSubtitlesInvocation(runtime?: PreparedRuntime): CommandInvocation 
     const python = pythonInvocation();
     if (!python) {
       throw new Error(
-        "VocalFlow Studio includes its audio-subtitles script, but Python 3 was not found. Reinstall the app or install Python 3 and try again."
+        "VocalFlow includes its audio-subtitles script, but Python 3 was not found. Reinstall the app or install Python 3 and try again."
       );
     }
     return {
@@ -166,18 +171,20 @@ function audioSubtitlesInvocation(runtime?: PreparedRuntime): CommandInvocation 
   }
 
   throw new Error(
-    "audio-subtitles was not found. Install the CLI with ./install.sh, or reinstall VocalFlow Studio so the bundled audio-subtitles script is included."
+    "audio-subtitles was not found. Install the CLI with ./install.sh, or reinstall VocalFlow so the bundled audio-subtitles script is included."
   );
 }
 
 function createWindow(): void {
+  const iconPath = desktopIconPath();
   const window = new BrowserWindow({
     width: 1180,
     height: 760,
     minWidth: 980,
     minHeight: 640,
-    title: "VocalFlow Studio",
-    backgroundColor: "#f7f7f3",
+    title: appDisplayName,
+    icon: iconPath,
+    backgroundColor: "#0b0c10",
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -194,6 +201,10 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  app.setName(appDisplayName);
+  if (process.platform === "darwin") {
+    app.dock?.setIcon(nativeImage.createFromPath(desktopIconPath()));
+  }
   process.env.PATH = [
     path.join(homedir(), ".local", "bin"),
     process.env.PATH ?? "",
@@ -2009,7 +2020,7 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
   const basePython = bundledPythonInvocation() ?? pythonInvocation();
   if (!basePython) {
     throw new Error(
-      "VocalFlow Studio could not find Python. Reinstall the app and try again; the installer should include a bundled Python runtime."
+      "VocalFlow could not find Python. Reinstall the app and try again; the installer should include a bundled Python runtime."
     );
   }
 

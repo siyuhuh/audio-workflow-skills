@@ -20,15 +20,17 @@
   },
   "build": {
     "appId": "com.gottaegbert.vocalflow",
-    "productName": "VocalFlow Studio",
+    "productName": "VocalFlow",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
+      "build/**/*",
       "package.json"
     ],
+    "icon": "build/icon",
     "extraResources": [
       {
         "from": "../../skills/audio-subtitles/scripts",
@@ -62,11 +64,13 @@
     ],
     "mac": {
       "category": "public.app-category.music",
+      "icon": "build/icon.icns",
       "target": [
         "dmg"
       ]
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ],

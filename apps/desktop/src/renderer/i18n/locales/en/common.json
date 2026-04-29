@@ -1,0 +1,61 @@
+{
+  "appName": "VocalFlow",
+  "status": {
+    "ready": "Ready",
+    "running": "Running",
+    "complete": "Complete",
+    "canceled": "Canceled",
+    "failed": "Failed",
+    "failedWithCode": "Failed with exit code {{code}}"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "chinese": "中文"
+  },
+  "nav": {
+    "label": "Primary navigation",
+    "home": "Home",
+    "add": "Add",
+    "karaoke": "Karaoke"
+  },
+  "dock": {
+    "homeTitle": "Library",
+    "homeEmpty": "Browse packages or try a sample",
+    "addTitle": "Add song",
+    "addEmpty": "Paste a link, search media, or choose a file",
+    "karaokeTitle": "Karaoke",
+    "karaokeEmpty": "Choose a package to sing",
+    "ready": "Ready",
+    "needsPackage": "Needs package",
+    "cached": "Cached"
+  },
+  "home": {
+    "title": "Turn any song into a practice room.",
+    "subtitle": "Paste a link or drop local media. VocalFlow builds lyrics, playback, preview video, and vocal split assets into one local package.",
+    "captureHint": "Start with a song"
+  },
+  "actions": {
+    "run": "Run",
+    "stop": "Stop",
+    "cancel": "Cancel",
+    "open": "Open",
+    "remove": "Remove",
+    "copy": "Copy",
+    "back": "Back",
+    "search": "Search",
+    "searching": "Searching…",
+    "enterKaraoke": "Enter Karaoke",
+    "tryInKaraoke": "Try in Karaoke Room"
+  },
+  "errors": {
+    "ytDlp": "yt-dlp is missing. Prepare the runtime environment, then try again.",
+    "ffmpeg": "ffmpeg is missing or unavailable. Install ffmpeg or reinstall VocalFlow.",
+    "whisper": "Local transcription is not ready. Prepare the Whisper runtime before running this job.",
+    "whisperTimestamped": "Word-level alignment is not installed; install whisper-timestamped or use the faster fallback.",
+    "separator": "Vocal split is not ready. Install audio-separator or disable Vocal split for this run.",
+    "noPlatformSubtitles": "No platform subtitles were found. Enable local fallback or choose local transcription.",
+    "cookies": "This video may need browser cookies or sign-in. Add browser cookies in Desktop options and try again.",
+    "unsupportedMedia": "This input is not a supported media file. Use an audio/video file, folder, or supported URL."
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "appName": "VocalFlow",
+  "status": {
+    "ready": "就绪",
+    "running": "运行中",
+    "complete": "已完成",
+    "canceled": "已取消",
+    "failed": "失败",
+    "failedWithCode": "失败（退出码 {{code}}）"
+  },
+  "language": {
+    "label": "语言",
+    "english": "English",
+    "chinese": "中文"
+  },
+  "nav": {
+    "label": "主导航",
+    "home": "首页",
+    "add": "添加",
+    "karaoke": "演唱"
+  },
+  "dock": {
+    "homeTitle": "资源库",
+    "homeEmpty": "浏览歌曲包，或试一首示例",
+    "addTitle": "添加歌曲",
+    "addEmpty": "粘贴链接、搜索媒体或选择文件",
+    "karaokeTitle": "演唱",
+    "karaokeEmpty": "先选择一个歌曲包",
+    "ready": "可进入",
+    "needsPackage": "需要歌曲包",
+    "cached": "已有缓存"
+  },
+  "home": {
+    "title": "把任何歌曲变成练唱房间。",
+    "subtitle": "贴链接或拖入本地媒体。VocalFlow 会把歌词、播放、预览视频和人声分离资源打包成本地歌曲包。",
+    "captureHint": "从一首歌开始"
+  },
+  "actions": {
+    "run": "运行",
+    "stop": "停止",
+    "cancel": "取消",
+    "open": "打开",
+    "remove": "移除",
+    "copy": "复制",
+    "back": "返回",
+    "search": "搜索",
+    "searching": "搜索中…",
+    "enterKaraoke": "进入卡拉 OK",
+    "tryInKaraoke": "在卡拉 OK 试听"
+  },
+  "errors": {
+    "ytDlp": "缺少 yt-dlp。请先准备运行环境，然后重试。",
+    "ffmpeg": "缺少或无法使用 ffmpeg。请安装 ffmpeg，或重新安装 VocalFlow。",
+    "whisper": "本地转写环境尚未准备好。请先准备 Whisper 运行环境。",
+    "whisperTimestamped": "尚未安装逐字对齐依赖；可安装 whisper-timestamped，或使用更快的 fallback。",
+    "separator": "人声分离环境尚未准备好。请安装 audio-separator，或本次关闭人声分离。",
+    "noPlatformSubtitles": "没有找到平台字幕。请开启本地 fallback，或改用本地转写。",
+    "cookies": "这个视频可能需要浏览器 cookies 或登录。请在桌面选项中添加浏览器 cookies 后重试。",
+    "unsupportedMedia": "这个输入不是支持的媒体文件。请使用音频、视频、文件夹或受支持的链接。"
+  }
+}

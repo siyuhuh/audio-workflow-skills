@@ -144,7 +144,7 @@ export function KaraokeReview({
 
       <div
         aria-label={t("package:timedLines")}
-        className="grid max-h-[640px] auto-rows-min gap-1 overflow-y-auto rounded-lg border border-border bg-card p-2 shadow-sm"
+        className="grid max-h-[640px] auto-rows-min gap-1 overflow-y-auto rounded-lg border border-border bg-card p-2 shadow-sm [scrollbar-color:gray_transparent] [scrollbar-width:thin]"
       >
         {cues.length === 0 ? (
           <p className="m-0 px-2 py-4 text-sm font-medium text-muted-foreground">

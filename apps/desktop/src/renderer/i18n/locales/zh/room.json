@@ -1,0 +1,88 @@
+{
+  "drawerToggle": "Room Remote",
+  "drawerToggleOpen": "收起房间",
+  "drawerToggleClosed": "展开房间",
+  "panelTitle": "手机点歌",
+  "panelHint": "在同一 Wi-Fi 下扫码，可在手机端搜索 YouTube 并加入房间队列。",
+  "copyLink": "复制链接",
+  "copied": "已复制远程房间链接。",
+  "starting": "房间服务启动中…",
+  "runNext": "运行下一首",
+  "clearQueue": "清空已完成 / 待处理",
+  "queueEmpty": "暂无手机点歌。",
+  "queueRun": "运行",
+  "queueRemove": "移除",
+  "statusDot": "存在房间请求",
+  "title": "演唱房间",
+  "settings": "房间",
+  "song": "演唱歌曲",
+  "lyrics": "歌词",
+  "optionalStem": "可选分轨",
+  "vocalOnly": "仅人声",
+  "style": "字",
+  "stylePanel": "文字样式",
+  "styleHint": "调整当前演唱房间的歌词观感。",
+  "styleLive": "实时",
+  "stylePreview": "预览",
+  "styleSample": "时间等不了人",
+  "tracks": {
+    "original": "原曲",
+    "backing": "伴奏",
+    "vocal": "人声"
+  },
+  "effects": {
+    "sweep": "绿色扫光",
+    "outline": "描边",
+    "neon": "霓虹",
+    "impact": "冲击"
+  },
+  "effectDescriptions": {
+    "sweep": "逐字填色",
+    "outline": "高对比描边",
+    "neon": "柔和舞台光",
+    "impact": "节拍冲击"
+  },
+  "fonts": {
+    "rounded": "圆体",
+    "poster": "海报",
+    "serif": "衬线",
+    "mono": "等宽"
+  },
+  "fontDescriptions": {
+    "rounded": "清晰默认",
+    "poster": "大字舞台",
+    "serif": "抒情质感",
+    "mono": "节拍网格"
+  },
+  "effectHint": "填色 / 描边",
+  "fontHint": "歌词气质",
+  "mic": {
+    "title": "麦克风输入",
+    "monitor": "监听",
+    "monitorOn": "监听已开",
+    "systemDefault": "系统默认输入",
+    "level": "监听音量",
+    "headphones": "建议佩戴耳机，避免回声啸叫。",
+    "noiseReduction": "降噪 / 回声抑制",
+    "noiseReductionHint": "可能减少啸叫，但也可能影响唱歌音色。"
+  },
+  "editLyrics": "编辑歌词",
+  "noLocalTrack": "没有本地音轨",
+  "noLocalAudio": "没有可用的本地音频轨道。",
+  "trackRole": "音轨角色",
+  "effect": "歌词效果",
+  "font": "歌词字体",
+  "returnTrack": "返回",
+  "useTrack": "使用",
+  "trackLabels": {
+    "backingTrack": "伴奏轨",
+    "vocalOnly": "仅人声",
+    "customTrack": "自定义音轨",
+    "originalMix": "原始混音"
+  },
+  "transport": {
+    "restart": "重新开始",
+    "play": "播放",
+    "pause": "暂停"
+  }
+}
