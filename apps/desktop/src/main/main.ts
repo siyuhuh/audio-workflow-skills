@@ -33,7 +33,7 @@ const webLogClients = new Set<ServerResponse>();
 const roomEventClients = new Set<ServerResponse>();
 let savedHistory: SavedJobHistory[] = [];
 let hiddenSampleIds = new Set<string>();
-let userSettings: UserSettings = { locale: null, themeMode: "system", accentColor: "green" };
+let userSettings: UserSettings = { locale: null, themeMode: "dark", accentColor: "green" };
 let webApiServer: Server | null = null;
 const roomToken = randomUUID().replaceAll("-", "").slice(0, 12);
 let roomQueue: RoomQueueItem[] = [];
@@ -360,13 +360,13 @@ function registerIpcHandlers(): void {
 function loadUserSettings(): void {
   try {
     if (!existsSync(userSettingsFilePath())) {
-      userSettings = { locale: null, themeMode: "system", accentColor: "green" };
+      userSettings = { locale: null, themeMode: "dark", accentColor: "green" };
       return;
     }
     const parsed = JSON.parse(readFileSync(userSettingsFilePath(), "utf-8")) as Partial<UserSettings>;
-    userSettings = mergeUserSettings({ locale: null, themeMode: "system", accentColor: "green" }, parsed);
+    userSettings = mergeUserSettings({ locale: null, themeMode: "dark", accentColor: "green" }, parsed);
   } catch {
-    userSettings = { locale: null, themeMode: "system", accentColor: "green" };
+    userSettings = { locale: null, themeMode: "dark", accentColor: "green" };
   }
 }
 
@@ -398,10 +398,7 @@ function mergeUserSettings(current: UserSettings, patch: Partial<UserSettings> |
   }
   if ("accentColor" in patch) {
     const accentColor = patch.accentColor;
-    next.accentColor =
-      accentColor === "amber" || accentColor === "blue" || accentColor === "green" || accentColor === "pink" || accentColor === "purple"
-        ? accentColor
-        : current.accentColor;
+    next.accentColor = accentColor === "green" ? accentColor : current.accentColor;
   }
   return next;
 }
@@ -734,23 +731,24 @@ function remoteRoomHtml(): string {
   <title>VocalFlow Remote</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; background: #10110d; color: #f6f2e8; }
+    body { margin: 0; min-height: 100vh; background: oklch(0.2303 0.0125 264.2926); color: oklch(0.9219 0 0); }
     main { width: min(720px, calc(100% - 28px)); margin: 0 auto; padding: 22px 0 36px; display: grid; gap: 18px; }
     h1, h2, p { margin: 0; }
-    .card { border: 1px solid #3a3d30; border-radius: 18px; padding: 16px; background: #1a1c15; box-shadow: 0 20px 70px rgba(0,0,0,.24); }
-    .muted { color: #b9b49f; font-size: 14px; line-height: 1.45; }
-    label { display: grid; gap: 6px; font-size: 13px; color: #cbc5b0; font-weight: 700; }
-    input { min-height: 44px; border: 1px solid #4a4e3d; border-radius: 12px; padding: 0 12px; background: #11120e; color: #fff7e8; font: inherit; }
-    button { min-height: 42px; border: 0; border-radius: 999px; padding: 0 16px; font-weight: 900; background: #e6f36b; color: #17180f; }
-    button.secondary { background: #2b2f22; color: #f6f2e8; border: 1px solid #4a4e3d; }
+    .card { border: 1px solid oklch(0.3867 0 0); border-radius: 8px; padding: 16px; background: oklch(0.3210 0.0078 223.6661); box-shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10); }
+    .muted { color: oklch(0.7155 0 0); font-size: 14px; line-height: 1.45; }
+    label { display: grid; gap: 6px; font-size: 13px; color: oklch(0.7155 0 0); font-weight: 500; }
+    input { min-height: 44px; border: 1px solid oklch(0.3867 0 0); border-radius: 6px; padding: 0 12px; background: oklch(0.2303 0.0125 264.2926); color: oklch(0.9219 0 0); font: inherit; }
+    input:focus-visible { outline: 2px solid color-mix(in oklch, oklch(0.7395 0.2268 142.8504) 58%, transparent); outline-offset: 2px; border-color: oklch(0.7395 0.2268 142.8504); }
+    button { min-height: 42px; border: 0; border-radius: 6px; padding: 0 16px; font-weight: 500; background: oklch(0.7395 0.2268 142.8504); color: #000; }
+    button.secondary { background: oklch(0.7395 0.2268 142.8504); color: #000; border: 1px solid oklch(0.3867 0 0); }
     button:disabled { opacity: .5; }
     .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
     .row > label { flex: 1 1 220px; }
-    .status { color: #e6f36b; font-size: 13px; min-height: 18px; }
+    .status { color: oklch(0.8148 0.0819 225.7537); font-size: 13px; min-height: 18px; }
     .results, .queue { list-style: none; display: grid; gap: 10px; padding: 0; margin: 12px 0 0; }
-    li { border: 1px solid #34382b; border-radius: 14px; padding: 12px; background: #13140f; }
-    .title { font-weight: 900; line-height: 1.3; }
-    .sub { color: #a9a38e; font-size: 12px; margin-top: 4px; }
+    li { border: 1px solid oklch(0.3867 0 0); border-radius: 8px; padding: 12px; background: oklch(0.3210 0.0078 223.6661); }
+    .title { font-weight: 600; line-height: 1.3; }
+    .sub { color: oklch(0.7155 0 0); font-size: 12px; margin-top: 4px; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   </style>
 </head>

@@ -21,239 +21,112 @@ import type {
   YoutubeSearchResult
 } from "../shared/types";
 import type { JobProgressStage } from "../shared/types";
-import { hydrateLocaleFromHost, setAppLocale, SUPPORTED_LOCALES } from "./i18n";
-
-interface StageProgress {
-  name: string;
-  progress: number;
-  message?: string;
-  done: boolean;
-  failed: boolean;
-}
-
-const PIPELINE_STAGES: ReadonlyArray<{ id: string; labelKey: string }> = [
-  { id: "prepare", labelKey: "capture:stages.prepare" },
-  { id: "download", labelKey: "capture:stages.download" },
-  { id: "separate", labelKey: "capture:stages.separate" },
-  { id: "convert", labelKey: "capture:stages.convert" },
-  { id: "transcribe", labelKey: "capture:stages.transcribe" },
-  { id: "write", labelKey: "capture:stages.write" },
-  { id: "preview", labelKey: "capture:stages.preview" }
-];
+import { hydrateLocaleFromHost, setAppLocale } from "./i18n";
+import { motionDuration, motionEase } from "./lib/motion";
+import type { Translator } from "./lib/types";
+import {
+  type Cue,
+  type TimedWord,
+  formatClock,
+  inferTimedWords,
+  shouldUseCompactWordSpacing,
+  withTimedWords,
+  wordProgressForTime
+} from "./lib/lyrics";
+import { StageChain, clampProgress, type StageProgress } from "./components/StageChain";
+import { FloatingBottomNav, type AppNavTarget } from "./components/FloatingBottomNav";
+import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import { RoomRemoteDrawer } from "./components/RoomRemoteDrawer";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { PackageBadges } from "./components/PackageBadges";
+import { FeaturedPackageCard } from "./components/FeaturedPackageCard";
+import { ProcessedResourceCard } from "./components/ProcessedResourceCard";
+import { ScriptReview } from "./components/ScriptReview";
+import { FilesReview } from "./components/FilesReview";
+import { KaraokeReview } from "./components/KaraokeReview";
+import { type LyricEffect, type LyricFont } from "./components/KaraokeLyricLine";
+import {
+  type AudioInputDevice,
+  type MicrophoneMonitorController
+} from "./components/MicrophoneMonitorPanel";
+import { LyricsReviewScene } from "./scenes/LyricsReviewScene";
+import { KaraokeRoomScene } from "./scenes/KaraokeRoomScene";
+import { cn } from "./lib/cn";
+import { Button } from "./components/ui/Button";
+import { Eyebrow } from "./components/ui/Eyebrow";
+import { Field } from "./components/ui/Field";
+import { Checkbox } from "./components/ui/Checkbox";
+import { SegmentedControl } from "./components/ui/SegmentedControl";
 
 function isSampleHistoryEntry(entry: SavedJobHistory): boolean {
   return entry.input.startsWith("sample:") || entry.id.startsWith("sample:");
 }
 
-function clampProgress(value: number): number {
-  if (!Number.isFinite(value) || value < 0) {
-    return 0;
-  }
-  if (value > 1) {
-    return 1;
-  }
-  return value;
+interface ProcessedResourceCardEntryProps {
+  entry: SavedJobHistory;
+  onEnter: () => void;
+  onReview: () => void;
+  onDelete: () => void;
 }
 
-interface StageChainProps {
-  stages: Map<string, StageProgress>;
-  isRunning: boolean;
-  t: Translator;
-}
-
-function StageChain({ stages, isRunning, t }: StageChainProps) {
-  const visible = PIPELINE_STAGES.filter((stage) => stages.has(stage.id));
-  if (visible.length === 0) {
-    return null;
-  }
+function ProcessedResourceCardEntry({ entry, onEnter, onReview, onDelete }: ProcessedResourceCardEntryProps) {
+  const title = reviewDisplayTitle(entry);
+  const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
+  const isSample = isSampleHistoryEntry(entry);
+  const hasStems = entry.assets.some(
+    (asset) => asset.exists && (asset.role === "backing" || asset.role === "vocal")
+  );
+  const hasLyrics = Boolean(entry.primarySubtitle);
+  const coverPath =
+    entry.playbackBundle.videoPreviewPath ??
+    (entry.playbackBundle.localVideoPath && isVideoPath(entry.playbackBundle.localVideoPath)
+      ? entry.playbackBundle.localVideoPath
+      : null);
+  const coverUrl = useMediaUrl(coverPath) || null;
   return (
-    <div className="stageChain" role="status" aria-live="polite" data-running={isRunning ? "true" : "false"}>
-      {visible.map((stage) => {
-        const progress = stages.get(stage.id);
-        if (!progress) {
-          return null;
-        }
-        const fraction = clampProgress(progress.progress);
-        const state = progress.failed ? "failed" : progress.done ? "done" : fraction > 0 ? "active" : "pending";
-        return (
-          <div key={stage.id} className="stageChainItem" data-state={state}>
-            <div className="stageChainLabel">{t(stage.labelKey)}</div>
-            <div className="stageChainBar">
-              <span className="stageChainFill" style={{ width: `${Math.round(fraction * 100)}%` }} />
-            </div>
-            {progress.message ? <div className="stageChainMessage">{progress.message}</div> : null}
-          </div>
-        );
-      })}
-    </div>
+    <ProcessedResourceCard
+      title={title}
+      canEnter={canEnter}
+      isSample={isSample}
+      hasStems={hasStems}
+      hasLyrics={hasLyrics}
+      playbackSummary={playbackSummary(entry.playbackBundle)}
+      coverUrl={coverUrl}
+      onEnter={onEnter}
+      onReview={onReview}
+      onDelete={onDelete}
+    />
   );
 }
 
-type AppNavTarget = "home" | "add" | "karaoke";
-
-interface FloatingBottomNavProps {
-  active: AppNavTarget;
-  karaokeDisabled: boolean;
-  contextTitle: string;
-  contextSubtitle: string;
-  contextAction?: string;
-  onHome: () => void;
-  onAdd: () => void;
-  onKaraoke: () => void;
-  t: Translator;
+interface FeaturedPackageEntryProps {
+  entry: SavedJobHistory;
+  variant: "continue" | "sample";
+  onEnter: () => void;
+  onOpen: () => void;
 }
 
-function FloatingBottomNav({ active, karaokeDisabled, contextTitle, contextSubtitle, contextAction, onHome, onAdd, onKaraoke, t }: FloatingBottomNavProps) {
+function FeaturedPackageEntry({ entry, variant, onEnter, onOpen }: FeaturedPackageEntryProps) {
+  const title = reviewDisplayTitle(entry);
+  const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
+  const coverPath =
+    entry.playbackBundle.videoPreviewPath ??
+    (entry.playbackBundle.localVideoPath && isVideoPath(entry.playbackBundle.localVideoPath)
+      ? entry.playbackBundle.localVideoPath
+      : null);
+  const coverUrl = useMediaUrl(coverPath) || null;
   return (
-    <aside className="floatingBottomDock" data-active-view={active} aria-label={t("common:nav.label")}>
-      <div className="floatingDockContext">
-        <div>
-          <p>{contextTitle}</p>
-          <span>{contextSubtitle}</span>
-        </div>
-        {contextAction ? <strong>{contextAction}</strong> : null}
-      </div>
-      <nav className="floatingBottomNav" aria-label={t("common:nav.label")}>
-        <button type="button" data-active={active === "home"} onClick={onHome}>
-          {t("common:nav.home")}
-        </button>
-        <button type="button" data-active={active === "add"} onClick={onAdd}>
-          {t("common:nav.add")}
-        </button>
-        <button type="button" data-active={active === "karaoke"} onClick={onKaraoke} disabled={karaokeDisabled}>
-          {t("common:nav.karaoke")}
-        </button>
-      </nav>
-    </aside>
+    <FeaturedPackageCard
+      entry={entry}
+      variant={variant}
+      onEnter={onEnter}
+      onOpen={onOpen}
+      title={title}
+      canEnter={canEnter}
+      coverUrl={coverUrl}
+      playbackSummary={playbackSummary(entry.playbackBundle)}
+    />
   );
-}
-
-interface SdfCircle {
-  x: number;
-  y: number;
-  r: number;
-  speed: number;
-  phase: number;
-}
-
-const SDF_CIRCLES: SdfCircle[] = [
-  { x: 0.22, y: 0.38, r: 0.24, speed: 0.32, phase: 0.4 },
-  { x: 0.52, y: 0.28, r: 0.18, speed: 0.24, phase: 2.1 },
-  { x: 0.78, y: 0.5, r: 0.26, speed: 0.28, phase: 3.2 },
-  { x: 0.36, y: 0.78, r: 0.2, speed: 0.36, phase: 4.6 },
-  { x: 0.68, y: 0.76, r: 0.15, speed: 0.42, phase: 5.3 }
-];
-
-function smoothMin(a: number, b: number, k: number): number {
-  const h = Math.max(k - Math.abs(a - b), 0) / k;
-  return Math.min(a, b) - h * h * k * 0.25;
-}
-
-function parseCssColor(value: string): [number, number, number] {
-  const trimmed = value.trim();
-  const hex = trimmed.match(/^#([0-9a-f]{6})$/i)?.[1];
-  if (hex) {
-    return [Number.parseInt(hex.slice(0, 2), 16), Number.parseInt(hex.slice(2, 4), 16), Number.parseInt(hex.slice(4, 6), 16)];
-  }
-  const rgb = trimmed.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
-  if (rgb) {
-    return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
-  }
-  return [22, 138, 74];
-}
-
-function SdfHomeScene() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return;
-    }
-
-    const context = canvas.getContext("2d", { alpha: true });
-    if (!context) {
-      return;
-    }
-
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
-    let frame = 0;
-    let raf = 0;
-    let disposed = false;
-
-    const render = () => {
-      if (disposed) {
-        return;
-      }
-
-      const rect = canvas.getBoundingClientRect();
-      const scale = Math.min(window.devicePixelRatio || 1, 2);
-      const width = Math.max(180, Math.floor(rect.width * scale));
-      const height = Math.max(100, Math.floor(rect.height * scale));
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-
-      const sampleWidth = 220;
-      const sampleHeight = Math.max(90, Math.floor(sampleWidth * (height / width)));
-      const image = context.createImageData(sampleWidth, sampleHeight);
-      const styles = getComputedStyle(canvas);
-      const accent = parseCssColor(styles.getPropertyValue("--color-accent"));
-      const accentStrong = parseCssColor(styles.getPropertyValue("--color-accent-strong"));
-      const t = reduceMotion ? 0.8 : frame * 0.016;
-      const aspect = sampleWidth / sampleHeight;
-
-      for (let y = 0; y < sampleHeight; y += 1) {
-        for (let x = 0; x < sampleWidth; x += 1) {
-          const uvx = (x / sampleWidth - 0.5) * aspect;
-          const uvy = y / sampleHeight - 0.5;
-          let d = 10;
-          for (const circle of SDF_CIRCLES) {
-            const wobbleX = Math.sin(t * circle.speed + circle.phase) * 0.04;
-            const wobbleY = Math.cos(t * (circle.speed * 0.8) + circle.phase) * 0.035;
-            const cx = (circle.x - 0.5) * aspect + wobbleX;
-            const cy = circle.y - 0.5 + wobbleY;
-            const dist = Math.hypot(uvx - cx, uvy - cy) - circle.r;
-            d = smoothMin(d, dist, 0.08);
-          }
-
-          const edge = Math.max(0, Math.min(1, (0.018 - d) / 0.036));
-          const glow = Math.max(0, Math.min(1, (0.18 - d) / 0.18));
-          const shade = Math.max(0, Math.min(1, 0.55 + (uvx + uvy) * 0.28));
-          const alpha = Math.max(edge, glow * 0.28);
-          const idx = (y * sampleWidth + x) * 4;
-          image.data[idx] = Math.round(accentStrong[0] * (1 - shade) + accent[0] * shade);
-          image.data[idx + 1] = Math.round(accentStrong[1] * (1 - shade) + accent[1] * shade);
-          image.data[idx + 2] = Math.round(accentStrong[2] * (1 - shade) + accent[2] * shade);
-          image.data[idx + 3] = Math.round(alpha * 220);
-        }
-      }
-
-      const offscreen = document.createElement("canvas");
-      offscreen.width = sampleWidth;
-      offscreen.height = sampleHeight;
-      offscreen.getContext("2d")?.putImageData(image, 0, 0);
-      context.clearRect(0, 0, width, height);
-      context.imageSmoothingEnabled = true;
-      context.drawImage(offscreen, 0, 0, width, height);
-
-      frame += 1;
-      if (!reduceMotion) {
-        raf = window.requestAnimationFrame(render);
-      }
-    };
-
-    render();
-    return () => {
-      disposed = true;
-      if (raf) {
-        window.cancelAnimationFrame(raf);
-      }
-    };
-  }, []);
-
-  return <canvas ref={canvasRef} className="homeSdfCanvas" aria-hidden="true" />;
 }
 
 declare global {
@@ -265,9 +138,34 @@ declare global {
 type JobStatus = "idle" | "running" | "complete" | "failed" | "canceled";
 type ReviewTab = "karaoke" | "script" | "files";
 type AppScene = "workspace" | "lyrics-review" | "karaoke-room";
+
+interface StatusPillProps {
+  state: JobStatus;
+  children: ReactNode;
+}
+
+function StatusPill({ state, children }: StatusPillProps) {
+  const stateClass =
+    state === "running"
+      ? "border-primary/45 bg-accent-soft text-accent-strong"
+      : state === "complete"
+        ? "border-success/45 bg-success-soft text-success"
+        : state === "failed" || state === "canceled"
+          ? "border-danger/45 bg-danger-soft text-danger"
+          : "border-border bg-card text-muted-foreground";
+
+  return (
+    <div
+      className={cn(
+        "inline-flex min-h-8 items-center rounded-full border px-3 text-xs font-medium",
+        stateClass
+      )}
+    >
+      {children}
+    </div>
+  );
+}
 type TrackRole = "original" | "backing" | "vocal" | "custom";
-type LyricEffect = "outline" | "sweep" | "neon" | "impact";
-type LyricFont = "rounded" | "poster" | "serif" | "mono";
 
 interface JobRecord {
   id: string;
@@ -275,22 +173,6 @@ interface JobRecord {
   status: JobStatus;
   startedAt: string;
   result?: JobResult;
-}
-
-interface Cue {
-  start: number;
-  end: number;
-  text: string;
-  words?: TimedWord[];
-}
-
-interface TimedWord {
-  id: string;
-  text: string;
-  start: number;
-  end: number;
-  confidence?: number;
-  compact?: boolean;
 }
 
 interface TrackAssets {
@@ -325,52 +207,12 @@ interface PlaybackController {
   onSeeked: (event: SyntheticEvent<HTMLMediaElement>) => void;
 }
 
-interface AudioInputDevice {
-  deviceId: string;
-  label: string;
-}
-
-interface MicrophoneMonitorController {
-  devices: AudioInputDevice[];
-  selectedDeviceId: string;
-  isMonitoring: boolean;
-  monitorGain: number;
-  noiseReduction: boolean;
-  status: string;
-  setSelectedDeviceId: (deviceId: string) => void;
-  setIsMonitoring: (enabled: boolean) => void;
-  setMonitorGain: (gain: number) => void;
-  setNoiseReduction: (enabled: boolean) => void;
-  refreshDevices: () => void;
-}
-
 interface ResourcePackage {
   entry: SavedJobHistory;
   duplicateIds: string[];
 }
 
-interface HoverFillOption<T extends string> {
-  value: T;
-  label: string;
-  disabled?: boolean;
-}
-
-interface HoverFillRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 const allFormats: OutputFormat[] = ["lrc", "srt", "vtt", "txt", "json", "ass"];
-const motionEase = [0.23, 1, 0.32, 1] as const;
-const motionDuration = {
-  instant: 0.01,
-  fast: 0.14,
-  base: 0.18,
-  panel: 0.2,
-  drawer: 0.22
-} as const;
 const lyricEffectOptions: Array<[LyricEffect, string]> = [
   ["sweep", "Blue sweep"],
   ["outline", "Outline"],
@@ -425,18 +267,11 @@ function createHttpAudioWorkflowApi(): AudioWorkflowApi {
       const parsed = JSON.parse(window.localStorage.getItem("vocalflow.settings") ?? "{}") as Partial<UserSettings>;
       return {
         locale: parsed.locale === "en" || parsed.locale === "zh" ? parsed.locale : null,
-        themeMode: parsed.themeMode === "light" || parsed.themeMode === "dark" || parsed.themeMode === "system" ? parsed.themeMode : "system",
-        accentColor:
-          parsed.accentColor === "amber" ||
-          parsed.accentColor === "blue" ||
-          parsed.accentColor === "green" ||
-          parsed.accentColor === "pink" ||
-          parsed.accentColor === "purple"
-            ? parsed.accentColor
-            : "amber"
+        themeMode: parsed.themeMode === "light" || parsed.themeMode === "dark" || parsed.themeMode === "system" ? parsed.themeMode : "dark",
+        accentColor: parsed.accentColor === "green" ? parsed.accentColor : "green"
       };
     } catch {
-      return { locale: null, themeMode: "system", accentColor: "green" };
+      return { locale: null, themeMode: "dark", accentColor: "green" };
     }
   };
 
@@ -524,254 +359,10 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-type Translator = (key: string, options?: Record<string, unknown>) => string;
-
-interface RoomRemoteDrawerProps {
-  open: boolean;
-  onClose: () => void;
-  roomStatus: RoomStatus | null;
-  roomQrDataUrl: string;
-  roomMessage: string;
-  roomQueue: RoomQueueItem[];
-  nextRoomRequest: RoomQueueItem | null;
-  isRunning: boolean;
-  onCopyLink: () => void | Promise<void>;
-  onProcessItem: (item: RoomQueueItem) => void | Promise<void>;
-  onRemoveItem: (itemId: string) => void | Promise<void>;
-  onClearQueue: () => void | Promise<void>;
-  t: Translator;
-}
-
-function RoomRemoteDrawer({
-  open,
-  onClose,
-  roomStatus,
-  roomQrDataUrl,
-  roomMessage,
-  roomQueue,
-  nextRoomRequest,
-  isRunning,
-  onCopyLink,
-  onProcessItem,
-  onRemoveItem,
-  onClearQueue,
-  t
-}: RoomRemoteDrawerProps) {
-  return (
-    <AnimatePresence>
-      {open ? (
-        <motion.aside
-          key="roomDrawer"
-          id="vocalflow-room-drawer"
-          className="roomDrawer"
-          role="dialog"
-          aria-label={t("room:panelTitle")}
-          initial={{ opacity: 0, x: 24 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 24 }}
-          transition={{ duration: motionDuration.panel, ease: motionEase }}
-        >
-          <div className="roomDrawerScrim" onClick={onClose} aria-hidden="true" />
-          <div className="roomDrawerPanel">
-            <div className="roomDrawerHeader">
-              <div>
-                <p className="eyebrow">{t("room:drawerToggle")}</p>
-                <h2>{t("room:panelTitle")}</h2>
-                <p className="roomHint">{t("room:panelHint")}</p>
-              </div>
-              <button type="button" className="secondaryButton" onClick={onClose} aria-label={t("common:actions.cancel")}>
-                {t("room:drawerToggleOpen")}
-              </button>
-            </div>
-            <div className="roomDrawerBody">
-              <div className="roomQrCard">
-                {roomQrDataUrl ? <img src={roomQrDataUrl} alt={t("room:drawerToggle")} /> : <div className="roomQrPlaceholder">QR</div>}
-                <button type="button" className="secondaryButton" onClick={() => void onCopyLink()} disabled={!roomStatus?.remoteUrl}>
-                  {t("room:copyLink")}
-                </button>
-              </div>
-              <div className="roomQueueCard">
-                <div className="roomLinkLine">{roomStatus?.remoteUrl ?? t("room:starting")}</div>
-                {roomMessage ? <p className="roomMessage">{roomMessage}</p> : null}
-                <div className="roomQueueActions">
-                  <button
-                    type="button"
-                    className="primaryButton"
-                    onClick={() => nextRoomRequest && void onProcessItem(nextRoomRequest)}
-                    disabled={!nextRoomRequest || isRunning}
-                  >
-                    {t("room:runNext")}
-                  </button>
-                  <button type="button" className="secondaryButton" onClick={() => void onClearQueue()} disabled={roomQueue.length === 0}>
-                    {t("room:clearQueue")}
-                  </button>
-                </div>
-                <ul className="roomQueueList" aria-label={t("room:panelTitle")}>
-                  {roomQueue.length > 0 ? (
-                    roomQueue.map((item, index) => (
-                      <li key={item.id} className="roomQueueItem" data-status={item.status}>
-                        <div>
-                          <div className="roomQueueTitle">
-                            {index + 1}. {item.title}
-                          </div>
-                          <div className="roomQueueMeta">
-                            {item.requestedBy} · {item.status}
-                          </div>
-                        </div>
-                        <div className="roomQueueItemActions">
-                          {item.status === "queued" ? (
-                            <button type="button" className="secondaryButton" onClick={() => void onProcessItem(item)} disabled={isRunning}>
-                              {t("room:queueRun")}
-                            </button>
-                          ) : null}
-                          <button type="button" className="secondaryButton" onClick={() => void onRemoveItem(item.id)} disabled={item.status === "running"}>
-                            {t("room:queueRemove")}
-                          </button>
-                        </div>
-                      </li>
-                    ))
-                  ) : (
-                    <li className="roomQueueEmpty">{t("room:queueEmpty")}</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </motion.aside>
-      ) : null}
-    </AnimatePresence>
-  );
-}
-
-interface LanguageSwitcherProps {
-  value: AppLocale;
-  onChange: (next: AppLocale) => void | Promise<void>;
-  t: Translator;
-}
-
-function LanguageSwitcher({ value, onChange, t }: LanguageSwitcherProps) {
-  return (
-    <div className="languageSwitcher" role="group" aria-label={t("common:language.label")}>
-      {SUPPORTED_LOCALES.map((locale) => (
-        <button
-          key={locale}
-          type="button"
-          className="languageSwitcherButton"
-          data-selected={locale === value}
-          onClick={() => void onChange(locale)}
-          aria-pressed={locale === value}
-        >
-          {locale === "en" ? t("common:language.english") : t("common:language.chinese")}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-const THEME_MODES: readonly ThemeMode[] = ["system", "light", "dark"] as const;
-const ACCENT_COLORS: readonly AccentColor[] = ["amber", "blue", "green", "pink", "purple"] as const;
-
-interface SettingsPanelProps {
-  open: boolean;
-  onClose: () => void;
-  themeMode: ThemeMode;
-  accentColor: AccentColor;
-  locale: AppLocale;
-  onThemeModeChange: (themeMode: ThemeMode) => void | Promise<void>;
-  onAccentColorChange: (accentColor: AccentColor) => void | Promise<void>;
-  onLocaleChange: (locale: AppLocale) => void | Promise<void>;
-  t: Translator;
-}
-
-function SettingsPanel({
-  open,
-  onClose,
-  themeMode,
-  accentColor,
-  locale,
-  onThemeModeChange,
-  onAccentColorChange,
-  onLocaleChange,
-  t
-}: SettingsPanelProps) {
-  return (
-    <AnimatePresence>
-      {open ? (
-        <motion.aside
-          key="settingsPanel"
-          className="settingsPanel"
-          role="dialog"
-          aria-label={t("settings:title")}
-          initial={{ opacity: 0, x: 24 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 24 }}
-          transition={{ duration: motionDuration.panel, ease: motionEase }}
-        >
-          <div className="settingsScrim" onClick={onClose} aria-hidden="true" />
-          <div className="settingsSurface">
-            <div className="settingsHeader">
-              <div>
-                <p className="eyebrow">{t("settings:eyebrow")}</p>
-                <h2>{t("settings:title")}</h2>
-              </div>
-              <button type="button" className="secondaryButton" onClick={onClose}>
-                {t("common:actions.cancel")}
-              </button>
-            </div>
-
-            <section className="settingsSection">
-              <div>
-                <h3>{t("settings:appearance.title")}</h3>
-                <p>{t("settings:appearance.description")}</p>
-              </div>
-              <div className="settingsButtonGrid" role="group" aria-label={t("settings:appearance.modeLabel")}>
-                {THEME_MODES.map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className="settingsChoiceButton"
-                    data-selected={mode === themeMode}
-                    onClick={() => void onThemeModeChange(mode)}
-                  >
-                    {t(`settings:appearance.modes.${mode}`)}
-                  </button>
-                ))}
-              </div>
-              <div className="accentGrid" role="group" aria-label={t("settings:appearance.accentLabel")}>
-                {ACCENT_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className="accentChoice"
-                    data-accent={color}
-                    data-selected={color === accentColor}
-                    onClick={() => void onAccentColorChange(color)}
-                  >
-                    <span className="accentSwatch" />
-                    {t(`settings:appearance.accents.${color}`)}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="settingsSection">
-              <div>
-                <h3>{t("settings:language.title")}</h3>
-                <p>{t("settings:language.description")}</p>
-              </div>
-              <LanguageSwitcher value={locale} onChange={onLocaleChange} t={t} />
-            </section>
-          </div>
-        </motion.aside>
-      ) : null}
-    </AnimatePresence>
-  );
-}
-
 export default function App() {
   const { t, i18n } = useTranslation();
   const currentLocale = (i18n.resolvedLanguage ?? i18n.language ?? "en") as AppLocale;
-  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const [accentColor, setAccentColor] = useState<AccentColor>("green");
   const [systemPrefersDark, setSystemPrefersDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -830,6 +421,7 @@ export default function App() {
   const packageVideoPath = useMemo(() => packageVideoPathForReview(activeReview), [activeReview]);
   const previewVideoPath = packageVideoPath && packageVideoPath !== selectedMediaPath ? packageVideoPath : null;
   const playbackController = usePlaybackController(selectedMediaPath, previewVideoPath);
+  const microphoneMonitor = useMicrophoneMonitor();
   const wordTimingSubtitlePath = useMemo(() => bestWordTimingSubtitlePath(selectedSubtitlePath, subtitleAssets), [selectedSubtitlePath, subtitleAssets]);
   const cues = useMemo(() => {
     const primaryCues = parseSubtitleFile(selectedSubtitlePath, scriptText);
@@ -908,7 +500,7 @@ export default function App() {
         if (ignore) {
           return;
         }
-        setThemeMode(settings?.themeMode ?? "system");
+        setThemeMode(settings?.themeMode ?? "dark");
         setAccentColor(settings?.accentColor ?? "green");
       })
       .catch(() => undefined);
@@ -1528,6 +1120,7 @@ export default function App() {
           scriptText={scriptText}
           selectedSubtitlePath={selectedSubtitlePath}
           subtitleAssets={subtitleAssets}
+          reviewTitle={reviewDisplayTitle(activeReview)}
           onBack={() => setAppScene("workspace")}
           onEnterKaraoke={saveAndEnterKaraoke}
           onOpenFolder={() => activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)}
@@ -1549,14 +1142,27 @@ export default function App() {
           cues={cues}
           playbackBundle={activeReview.playbackBundle}
           playbackController={playbackController}
-          karaokePackages={karaokePackages}
-          playableAssets={playbackAssets}
-          selectedMediaPath={selectedMediaPath}
-          selectedSubtitlePath={selectedSubtitlePath}
+          songOptions={
+            karaokePackages.some((entry) => entry.id === activeReview.id)
+              ? karaokePackages.map((entry) => ({ id: entry.id, title: reviewDisplayTitle(entry) }))
+              : [
+                  { id: activeReview.id, title: reviewDisplayTitle(activeReview) },
+                  ...karaokePackages.map((entry) => ({ id: entry.id, title: reviewDisplayTitle(entry) }))
+                ]
+          }
           trackAssets={trackAssets}
           trackRole={trackRole}
           lyricEffect={lyricEffect}
           lyricFont={lyricFont}
+          microphoneMonitor={microphoneMonitor}
+          reviewTitle={reviewDisplayTitle(activeReview)}
+          selectedMediaName={
+            playbackAssets.find((asset) => asset.path === selectedMediaPath)?.name ??
+            t("room:noLocalTrack")
+          }
+          selectedSubtitleName={
+            selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : t("package:badges.noLyrics")
+          }
           onBackHome={() => setAppScene("workspace")}
           onBackToLyrics={() => setAppScene("lyrics-review")}
           onLyricEffectChange={setLyricEffect}
@@ -1573,7 +1179,7 @@ export default function App() {
 
   return (
     <motion.main
-      className="appShell"
+      className="appShell mx-auto grid min-h-screen max-w-[1200px] gap-6 px-6 pb-24 pt-6"
       data-has-workspace={showWorkspace}
       data-theme={effectiveTheme}
       data-accent={accentColor}
@@ -1581,96 +1187,109 @@ export default function App() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: motionDuration.base, ease: motionEase }}
     >
-      <section className="startHero libraryShell" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
-        <div className="libraryTopBar">
-          <div className="brandLockup" aria-label={t("common:appName")}>
-            <span className="brandMark" aria-hidden="true">
+      <section
+        className="grid gap-6"
+        onDrop={handleDrop}
+        onDragOver={(event) => event.preventDefault()}
+      >
+        {/* Top bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5" aria-label={t("common:appName")}>
+            <span
+              className="grid size-8 place-items-center rounded-md bg-primary text-sm font-semibold text-primary-foreground shadow-xs"
+              aria-hidden="true"
+            >
               VF
             </span>
-            <span className="brandWordmark">{t("common:appName")}</span>
+            <span className="text-sm font-semibold text-foreground">{t("common:appName")}</span>
           </div>
-          <div className="libraryTopBarActions">
-            <button type="button" className="settingsButton" onClick={() => setSettingsOpen(true)}>
-              {t("settings:button")}
-            </button>
-            <button
-              type="button"
-              className="roomDrawerToggle"
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => setSettingsOpen(true)}>{t("settings:button")}</Button>
+            <Button
               data-active={roomDrawerOpen}
               onClick={() => setRoomDrawerOpen((open) => !open)}
               aria-expanded={roomDrawerOpen}
               aria-controls="vocalflow-room-drawer"
+              className={cn(
+                roomDrawerOpen && "border-line-strong bg-muted text-foreground"
+              )}
             >
               <span>{t("room:drawerToggle")}</span>
               {(roomQueue.length > 0 || roomStatus?.nowPlaying) ? (
-                <span className="roomDrawerStatusDot" aria-label={t("room:statusDot")} />
+                <span
+                  className="ml-1 inline-block size-2 rounded-full bg-primary shadow-[0_0_0_3px_color-mix(in_oklch,var(--ring)_18%,transparent)]"
+                  aria-label={t("room:statusDot")}
+                />
               ) : null}
-            </button>
-            <div className="statusPill" data-state={activeJob?.status ?? "idle"}>
-              {statusMessage}
-            </div>
+            </Button>
+            <StatusPill state={activeJob?.status ?? "idle"}>{statusMessage}</StatusPill>
           </div>
         </div>
 
-        <div className="homeHeroScene" aria-hidden="true">
-          <SdfHomeScene />
-          <span className="homeShaderGrid" />
-          <span className="homeShaderWave" />
+        {/* Hero */}
+        <div className="grid gap-2">
+          <Eyebrow>{t("capture:heroSubtitle")}</Eyebrow>
+          <h1 className="m-0 max-w-[720px] text-[clamp(36px,5vw,48px)] font-semibold leading-none tracking-tight text-foreground">
+            {t("home:title")}
+          </h1>
+          <p className="m-0 max-w-[620px] text-base font-normal leading-normal text-muted-foreground">
+            {t("home:subtitle")}
+          </p>
         </div>
 
-        <div className="homeIntro">
-          <p className="eyebrow">{t("capture:heroSubtitle")}</p>
-          <h1>{t("home:title")}</h1>
-          <p>{t("home:subtitle")}</p>
-        </div>
-
-        <div className="captureBar homeCaptureBar">
-          <p className="captureTagline">{t("home:captureHint")}</p>
-          <div className="heroComposer">
-            <label className="inputLabel" htmlFor="input">
+        {/* Capture composer */}
+        <div className="grid gap-3">
+          <p className="m-0 text-sm font-medium text-faint">{t("home:captureHint")}</p>
+          <div className="grid gap-3 rounded-lg border border-border bg-elevated p-4 shadow-sm backdrop-blur-md">
+            <label className="block text-sm font-medium text-muted-foreground" htmlFor="input">
               {t("capture:inputLabel")}
             </label>
-            <div className="heroInputRow">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
               <input
                 id="input"
                 ref={captureInputRef}
                 value={options.input}
                 onChange={(event) => updateOptions({ input: event.target.value })}
                 placeholder={t("capture:inputPlaceholder")}
+                className="min-h-14 w-full rounded-md border border-line-strong bg-card px-4 text-lg font-medium text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
               />
-              <button
-                type="button"
-                className="primaryButton"
+              <Button
+                variant="primary"
+                size="lg"
                 onClick={() => (cachedPackageForInput ? openCachedInputPackage() : void runJob())}
                 disabled={!options.input.trim() || isRunning}
+                className="min-w-[120px]"
               >
                 {cachedPackageForInput ? t("capture:cache.openExisting") : t("common:actions.run")}
-              </button>
-              {cachedPackageForInput ? (
-                <button type="button" className="secondaryButton" onClick={() => void runJob()} disabled={isRunning}>
-                  {t("capture:cache.redownload")}
-                </button>
-              ) : null}
-              <button type="button" className="secondaryButton" onClick={cancelJob} disabled={!isRunning}>
+              </Button>
+              <Button size="lg" onClick={cancelJob} disabled={!isRunning}>
                 {t("common:actions.stop")}
-              </button>
+              </Button>
             </div>
-            {cachedPackageForInput ? <p className="cacheHint">{t("capture:cache.hint", { title: reviewDisplayTitle(cachedPackageForInput) })}</p> : null}
+            {cachedPackageForInput ? (
+              <>
+                <p className="m-0 text-sm font-semibold text-accent-strong">
+                  {t("capture:cache.hint", { title: reviewDisplayTitle(cachedPackageForInput) })}
+                </p>
+                <Button onClick={() => void runJob()} disabled={isRunning} className="self-start">
+                  {t("capture:cache.redownload")}
+                </Button>
+              </>
+            ) : null}
 
-            <div className="youtubeSearchHeader">
-              <button
-                type="button"
-                className="splitToggleButton"
-                data-selected={youtubePanelOpen}
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                selected={youtubePanelOpen}
                 onClick={() => setYoutubePanelOpen((open) => !open)}
                 aria-expanded={youtubePanelOpen}
               >
                 {t("capture:search.toggle")}
-              </button>
-              <span className="youtubeSearchHint">{t("capture:search.hint")}</span>
+              </Button>
+              <span className="text-sm font-medium text-faint">{t("capture:search.hint")}</span>
             </div>
+
             {youtubePanelOpen ? (
-              <div className="youtubeSearchPanel">
+              <div className="grid gap-3 rounded-md border border-border bg-card p-3">
                 <SegmentedControl
                   value={mediaSearchPlatform}
                   options={[
@@ -1679,9 +1298,8 @@ export default function App() {
                   ]}
                   onChange={setMediaSearchPlatform}
                 />
-                <div className="youtubeSearchControls">
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
                   <input
-                    className="youtubeSearchField"
                     value={youtubeQuery}
                     onChange={(event) => setYoutubeQuery(event.target.value)}
                     onKeyDown={(event) => {
@@ -1692,53 +1310,73 @@ export default function App() {
                     }}
                     placeholder={t("capture:search.placeholder")}
                     aria-label={t("capture:search.toggle")}
+                    className="min-h-10 w-full rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
                   />
-                  <label className="youtubeKaraokeBias">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-muted-foreground">
                     <input
                       type="checkbox"
                       checked={youtubeAppendKaraoke}
                       onChange={(event) => setYoutubeAppendKaraoke(event.target.checked)}
+                      className="size-4 cursor-pointer accent-primary"
                     />
                     <span>{t("capture:search.appendKaraoke")}</span>
                   </label>
-                  <button
-                    type="button"
-                    className="secondaryButton"
+                  <Button
                     onClick={() => void runYoutubeDiscovery()}
                     disabled={youtubeSearching || !youtubeQuery.trim()}
                   >
                     {youtubeSearching ? t("common:actions.searching") : t("common:actions.search")}
-                  </button>
+                  </Button>
                 </div>
-                {youtubeError ? <p className="youtubeSearchError">{youtubeError}</p> : null}
+                {youtubeError ? (
+                  <p className="m-0 text-sm font-medium text-danger">{youtubeError}</p>
+                ) : null}
                 {youtubeResults.length > 0 ? (
-                  <ul className="youtubeResultList" aria-label={t("capture:search.toggle")}>
+                  <ul
+                    aria-label={t("capture:search.toggle")}
+                    className="m-0 grid max-h-[52vh] list-none gap-0 overflow-y-auto overflow-x-hidden rounded-md border border-border p-0"
+                  >
                     {youtubeResults.map((row) => (
-                      <li key={row.videoId} className="youtubeResultRow">
-                        <div className="youtubeResultThumb">
+                      <li
+                        key={row.videoId}
+                        className="flex gap-3 border-b border-border bg-card p-2.5 last:border-b-0"
+                      >
+                        <div className="aspect-video w-40 max-w-[38vw] flex-none self-center overflow-hidden rounded-md bg-black">
                           {searchResultThumbnail(row) ? (
-                            <img src={searchResultThumbnail(row)} alt="" loading="lazy" width={160} height={90} />
+                            <img
+                              src={searchResultThumbnail(row)}
+                              alt=""
+                              loading="lazy"
+                              width={160}
+                              height={90}
+                              className="block h-auto w-full object-cover"
+                            />
                           ) : (
-                            <span>{row.platform === "bilibili" ? t("capture:search.bilibili") : t("capture:search.youtube")}</span>
+                            <span className="grid aspect-video place-items-center text-sm font-bold text-white/85">
+                              {row.platform === "bilibili"
+                                ? t("capture:search.bilibili")
+                                : t("capture:search.youtube")}
+                            </span>
                           )}
                         </div>
-                        <div className="youtubeResultMeta">
-                          <div className="youtubeResultTitle">{row.title}</div>
-                          <div className="youtubeResultSub">
+                        <div className="grid min-w-0 flex-1 gap-1.5">
+                          <div className="overflow-hidden text-ellipsis text-base font-semibold leading-snug text-foreground">
+                            {row.title}
+                          </div>
+                          <div className="text-xs font-medium text-muted-foreground">
                             {row.channel ? `${row.channel} · ` : ""}
                             {row.durationLabel || "—"}
                           </div>
-                          <div className="youtubeResultActions">
-                            <button type="button" className="secondaryButton" onClick={() => applyYoutubeResult(row)}>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" onClick={() => applyYoutubeResult(row)}>
                               {t("capture:search.useThisLink")}
-                            </button>
-                            <button
-                              type="button"
-                              className="secondaryButton"
+                            </Button>
+                            <Button
+                              size="sm"
                               onClick={() => void audioWorkflow.openExternalUrl(row.url)}
                             >
                               {t("capture:search.openInBrowser")}
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       </li>
@@ -1748,8 +1386,8 @@ export default function App() {
               </div>
             ) : null}
 
-            <div className="heroControlRow">
-              <div className="heroModeControl">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="w-[220px] max-w-full">
                 <SegmentedControl
                   value={options.workflowMode}
                   options={[
@@ -1759,16 +1397,21 @@ export default function App() {
                   onChange={setWorkflowMode}
                 />
               </div>
-              <label className="languageControl">
-                <span>{t("common:language.label")}</span>
-                <input value={options.language} onChange={(event) => updateOptions({ language: event.target.value })} placeholder={t("capture:languageHint")} />
+              <label className="grid w-40 gap-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t("common:language.label")}
+                </span>
+                <input
+                  value={options.language}
+                  onChange={(event) => updateOptions({ language: event.target.value })}
+                  placeholder={t("capture:languageHint")}
+                  className="min-h-9 w-full rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
+                />
               </label>
-              <button type="button" className="secondaryButton" onClick={chooseInput}>
-                {t("capture:selectFile")}
-              </button>
-              <button type="button" className="secondaryButton" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
+              <Button onClick={chooseInput}>{t("capture:selectFile")}</Button>
+              <Button onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
                 {advancedOpen ? t("capture:advanced.hide") : t("capture:advanced.show")}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1776,24 +1419,28 @@ export default function App() {
         <StageChain stages={progressStages} isRunning={isRunning} t={t} />
 
         {featuredPackage ? (
-          <FeaturedPackageCard
+          <FeaturedPackageEntry
             entry={featuredPackage.entry}
             variant={featuredVariant}
             onEnter={() => enterKaraokeFromHistory(featuredPackage.entry.id)}
             onOpen={() => selectHistoryEntry(featuredPackage.entry.id)}
-            t={t}
           />
         ) : null}
 
         {shelfPackages.length > 0 ? (
-          <section className="resourceShelf libraryShelf" aria-label={t("library:shelfHeader")}>
-            <div className="resourceShelfHeader">
-              <p className="eyebrow">{t("library:shelfHeader")}</p>
-              <span>{shelfPackages.length}</span>
+          <section
+            aria-label={t("library:shelfHeader")}
+            className="grid gap-3 rounded-lg border border-border bg-card p-4 shadow-sm"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <Eyebrow className="m-0">{t("library:shelfHeader")}</Eyebrow>
+              <span className="text-xs font-medium text-faint tabular-nums">
+                {shelfPackages.length}
+              </span>
             </div>
-            <div className="resourceGrid">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {shelfPackages.map(({ entry, duplicateIds }) => (
-                <ProcessedResourceCard
+                <ProcessedResourceCardEntry
                   key={entry.id}
                   entry={entry}
                   onEnter={() => enterKaraokeFromHistory(entry.id)}
@@ -1806,9 +1453,12 @@ export default function App() {
         ) : null}
 
         {!featuredPackage && shelfPackages.length === 0 ? (
-          <section className="libraryEmpty" aria-label={t("library:emptyTitle")}>
-            <h2>{t("library:emptyTitle")}</h2>
-            <p>{t("library:emptyBody")}</p>
+          <section
+            aria-label={t("library:emptyTitle")}
+            className="grid gap-2 rounded-lg border border-dashed border-border bg-elevated p-8 text-center"
+          >
+            <h2 className="m-0 text-lg font-semibold text-foreground">{t("library:emptyTitle")}</h2>
+            <p className="m-0 text-sm font-medium text-muted-foreground">{t("library:emptyBody")}</p>
           </section>
         ) : null}
       </section>
@@ -1842,59 +1492,82 @@ export default function App() {
       />
 
       {showWorkspace ? (
-        <section className={`workspace guidedWorkspace ${showActivityPane ? "" : "workspaceSolo"}`}>
-          <section className="detailPane guidedDetail" data-empty={!activeReview}>
+        <section
+          className={cn(
+            "grid gap-4",
+            showActivityPane && "lg:grid-cols-[minmax(0,1fr)_300px]"
+          )}
+        >
+          <section className="grid gap-4">
             {activeReview ? (
-              <section className="resultOverview">
-                <div>
-                  <p className="eyebrow">{t("package:current")}</p>
-                  <h2>{activeReviewTitle}</h2>
-                  <p className="reviewMeta">{playbackSummary(activeReview.playbackBundle)}</p>
-                  <PackageBadges playbackBundle={activeReview.playbackBundle} trackAssets={trackAssets} />
+              <section className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-border bg-muted p-4">
+                <div className="grid min-w-0 gap-1">
+                  <Eyebrow>{t("package:current")}</Eyebrow>
+                  <h2 className="m-0 max-w-[720px] truncate text-lg font-semibold leading-snug text-foreground">
+                    {activeReviewTitle}
+                  </h2>
+                  <p className="m-0 text-sm font-medium text-muted-foreground">
+                    {playbackSummary(activeReview.playbackBundle)}
+                  </p>
+                  <PackageBadges
+                    playbackBundle={activeReview.playbackBundle}
+                    trackAssets={trackAssets}
+                  />
                 </div>
-                <div className="resultActions">
+                <div className="flex flex-wrap gap-2">
                   {activeReview.workflowMode === "karaoke" ? (
                     <>
-                      <button type="button" className="secondaryButton" onClick={() => setAppScene("lyrics-review")}>
+                      <Button onClick={() => setAppScene("lyrics-review")}>
                         {t("package:openPackage")}
-                      </button>
-                      <button type="button" className="secondaryButton" onClick={splitActiveReview} disabled={isRunning || Boolean(trackAssets.backing && trackAssets.vocal)}>
+                      </Button>
+                      <Button
+                        onClick={splitActiveReview}
+                        disabled={isRunning || Boolean(trackAssets.backing && trackAssets.vocal)}
+                      >
                         {t("package:splitVocals")}
-                      </button>
-                      <button
-                        type="button"
-                        className="primaryButton"
+                      </Button>
+                      <Button
+                        variant="primary"
                         onClick={() => setAppScene("karaoke-room")}
-                        disabled={!selectedSubtitlePath || !activeReview.playbackBundle.controllable}
+                        disabled={
+                          !selectedSubtitlePath || !activeReview.playbackBundle.controllable
+                        }
                       >
                         {t("package:enterKaraoke")}
-                      </button>
+                      </Button>
                     </>
                   ) : null}
                   {activeReview.sourceUrl ? (
-                    <button type="button" className="secondaryButton" onClick={() => audioWorkflow.openExternalUrl(activeReview.sourceUrl!)}>
+                    <Button
+                      onClick={() => audioWorkflow.openExternalUrl(activeReview.sourceUrl!)}
+                    >
                       {t("package:openOriginal")}
-                    </button>
+                    </Button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="secondaryButton"
+                  <Button
                     disabled={!activeReview.outputDir}
-                    onClick={() => activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)}
+                    onClick={() =>
+                      activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)
+                    }
                   >
                     {t("package:openFolder")}
-                  </button>
+                  </Button>
                 </div>
               </section>
             ) : null}
 
             {activeReview ? (
-              <section className="reviewPane guidedReview">
-                <div className="tabRow">
+              <section className="grid gap-3">
+                <div className="flex flex-wrap gap-2">
                   {(["karaoke", "script", "files"] as ReviewTab[]).map((tab) => (
-                    <button key={tab} type="button" data-selected={reviewTab === tab} onClick={() => setReviewTab(tab)}>
+                    <Button
+                      key={tab}
+                      data-selected={reviewTab === tab}
+                      selected={reviewTab === tab}
+                      onClick={() => setReviewTab(tab)}
+                    >
                       {t(`package:tabs.${tab}`)}
-                    </button>
+                    </Button>
                   ))}
                 </div>
 
@@ -1910,6 +1583,17 @@ export default function App() {
                         playableAssets={playbackAssets}
                         selectedMediaPath={selectedMediaPath}
                         selectedSubtitlePath={selectedSubtitlePath}
+                        isVideo={isVideoPath(selectedMediaPath)}
+                        selectedSubtitleName={
+                          selectedSubtitlePath
+                            ? fileNameFromPath(selectedSubtitlePath)
+                            : t("package:badges.noLyrics")
+                        }
+                        selectedMediaName={
+                          selectedMediaPath
+                            ? fileNameFromPath(selectedMediaPath)
+                            : t("package:noPlayableMedia")
+                        }
                         onSeek={seekToCue}
                       />
                     </motion.div>
@@ -1930,7 +1614,10 @@ export default function App() {
 
                   {reviewTab === "files" ? (
                     <motion.div key="files" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: motionDuration.fast, ease: motionEase }}>
-                      <FilesReview assets={activeReview.assets} />
+                      <FilesReview
+                        assets={activeReview.assets}
+                        onOpen={(path) => audioWorkflow.openPath(path)}
+                      />
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
@@ -1940,13 +1627,13 @@ export default function App() {
           <AnimatePresence initial={false}>
             {advancedOpen ? (
               <motion.section
-                className="advancedDrawer"
+                className="grid gap-3 overflow-hidden"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: motionDuration.drawer, ease: motionEase }}
               >
-                <div className="settingsGrid">
+                <div className="grid gap-3 md:grid-cols-2">
                   <Field label="Subtitle source">
                     <SegmentedControl
                       value={options.subtitleSource}
@@ -1960,7 +1647,11 @@ export default function App() {
                   </Field>
 
                   <Field label="Whisper model">
-                    <select value={options.model} onChange={(event) => updateOptions({ model: event.target.value })}>
+                    <select
+                      value={options.model}
+                      onChange={(event) => updateOptions({ model: event.target.value })}
+                      className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
+                    >
                       <option value="small">small</option>
                       <option value="medium">medium</option>
                       <option value="large-v3-turbo">large-v3-turbo</option>
@@ -1969,19 +1660,34 @@ export default function App() {
                   </Field>
 
                   <Field label="Platform subtitle languages">
-                    <input value={options.subLangs} onChange={(event) => updateOptions({ subLangs: event.target.value })} placeholder="Auto, zh.*,en.*,ja.*" />
+                    <input
+                      value={options.subLangs}
+                      onChange={(event) => updateOptions({ subLangs: event.target.value })}
+                      placeholder="Auto, zh.*,en.*,ja.*"
+                      className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
+                    />
                   </Field>
 
                   <Field label="Browser cookies">
-                    <input value={options.browser} onChange={(event) => updateOptions({ browser: event.target.value })} placeholder="chrome or safari" />
+                    <input
+                      value={options.browser}
+                      onChange={(event) => updateOptions({ browser: event.target.value })}
+                      placeholder="chrome or safari"
+                      className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
+                    />
                   </Field>
 
                   <Field label="cookies.txt">
-                    <input value={options.cookies} onChange={(event) => updateOptions({ cookies: event.target.value })} placeholder="/path/to/cookies.txt" />
+                    <input
+                      value={options.cookies}
+                      onChange={(event) => updateOptions({ cookies: event.target.value })}
+                      placeholder="/path/to/cookies.txt"
+                      className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
+                    />
                   </Field>
                 </div>
 
-                <div className="switchGrid">
+                <div className="grid gap-2 md:grid-cols-2">
                   <Checkbox
                     label="Vocal split"
                     checked={options.separate}
@@ -1998,40 +1704,50 @@ export default function App() {
                   />
                 </div>
 
-                <div className="formatRow" aria-label="Output formats">
+                <div className="flex flex-wrap gap-2" aria-label="Output formats">
                   {allFormats.map((format) => (
-                    <button
+                    <Button
                       key={format}
-                      type="button"
-                      className="formatButton"
-                      data-selected={options.formats.includes(format)}
+                      size="sm"
+                      selected={options.formats.includes(format)}
                       onClick={() => toggleFormat(format)}
                     >
                       {format.toUpperCase()}
-                    </button>
+                    </Button>
                   ))}
                 </div>
 
-                <div className="outputRow">
-                  <label htmlFor="output">Output folder</label>
-                  <input id="output" value={options.outputDir} onChange={(event) => updateOptions({ outputDir: event.target.value })} placeholder="Default output folder" />
-                  <button type="button" className="secondaryButton" onClick={chooseOutputDir}>
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                  <Field label="Output folder">
+                    <input
+                      id="output"
+                      value={options.outputDir}
+                      onChange={(event) => updateOptions({ outputDir: event.target.value })}
+                      placeholder="Default output folder"
+                      className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
+                    />
+                  </Field>
+                  <Button onClick={chooseOutputDir}>
                     Choose
-                  </button>
+                  </Button>
                 </div>
 
-                <section className="commandPane">
-                  <div className="paneHeader">
-                    <h2>{t("capture:advanced.command")}</h2>
+                <section className="grid gap-2 rounded-lg border border-border bg-card p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="m-0 text-sm font-semibold text-foreground">{t("capture:advanced.command")}</h2>
                   </div>
-                  <pre>{preview?.display ?? t("capture:advanced.commandPlaceholder")}</pre>
+                  <pre className="m-0 max-h-48 overflow-auto rounded-md border border-border bg-background p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+                    {preview?.display ?? t("capture:advanced.commandPlaceholder")}
+                  </pre>
                 </section>
 
-                <section className="logPane">
-                  <div className="paneHeader">
-                    <h2>{t("capture:advanced.logs")}</h2>
+                <section className="grid gap-2 rounded-lg border border-border bg-card p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="m-0 text-sm font-semibold text-foreground">{t("capture:advanced.logs")}</h2>
                   </div>
-                  <pre>{logs || t("capture:advanced.logsPlaceholder")}</pre>
+                  <pre className="m-0 max-h-56 overflow-auto rounded-md border border-border bg-background p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+                    {logs || t("capture:advanced.logsPlaceholder")}
+                  </pre>
                 </section>
               </motion.section>
             ) : null}
@@ -2039,19 +1755,29 @@ export default function App() {
           </section>
 
           {showActivityPane ? (
-            <aside className="queuePane activityPane">
-              <div className="paneHeader">
-                <h2>{t("capture:activity.title")}</h2>
-                <span>{jobs.length}</span>
+            <aside className="grid max-h-[calc(100vh-168px)] gap-3 overflow-auto rounded-lg border border-border bg-card p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="m-0 text-sm font-semibold text-foreground">{t("capture:activity.title")}</h2>
+                <span className="font-mono text-xs font-semibold text-faint tabular-nums">{jobs.length}</span>
               </div>
-              <div className="queueList compactList">
+              <div className="grid gap-1.5">
                 {jobs.length === 0 ? (
-                  <p className="emptyText">{t("capture:activity.empty")}</p>
+                  <p className="m-0 text-sm text-faint">{t("capture:activity.empty")}</p>
                 ) : (
                   jobs.map((job) => (
-                    <button key={job.id} type="button" className="queueItem" data-active={job.id === activeJobId} onClick={() => selectQueueJob(job.id)}>
-                      <span className="queueTitle">{job.result?.historyEntry ? reviewDisplayTitle(job.result.historyEntry) : shortInputLabel(job.input)}</span>
-                      <span className="queueMeta">
+                    <button
+                      key={job.id}
+                      type="button"
+                      className={cn(
+                        "grid gap-1 rounded-md border border-border bg-background px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]",
+                        job.id === activeJobId && "border-primary bg-accent-soft"
+                      )}
+                      onClick={() => selectQueueJob(job.id)}
+                    >
+                      <span className="truncate text-sm font-semibold text-foreground">
+                        {job.result?.historyEntry ? reviewDisplayTitle(job.result.historyEntry) : shortInputLabel(job.input)}
+                      </span>
+                      <span className="text-xs font-medium text-muted-foreground">
                         {job.status} - {job.startedAt}
                       </span>
                     </button>
@@ -2059,25 +1785,31 @@ export default function App() {
                 )}
               </div>
 
-              <div className="historyHeader">
-                <h2>{t("capture:history.title")}</h2>
-                <span>{history.length}</span>
+              <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+                <h2 className="m-0 text-sm font-semibold text-foreground">{t("capture:history.title")}</h2>
+                <span className="font-mono text-xs font-semibold text-faint tabular-nums">{history.length}</span>
               </div>
-              <div className="queueList compactList">
+              <div className="grid gap-1.5">
                 {history.length === 0 ? (
-                  <p className="emptyText">{t("capture:history.empty")}</p>
+                  <p className="m-0 text-sm text-faint">{t("capture:history.empty")}</p>
                 ) : (
                   history.map((entry) => (
-                    <div key={entry.id} className="historyItem" data-active={entry.id === selectedHistoryId}>
-                      <button type="button" onClick={() => selectHistoryEntry(entry.id)}>
-                        <span className="queueTitle">{reviewDisplayTitle(entry)}</span>
-                        <span className="queueMeta">
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        "grid gap-2 rounded-md border border-border bg-background p-2",
+                        entry.id === selectedHistoryId && "border-primary bg-accent-soft"
+                      )}
+                    >
+                      <button type="button" className="grid min-w-0 gap-1 text-left" onClick={() => selectHistoryEntry(entry.id)}>
+                        <span className="truncate text-sm font-semibold text-foreground">{reviewDisplayTitle(entry)}</span>
+                        <span className="text-xs font-medium text-muted-foreground">
                           {entry.workflowMode} - {new Date(entry.createdAt).toLocaleString()}
                         </span>
                       </button>
-                      <button type="button" className="removeButton" onClick={() => removeHistoryEntry(entry.id)}>
+                      <Button variant="danger" size="sm" className="justify-self-start" onClick={() => removeHistoryEntry(entry.id)}>
                         {t("common:actions.remove")}
-                      </button>
+                      </Button>
                     </div>
                   ))
                 )}
@@ -2660,879 +2392,9 @@ function useMediaUrl(targetPath: string | null): string {
   return url;
 }
 
-function PackageBadges({ playbackBundle, trackAssets }: { playbackBundle: PlaybackBundle; trackAssets: TrackAssets }) {
-  const { t } = useTranslation();
-  const badges = [
-    playbackBundle.controllable ? t("package:badges.localPlayback") : t("package:badges.playbackMissing"),
-    trackAssets.backing ? t("package:badges.backingStem") : null,
-    trackAssets.vocal ? t("package:badges.vocalStem") : null,
-    playbackBundle.videoPreviewPath ? t("package:badges.videoPreview") : null
-  ].filter((badge): badge is string => Boolean(badge));
 
-  return (
-    <div className="packageBadges" aria-label={t("package:contents")}>
-      {badges.map((badge) => (
-        <span key={badge}>{badge}</span>
-      ))}
-    </div>
-  );
-}
 
-function ProcessedResourceCard({
-  entry,
-  onEnter,
-  onReview,
-  onDelete
-}: {
-  entry: SavedJobHistory;
-  onEnter: () => void;
-  onReview: () => void;
-  onDelete: () => void;
-}) {
-  const { t } = useTranslation();
-  const title = reviewDisplayTitle(entry);
-  const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
-  const hasStems = entry.assets.some((asset) => asset.exists && (asset.role === "backing" || asset.role === "vocal"));
-  const isSample = entry.input.startsWith("sample:") || entry.id.startsWith("sample:");
-  const coverPath =
-    entry.playbackBundle.videoPreviewPath ??
-    (entry.playbackBundle.localVideoPath && isVideoPath(entry.playbackBundle.localVideoPath) ? entry.playbackBundle.localVideoPath : null);
-  const coverUrl = useMediaUrl(coverPath);
 
-  return (
-    <article className="resourceCard" data-disabled={!canEnter} data-variant={isSample ? "sample" : "user"}>
-      {isSample ? <span className="resourceCardBadge">{t("library:tagSample")}</span> : null}
-      <button type="button" className="resourceCoverButton" disabled={!canEnter} onClick={onEnter}>
-        <div className="resourceCover" aria-hidden="true">
-          {coverUrl ? <video src={coverUrl} muted playsInline preload="metadata" /> : <div className="resourceCoverFallback">{title.slice(0, 2).toUpperCase()}</div>}
-        </div>
-        <div className="resourceCoverOverlay">
-          <strong>{title}</strong>
-          <span>{isSample ? t("library:tagSample") : playbackSummary(entry.playbackBundle)}</span>
-          <div className="resourceMeta">
-            <span>{hasStems ? t("package:badges.stems") : t("package:badges.original")}</span>
-            <span>{entry.primarySubtitle ? t("package:badges.lyrics") : t("package:badges.noLyrics")}</span>
-          </div>
-        </div>
-      </button>
-      <div className="resourceActions">
-        <button type="button" className="primaryButton" disabled={!canEnter} onClick={onEnter}>
-          {canEnter ? t("package:enterKaraoke") : t("package:badges.needsMedia")}
-        </button>
-        <button type="button" className="secondaryButton" onClick={onReview}>
-          {t("package:openPackage")}
-        </button>
-        <button type="button" className="secondaryButton resourceDeleteButton" onClick={onDelete}>
-          {t("common:actions.remove")}
-        </button>
-      </div>
-    </article>
-  );
-}
-
-interface FeaturedPackageCardProps {
-  entry: SavedJobHistory;
-  variant: "continue" | "sample";
-  onEnter: () => void;
-  onOpen: () => void;
-  t: Translator;
-}
-
-function FeaturedPackageCard({ entry, variant, onEnter, onOpen, t }: FeaturedPackageCardProps) {
-  const title = reviewDisplayTitle(entry);
-  const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
-  const coverPath =
-    entry.playbackBundle.videoPreviewPath ??
-    (entry.playbackBundle.localVideoPath && isVideoPath(entry.playbackBundle.localVideoPath) ? entry.playbackBundle.localVideoPath : null);
-  const coverUrl = useMediaUrl(coverPath);
-  const eyebrowKey = variant === "continue" ? "library:continueHeader" : "library:sampleHeader";
-  const enterLabel = variant === "continue" ? t("common:actions.enterKaraoke") : t("common:actions.tryInKaraoke");
-  return (
-    <article className="featuredCard" data-variant={variant} data-enabled={canEnter}>
-      <div className="featuredCover" aria-hidden="true">
-        {coverUrl ? (
-          <video src={coverUrl} muted playsInline preload="metadata" />
-        ) : (
-          <div className="resourceCoverFallback">{title.slice(0, 2).toUpperCase()}</div>
-        )}
-      </div>
-      <div className="featuredBody">
-        <p className="eyebrow">{t(eyebrowKey)}</p>
-        <h2>{title}</h2>
-        <p className="featuredMeta">{playbackSummary(entry.playbackBundle)}</p>
-        <div className="featuredActions">
-          <button type="button" className="primaryButton" onClick={onEnter} disabled={!canEnter}>
-            {enterLabel}
-          </button>
-          <button type="button" className="secondaryButton" onClick={onOpen}>
-            {t("library:openPackage")}
-          </button>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function KaraokeReview({
-  activeCue,
-  activeCueIndex,
-  cues,
-  playbackBundle,
-  playbackController,
-  playableAssets,
-  selectedMediaPath,
-  selectedSubtitlePath,
-  onSeek
-}: {
-  activeCue: Cue | null;
-  activeCueIndex: number;
-  cues: Cue[];
-  playbackBundle: PlaybackBundle;
-  playbackController: PlaybackController;
-  playableAssets: GeneratedAsset[];
-  selectedMediaPath: string;
-  selectedSubtitlePath: string;
-  onSeek: (cue: Cue) => void;
-}) {
-  const { t } = useTranslation();
-  const previousCue = activeCueIndex > 0 ? cues[activeCueIndex - 1] : null;
-  const nextCue = activeCueIndex >= 0 ? cues[activeCueIndex + 1] : cues[0] ?? null;
-  const isVideo = isVideoPath(selectedMediaPath);
-  const hasBacking = playableAssets.some((asset) => asset.role === "backing");
-  const hasVocal = playableAssets.some((asset) => asset.role === "vocal");
-  const selectedSubtitleName = selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : t("package:badges.noLyrics");
-
-  return (
-    <div className="karaokeGrid">
-      <div className="playerPane">
-        <div className="stemStatus" data-ready={hasBacking && hasVocal}>
-          <strong>{hasBacking && hasVocal ? t("package:split.ready") : t("package:split.missing")}</strong>
-          <span>{hasBacking && hasVocal ? t("package:split.readyHint") : t("package:split.missingHint")}</span>
-        </div>
-        <div className="reviewControls">
-          <div className="packageBindingField">
-            <span>{t("package:playbackTrack")}</span>
-            <strong>{selectedMediaPath ? fileNameFromPath(selectedMediaPath) : t("package:noPlayableMedia")}</strong>
-          </div>
-          <div className="packageBindingField">
-            <span>{t("package:lyricsBound")}</span>
-            <strong>{selectedSubtitleName}</strong>
-          </div>
-        </div>
-
-        {playbackController.mediaUrl ? (
-          isVideo ? (
-            <video
-              key={playbackController.mediaUrl}
-              ref={playbackController.mediaRef as RefObject<HTMLVideoElement>}
-              className="mediaPlayer"
-              src={playbackController.mediaUrl}
-              controls
-              preload="auto"
-              onLoadedMetadata={playbackController.onLoadedMetadata}
-              onDurationChange={playbackController.onDurationChange}
-              onCanPlay={playbackController.onCanPlay}
-              onPlay={playbackController.onPlay}
-              onPause={playbackController.onPause}
-              onEnded={playbackController.onEnded}
-              onSeeking={playbackController.onSeeking}
-              onSeeked={playbackController.onSeeked}
-              onTimeUpdate={playbackController.onTimeUpdate}
-            />
-          ) : (
-            <audio
-              key={playbackController.mediaUrl}
-              ref={playbackController.mediaRef as RefObject<HTMLAudioElement>}
-              className="mediaPlayer"
-              src={playbackController.mediaUrl}
-              controls
-              preload="auto"
-              onLoadedMetadata={playbackController.onLoadedMetadata}
-              onDurationChange={playbackController.onDurationChange}
-              onCanPlay={playbackController.onCanPlay}
-              onPlay={playbackController.onPlay}
-              onPause={playbackController.onPause}
-              onEnded={playbackController.onEnded}
-              onSeeking={playbackController.onSeeking}
-              onSeeked={playbackController.onSeeked}
-              onTimeUpdate={playbackController.onTimeUpdate}
-            />
-          )
-        ) : (
-          <p className="emptyText">{playbackController.mediaStatus || playbackBundle.unavailableReason || t("package:noLocalMedia")}</p>
-        )}
-
-        <div className="karaokeStage">
-          <p className="surroundingLyric">{previousCue?.text ?? ""}</p>
-          <p className="currentLyric">{activeCue?.text ?? t("package:playToFollow")}</p>
-          <p className="surroundingLyric">{nextCue?.text ?? ""}</p>
-        </div>
-      </div>
-
-      <div className="cueList" aria-label={t("package:timedLines")}>
-        {cues.length === 0 ? (
-          <p className="emptyText">{t("package:noTimedSubtitles")}</p>
-        ) : (
-          cues.map((cue, index) => (
-            <button key={`${cue.start}-${index}`} type="button" data-active={index === activeCueIndex} onClick={() => onSeek(cue)}>
-              <span>{formatClock(cue.start)}</span>
-              <strong>{cue.text}</strong>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function LyricsReviewScene({
-  activeReview,
-  cues,
-  scriptStatus,
-  scriptText,
-  selectedSubtitlePath,
-  subtitleAssets,
-  onBack,
-  onEnterKaraoke,
-  onOpenFolder,
-  onScriptChange,
-  onSave
-}: {
-  activeReview: SavedJobHistory;
-  cues: Cue[];
-  scriptStatus: string;
-  scriptText: string;
-  selectedSubtitlePath: string;
-  subtitleAssets: GeneratedAsset[];
-  onBack: () => void;
-  onEnterKaraoke: () => void;
-  onOpenFolder: () => void;
-  onScriptChange: (content: string) => void;
-  onSave: () => void;
-}) {
-  const { t } = useTranslation();
-  const title = reviewDisplayTitle(activeReview);
-
-  return (
-    <main className="sceneShell">
-      <header className="sceneHeader">
-        <div>
-          <p className="eyebrow">{t("package:detail")}</p>
-          <h1>{title}</h1>
-          <p className="reviewMeta">{t("package:detailHint")}</p>
-        </div>
-        <div className="resultActions">
-          <button type="button" className="secondaryButton" onClick={onBack}>
-            {t("common:actions.back")}
-          </button>
-          <button type="button" className="secondaryButton" onClick={onOpenFolder}>
-            {t("package:openFolder")}
-          </button>
-          <button type="button" className="primaryButton" onClick={onEnterKaraoke} disabled={!selectedSubtitlePath}>
-            {t("package:saveAndEnter")}
-          </button>
-        </div>
-      </header>
-
-      <section className="lyricsReviewGrid">
-        <ScriptReview
-          selectedSubtitlePath={selectedSubtitlePath}
-          subtitleAssets={subtitleAssets}
-          scriptText={scriptText}
-          scriptStatus={scriptStatus}
-          onScriptChange={onScriptChange}
-          onSave={onSave}
-        />
-        <div className="lyricsPreviewPane">
-          <div className="paneHeader">
-            <h2>{t("package:timedLines")}</h2>
-            <span>{cues.length}</span>
-          </div>
-          <div className="cueList reviewCueList">
-            {cues.length === 0 ? (
-              <p className="emptyText">{t("package:noTimedLines")}</p>
-            ) : (
-              cues.map((cue, index) => (
-                <button key={`${cue.start}-${index}`} type="button">
-                  <span>{formatClock(cue.start)}</span>
-                  <strong>{cue.text}</strong>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function KaraokeRoomScene({
-  activeCue,
-  activeCueIndex,
-  activeReview,
-  cues,
-  playbackBundle,
-  playbackController,
-  karaokePackages,
-  playableAssets,
-  selectedMediaPath,
-  selectedSubtitlePath,
-  trackAssets,
-  trackRole,
-  lyricEffect,
-  lyricFont,
-  onBackHome,
-  onBackToLyrics,
-  onLyricEffectChange,
-  onLyricFontChange,
-  onOpenOriginalVideo,
-  onPackageChange,
-  onSplitVocals,
-  onTrackRoleChange,
-  isRunning
-}: {
-  activeCue: Cue | null;
-  activeCueIndex: number;
-  activeReview: SavedJobHistory;
-  cues: Cue[];
-  playbackBundle: PlaybackBundle;
-  playbackController: PlaybackController;
-  karaokePackages: SavedJobHistory[];
-  playableAssets: GeneratedAsset[];
-  selectedMediaPath: string;
-  selectedSubtitlePath: string;
-  trackAssets: TrackAssets;
-  trackRole: TrackRole;
-  lyricEffect: LyricEffect;
-  lyricFont: LyricFont;
-  onBackHome: () => void;
-  onBackToLyrics: () => void;
-  onLyricEffectChange: (effect: LyricEffect) => void;
-  onLyricFontChange: (font: LyricFont) => void;
-  onOpenOriginalVideo: () => void;
-  onPackageChange: (historyId: string) => void;
-  onSplitVocals: () => void;
-  onTrackRoleChange: (role: TrackRole) => void;
-  isRunning: boolean;
-}) {
-  const { t } = useTranslation();
-  const previousCue = activeCueIndex > 0 ? cues[activeCueIndex - 1] : null;
-  const nextCue = activeCueIndex >= 0 ? cues[activeCueIndex + 1] : cues[0] ?? null;
-  const showVisualPreview = Boolean(playbackController.previewUrl);
-  const showLocalVideo = !showVisualPreview && playbackController.mediaUrl && isVideoPath(selectedMediaPath);
-  const selectedMediaName = playableAssets.find((asset) => asset.path === selectedMediaPath)?.name ?? t("room:noLocalTrack");
-  const cueDuration = cues.at(-1)?.end ?? 0;
-  const progressMax = Math.max(playbackController.duration, cueDuration, playbackController.currentTime, 0);
-  const progressValue = progressMax > 0 ? Math.min(playbackController.currentTime, progressMax) : 0;
-  const hasPlayableMedia = Boolean(selectedMediaPath && playbackController.canControl);
-  const hasStems = Boolean(trackAssets.backing && trackAssets.vocal);
-  const displayTitle = reviewDisplayTitle(activeReview);
-  const trackRoleLabel =
-    trackRole === "backing"
-      ? t("room:trackLabels.backingTrack")
-      : trackRole === "vocal"
-        ? t("room:trackLabels.vocalOnly")
-        : trackRole === "custom"
-          ? t("room:trackLabels.customTrack")
-          : t("room:trackLabels.originalMix");
-  const mainTrackRole = trackRole === "vocal" || trackRole === "custom" ? (trackAssets.backing ? "backing" : "original") : trackRole;
-  const cueKey = activeCue ? `${activeCue.start}-${activeCue.end}-${activeCue.text}` : "empty-cue";
-  const microphoneMonitor = useMicrophoneMonitor();
-  const selectedSubtitleName = selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : t("package:badges.noLyrics");
-  const songOptions = karaokePackages.some((entry) => entry.id === activeReview.id) ? karaokePackages : [activeReview, ...karaokePackages];
-  const visualizerBars = useMemo(
-    () =>
-      Array.from({ length: 18 }, (_, index) => {
-        const phase = playbackController.currentTime * (1.05 + index * 0.035) + index * 0.68;
-        const wave = Math.sin(phase) * 0.5 + Math.cos(phase * 0.72 + index) * 0.5;
-        return Math.max(0.18, Math.min(1, 0.52 + wave * 0.42));
-      }),
-    [playbackController.currentTime]
-  );
-
-  return (
-    <motion.main className="karaokeRoom" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: motionDuration.base, ease: motionEase }}>
-      <header className="sceneHeader karaokeHeader">
-        <div>
-          <p className="eyebrow">{t("room:title")}</p>
-          <h1>{displayTitle}</h1>
-        </div>
-        <div className="resultActions">
-          <button type="button" className="secondaryButton" onClick={onBackHome}>
-            {t("common:nav.home")}
-          </button>
-          {activeReview.sourceUrl ? (
-            <button type="button" className="secondaryButton" onClick={onOpenOriginalVideo}>
-              {t("package:openOriginal")}
-            </button>
-          ) : null}
-          <button type="button" className="secondaryButton" onClick={onBackToLyrics}>
-            {t("room:editLyrics")}
-          </button>
-        </div>
-      </header>
-
-      <section className="karaokeRoomGrid">
-        <div className="karaokeVisualPane">
-          {showVisualPreview ? (
-            <video
-              ref={playbackController.previewRef}
-              className="roomVideo visualPreviewVideo"
-              src={playbackController.previewUrl}
-              muted
-              playsInline
-              preload="metadata"
-              onLoadedMetadata={playbackController.onLoadedMetadata}
-              onDurationChange={playbackController.onDurationChange}
-            />
-          ) : null}
-          {showLocalVideo ? (
-            <video
-              key={playbackController.mediaUrl}
-              ref={playbackController.mediaRef as RefObject<HTMLVideoElement>}
-              className="roomVideo"
-              src={playbackController.mediaUrl}
-              playsInline
-              preload="auto"
-              onLoadedMetadata={playbackController.onLoadedMetadata}
-              onDurationChange={playbackController.onDurationChange}
-              onCanPlay={playbackController.onCanPlay}
-              onPlay={playbackController.onPlay}
-              onPause={playbackController.onPause}
-              onEnded={playbackController.onEnded}
-              onSeeking={playbackController.onSeeking}
-              onSeeked={playbackController.onSeeked}
-              onTimeUpdate={playbackController.onTimeUpdate}
-            />
-          ) : null}
-          {!showVisualPreview && !showLocalVideo ? (
-            <div className="audioOnlyVisual" data-playing={playbackController.isPlaying}>
-              <div className="audioVisualCore" aria-hidden="true">
-                <div className="audioVisualRing" />
-                <div className="audioVisualBars">
-                  {visualizerBars.map((scale, index) => (
-                    <span key={index} style={{ "--bar-scale": scale.toFixed(3) } as CSSProperties} />
-                  ))}
-                </div>
-              </div>
-              <div className="audioVisualMeta">
-                <strong>{displayTitle}</strong>
-                <span>{playbackController.previewStatus || playbackBundle?.unavailableReason || trackRoleLabel}</span>
-              </div>
-            </div>
-          ) : null}
-          <div className="roomLyrics" data-effect={lyricEffect} data-font={lyricFont}>
-            <p className="roomLyricContext">{previousCue?.text ?? ""}</p>
-            <KaraokeLyricLine key={cueKey} cue={activeCue} currentTime={playbackController.currentTime} effect={lyricEffect} />
-            <p className="roomLyricContext">{nextCue?.text ?? ""}</p>
-          </div>
-        </div>
-
-        <aside className="karaokeControlPane">
-          <div className="ktvMetaPanel">
-            <div className="ktvCover" aria-hidden="true">
-              <span>{displayTitle.slice(0, 2).toUpperCase()}</span>
-            </div>
-            <div className="ktvTrackMeta">
-              <strong>{displayTitle}</strong>
-              <span>{trackRoleLabel}</span>
-              <span>{selectedMediaName}</span>
-            </div>
-          </div>
-
-          <div className="ktvTransportDock">
-            <div className="transportPanel">
-              <input
-                aria-label="Playback position"
-                type="range"
-                min="0"
-                max={progressMax || 0}
-                step="0.1"
-                value={progressValue}
-                disabled={!hasPlayableMedia}
-                onInput={(event) => playbackController.seek(Number(event.currentTarget.value), playbackController.isPlaying)}
-                onChange={(event) => playbackController.seek(Number(event.currentTarget.value), playbackController.isPlaying)}
-              />
-              <div className="transportTime">
-                <span>{formatClock(progressValue)}</span>
-                <span>{progressMax > 0 ? formatClock(progressMax) : "--:--"}</span>
-              </div>
-              <div className="transportButtons">
-                <button type="button" disabled={!hasPlayableMedia} onClick={playbackController.restart}>
-                  {t("room:transport.restart")}
-                </button>
-                <button type="button" disabled={!hasPlayableMedia} onClick={playbackController.isPlaying ? playbackController.pause : playbackController.play}>
-                  {playbackController.isPlaying ? t("room:transport.pause") : t("room:transport.play")}
-                </button>
-                <button type="button" disabled={!hasPlayableMedia} onClick={() => playbackController.seek(Math.max(0, playbackController.currentTime - 5), playbackController.isPlaying)}>
-                  -5s
-                </button>
-              </div>
-            </div>
-            <div className="dockUtilityRow">
-              <HoverFillGroup<TrackRole>
-                ariaLabel={t("room:trackRole")}
-                className="trackSelector"
-                value={mainTrackRole}
-                onChange={onTrackRoleChange}
-                items={[
-                  { value: "original", label: t("room:tracks.original"), disabled: !trackAssets.original },
-                  { value: "backing", label: t("room:tracks.backing"), disabled: !trackAssets.backing }
-                ]}
-              />
-              <details className="dockMenu">
-                <summary>{t("room:style")}</summary>
-                <div className="dockMenuContent lyricStyleControls">
-                  <HoverFillGroup<LyricEffect>
-                    ariaLabel={t("room:effect")}
-                    className="lyricEffectSelector"
-                    value={lyricEffect}
-                    onChange={onLyricEffectChange}
-                    items={lyricEffectOptions.map(([value]) => ({ value, label: t(`room:effects.${value}`) }))}
-                  />
-                  <HoverFillGroup<LyricFont>
-                    ariaLabel={t("room:font")}
-                    className="lyricFontSelector"
-                    value={lyricFont}
-                    onChange={onLyricFontChange}
-                    items={lyricFontOptions.map(([value]) => ({ value, label: t(`room:fonts.${value}`) }))}
-                  />
-                </div>
-              </details>
-              {!hasStems ? (
-                <button type="button" className="splitInlineButton" onClick={onSplitVocals} disabled={isRunning}>
-                  {isRunning ? t("package:splitRunning") : t("package:splitVocals")}
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          {playbackController.mediaUrl && !showLocalVideo ? (
-            <audio
-              key={playbackController.mediaUrl}
-              ref={playbackController.mediaRef as RefObject<HTMLAudioElement>}
-              className="hiddenMedia"
-              src={playbackController.mediaUrl}
-              preload="auto"
-              onLoadedMetadata={playbackController.onLoadedMetadata}
-              onDurationChange={playbackController.onDurationChange}
-              onCanPlay={playbackController.onCanPlay}
-              onPlay={playbackController.onPlay}
-              onPause={playbackController.onPause}
-              onEnded={playbackController.onEnded}
-              onSeeking={playbackController.onSeeking}
-              onSeeked={playbackController.onSeeked}
-              onTimeUpdate={playbackController.onTimeUpdate}
-            />
-          ) : null}
-
-          <details className="ktvSidePanel">
-            <summary>{t("room:settings")}</summary>
-            <div className="ktvSideContent">
-              <MicrophoneMonitorPanel monitor={microphoneMonitor} />
-
-              <label className="songPackageSelector">
-                <span>{t("room:song")}</span>
-                <select value={activeReview.id} onChange={(event) => onPackageChange(event.target.value)} disabled={songOptions.length <= 1}>
-                  {songOptions.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {reviewDisplayTitle(entry)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="packageBindingField roomBindingField">
-                <span>{t("room:lyrics")}</span>
-                <strong>{selectedSubtitleName}</strong>
-              </div>
-
-              {trackAssets.vocal ? (
-                <div className="hiddenVocalControl">
-                  <div>
-                    <span>{t("room:optionalStem")}</span>
-                    <strong>{t("room:vocalOnly")}</strong>
-                  </div>
-                  <button type="button" data-selected={trackRole === "vocal"} onClick={() => onTrackRoleChange(trackRole === "vocal" ? (trackAssets.backing ? "backing" : "original") : "vocal")}>
-                    {trackRole === "vocal" ? t("room:returnTrack") : t("room:useTrack")}
-                  </button>
-                </div>
-              ) : null}
-
-              {!playbackController.mediaUrl ? <p className="emptyText">{playbackController.mediaStatus || playbackBundle?.unavailableReason || t("room:noLocalAudio")}</p> : null}
-
-              <div className="cueList roomCueList">
-                {cues.map((cue, index) => (
-                  <motion.button
-                    key={`${cue.start}-${index}`}
-                    type="button"
-                    data-active={index === activeCueIndex}
-                    onClick={() => playbackController.seek(cue.start, true)}
-                    animate={index === activeCueIndex ? { x: 2 } : { x: 0 }}
-                    transition={{ duration: motionDuration.fast, ease: motionEase }}
-                  >
-                    <span>{formatClock(cue.start)}</span>
-                    <strong>{cue.text}</strong>
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-          </details>
-        </aside>
-      </section>
-    </motion.main>
-  );
-}
-
-function HoverFillGroup<T extends string>({
-  ariaLabel,
-  className,
-  items,
-  value,
-  onChange
-}: {
-  ariaLabel: string;
-  className?: string;
-  items: Array<HoverFillOption<T>>;
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [fillRect, setFillRect] = useState<HoverFillRect | null>(null);
-  const itemSignature = items.map((item) => `${item.value}:${item.disabled ? "1" : "0"}`).join("|");
-
-  const setFillForTarget = useCallback((target: HTMLElement | null) => {
-    const container = containerRef.current;
-    if (!container || !target) {
-      setFillRect(null);
-      return;
-    }
-
-    const parentRect = container.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    setFillRect({
-      x: targetRect.left - parentRect.left,
-      y: targetRect.top - parentRect.top,
-      width: targetRect.width,
-      height: targetRect.height
-    });
-  }, []);
-
-  const setFillForSelected = useCallback(() => {
-    const container = containerRef.current;
-    const selectedButton = container?.querySelector<HTMLButtonElement>('button[data-selected="true"]:not(:disabled)') ?? null;
-    setFillForTarget(selectedButton);
-  }, [setFillForTarget]);
-
-  useEffect(() => {
-    setFillForSelected();
-  }, [itemSignature, setFillForSelected, value]);
-
-  return (
-    <div
-      ref={containerRef}
-      className={`hoverFillGroup ${className ?? ""}`}
-      role="group"
-      aria-label={ariaLabel}
-      onMouseLeave={() => {
-        if (!containerRef.current?.matches(":focus-within")) {
-          setFillForSelected();
-        }
-      }}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setFillForSelected();
-        }
-      }}
-      style={
-        {
-          "--hover-x": `${fillRect?.x ?? 0}px`,
-          "--hover-y": `${fillRect?.y ?? 0}px`,
-          "--hover-width": `${fillRect?.width ?? 0}px`,
-          "--hover-height": `${fillRect?.height ?? 0}px`
-        } as CSSProperties
-      }
-    >
-      <span className="hoverFillSurface" data-visible={Boolean(fillRect)} aria-hidden="true" />
-      {items.map((item) => (
-        <button
-          key={item.value}
-          type="button"
-          disabled={item.disabled}
-          aria-pressed={item.value === value}
-          data-selected={item.value === value}
-          onMouseEnter={(event) => setFillForTarget(event.currentTarget)}
-          onFocus={(event) => setFillForTarget(event.currentTarget)}
-          onClick={() => onChange(item.value)}
-        >
-          <span className="hoverFillLabel hoverFillLabelBase">{item.label}</span>
-          <span className="hoverFillLabel hoverFillLabelActive" aria-hidden="true">
-            {item.label}
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function MicrophoneMonitorPanel({ monitor }: { monitor: MicrophoneMonitorController }) {
-  const { t } = useTranslation();
-  const displayStatus = monitor.status === "Monitoring input. Use headphones to avoid feedback." ? t("room:mic.headphones") : monitor.status;
-  return (
-    <section className="micMonitorPanel" data-monitoring={monitor.isMonitoring}>
-      <div className="micMonitorHeader">
-        <div>
-          <strong>{t("room:mic.title")}</strong>
-          <span>{displayStatus}</span>
-        </div>
-        <button type="button" data-selected={monitor.isMonitoring} onClick={() => monitor.setIsMonitoring(!monitor.isMonitoring)}>
-          {monitor.isMonitoring ? t("room:mic.monitorOn") : t("room:mic.monitor")}
-        </button>
-      </div>
-
-      <select value={monitor.selectedDeviceId} onChange={(event) => monitor.setSelectedDeviceId(event.target.value)}>
-        <option value="">{t("room:mic.systemDefault")}</option>
-        {monitor.devices.map((device) => (
-          <option key={device.deviceId || device.label} value={device.deviceId}>
-            {device.label}
-          </option>
-        ))}
-      </select>
-
-      <label className="micGainControl">
-        <span>{t("room:mic.level")}</span>
-        <input
-          type="range"
-          min="0"
-          max="1.5"
-          step="0.05"
-          value={monitor.monitorGain}
-          disabled={!monitor.isMonitoring}
-          onChange={(event) => monitor.setMonitorGain(Number(event.currentTarget.value))}
-        />
-      </label>
-      <label className="micReductionToggle">
-        <input
-          type="checkbox"
-          checked={monitor.noiseReduction}
-          onChange={(event) => monitor.setNoiseReduction(event.currentTarget.checked)}
-        />
-        <span>
-          <strong>{t("room:mic.noiseReduction")}</strong>
-          <em>{t("room:mic.noiseReductionHint")}</em>
-        </span>
-      </label>
-    </section>
-  );
-}
-
-function KaraokeLyricLine({ cue, currentTime, effect }: { cue: Cue | null; currentTime: number; effect: LyricEffect }) {
-  const words = useMemo(
-    () =>
-      cue
-        ? cue.words?.length
-          ? cue.words
-          : inferTimedWords(cue, "active")
-        : [
-            {
-              id: "empty-cue",
-              text: "Play to start lyrics.",
-              start: 0,
-              end: 0
-            }
-          ],
-    [cue]
-  );
-
-  return (
-    <motion.strong
-      className="karaokeLyricLine"
-      data-effect={effect}
-      data-empty={!cue}
-      initial={{ opacity: 0, y: 18, scale: effect === "impact" ? 0.92 : 1 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: motionDuration.base, ease: motionEase }}
-    >
-      {words.map((word) => {
-        const progressPercent = `${Math.round(wordProgressForTime(word, currentTime) * 1000) / 10}%`;
-        const style = { "--word-progress": progressPercent } as CSSProperties;
-        const isActive = currentTime >= word.start && currentTime < word.end;
-
-        return (
-          <span key={word.id} className="karaokeWord" data-active={isActive} data-compact={word.compact} style={style}>
-            <span className="karaokeWordBase">{word.text}</span>
-            <span className="karaokeWordFill" aria-hidden="true">
-              {word.text}
-            </span>
-          </span>
-        );
-      })}
-    </motion.strong>
-  );
-}
-
-function ScriptReview({
-  selectedSubtitlePath,
-  subtitleAssets,
-  scriptText,
-  scriptStatus,
-  onScriptChange,
-  onSave
-}: {
-  selectedSubtitlePath: string;
-  subtitleAssets: GeneratedAsset[];
-  scriptText: string;
-  scriptStatus: string;
-  onScriptChange: (content: string) => void;
-  onSave: () => void;
-}) {
-  const selectedSubtitle = subtitleAssets.find((asset) => asset.path === selectedSubtitlePath);
-  const subtitleName = selectedSubtitle?.name ?? (selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : "No lyrics in package");
-
-  return (
-    <div className="scriptPane">
-      <div className="scriptToolbar">
-        <div className="packageBindingField">
-          <span>Package lyrics</span>
-          <strong>{subtitleName}</strong>
-        </div>
-        <button type="button" className="primaryButton" onClick={onSave} disabled={!selectedSubtitlePath}>
-          Save
-        </button>
-        <span>{scriptStatus}</span>
-      </div>
-      <textarea
-        value={scriptText}
-        onChange={(event) => onScriptChange(event.target.value)}
-        placeholder="This package does not have an editable lyrics file yet."
-        spellCheck={false}
-      />
-    </div>
-  );
-}
-
-function FilesReview({ assets }: { assets: GeneratedAsset[] }) {
-  const { t } = useTranslation();
-  if (assets.length === 0) {
-    return <p className="emptyText">{t("package:filesEmpty")}</p>;
-  }
-
-  return (
-    <ul className="fileList">
-      {assets.map((asset) => (
-        <li key={asset.path}>
-          <button type="button" disabled={!asset.exists} onClick={() => audioWorkflow.openPath(asset.path)}>
-            <span>{asset.name}</span>
-            <em>
-              {asset.role ?? asset.type}
-              {asset.exists ? "" : " - missing"}
-            </em>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 function statusFromResult(result: JobResult): JobStatus {
   if (result.signal === "SIGTERM") {
@@ -3922,59 +2784,6 @@ function playbackSummary(bundle: PlaybackBundle): string {
   return bundle.unavailableReason ?? "Playback package unavailable";
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Checkbox({
-  label,
-  checked,
-  disabled = false,
-  onChange
-}: {
-  label: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="checkboxLabel">
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
-      <span>{label}</span>
-    </label>
-  );
-}
-
-function SegmentedControl<T extends string>({
-  value,
-  options,
-  onChange
-}: {
-  value: T;
-  options: [T, string][];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="segmentedControl" style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
-      {options.map(([optionValue, label]) => (
-        <button
-          key={optionValue}
-          type="button"
-          data-selected={value === optionValue}
-          onClick={() => onChange(optionValue)}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function parseSubtitleFile(filePath: string, text: string): Cue[] {
   const extension = filePath.split(".").pop()?.toLowerCase() ?? "";
   if (!text.trim()) {
@@ -4124,62 +2933,6 @@ function normalizeTimedWords(rawWords: unknown, cueText: string, cueKey: string)
     .filter((word): word is TimedWord => Boolean(word));
 }
 
-function withTimedWords(cue: Cue, cueKey: string): Cue {
-  const words = cue.words?.length ? cue.words : inferTimedWords(cue, cueKey);
-  return { ...cue, words };
-}
-
-function inferTimedWords(cue: Cue, cueKey: string): TimedWord[] {
-  const tokens = tokenizeLyricText(cue.text);
-  const lyricTokens = tokens.length > 0 ? tokens : [cue.text.trim()].filter(Boolean);
-  if (lyricTokens.length === 0) {
-    return [];
-  }
-
-  const duration = Math.max(0.05, cue.end - cue.start);
-  const weights = lyricTokens.map(estimatedTokenWeight);
-  const totalWeight = weights.reduce((total, weight) => total + weight, 0) || lyricTokens.length;
-  let cursor = cue.start;
-
-  return lyricTokens.map((token, index) => {
-    const start = index === 0 ? cue.start : cursor;
-    const end = index === lyricTokens.length - 1 ? cue.end : Math.min(cue.end, start + duration * (weights[index] / totalWeight));
-    cursor = end;
-    return {
-      id: `${cueKey}-${index}`,
-      text: token,
-      start,
-      end: Math.max(end, start + 0.01),
-      compact: shouldUseCompactWordSpacing(token, cue.text)
-    };
-  });
-}
-
-function tokenizeLyricText(text: string): string[] {
-  return [...text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)?|[^\s]/gu)].map((match) => match[0]);
-}
-
-function estimatedTokenWeight(token: string): number {
-  if (/^[^\p{L}\p{N}]+$/u.test(token)) {
-    return 0.35;
-  }
-  if (/^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u.test(token)) {
-    return 1;
-  }
-  return Math.max(0.8, Math.min(3.6, token.length / 3));
-}
-
-function shouldUseCompactWordSpacing(token: string, cueText: string): boolean {
-  return !/\s/.test(cueText) || /^[^\p{L}\p{N}]+$/u.test(token) || /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u.test(token);
-}
-
-function wordProgressForTime(word: TimedWord, time: number): number {
-  if (word.end <= word.start) {
-    return time >= word.start ? 1 : 0;
-  }
-  return clamp01((time - word.start) / (word.end - word.start));
-}
-
 function timestampToSeconds(value: string): number {
   const normalized = value.replace(",", ".");
   const parts = normalized.split(":");
@@ -4326,16 +3079,3 @@ function shouldAutoSaveAudio(options: JobOptions): boolean {
   return isHttpInput(options.input.trim()) || isVideoPath(options.input.trim());
 }
 
-function formatClock(seconds: number): string {
-  const safe = Math.max(0, seconds);
-  const minutes = Math.floor(safe / 60);
-  const secs = Math.floor(safe % 60);
-  return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.min(1, Math.max(0, value));
-}

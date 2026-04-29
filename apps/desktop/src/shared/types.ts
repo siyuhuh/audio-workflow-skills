@@ -184,7 +184,7 @@ export type AppLocale = "en" | "zh";
 
 export type ThemeMode = "system" | "light" | "dark";
 
-export type AccentColor = "amber" | "blue" | "green" | "pink" | "purple";
+export type AccentColor = "green";
 
 export interface UserSettings {
   locale: AppLocale | null;
