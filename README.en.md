@@ -210,3 +210,4 @@ The names `VocalFlow` and `VocalFlow Studio`, plus logos, icons, product marks, 
 - Workflow notes: [docs/flow.md](docs/flow.md)
 - Desktop app product notes: [docs/desktop-app-prd.md](docs/desktop-app-prd.md)
 - Upstream tools: [yt-dlp](https://github.com/yt-dlp/yt-dlp), [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [audio-separator](https://pypi.org/project/audio-separator/), [Ultimate Vocal Remover GUI](https://github.com/Anjok07/ultimatevocalremovergui)
+

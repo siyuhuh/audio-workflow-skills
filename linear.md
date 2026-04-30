@@ -40,19 +40,23 @@ No serif. No italics for emphasis — use weight 600.
 ## 4. Component Stylings
 
 **Buttons**
+
 - Primary: `--accent` fill, white text, radius 6px, padding 8/14, weight 500.
 - Secondary: `--surface` fill, `--text` color, `--border` outline.
 - Ghost: text-only, accent on hover.
 
 **Cards**
+
 - `--bg-alt` background, `--border` 1px, radius 8px.
 - Hover: border shifts to `--border-strong`. No shadow ever.
 
 **Inputs**
+
 - 1px `--border`, radius 6px, padding 8/12.
 - Focus: 2px `--accent` ring, 2px offset.
 
 **Keyboard hints**
+
 - `kbd` styled as outlined mono characters, 11px, `--surface` background, `--border` outline, 4px radius.
 
 ## 5. Layout Principles
@@ -68,11 +72,13 @@ Flat. Border-based depth only. Shadows reserved for popovers and dropdowns (sing
 ## 7. Do's and Don'ts
 
 **Do**
+
 - Use dashboard green as punctuation, not paragraph.
 - Keep UI density high — users are pros.
 - Ship keyboard shortcuts. Surface them in the UI.
 
 **Don't**
+
 - Round corners beyond 8px.
 - Use drop shadows on cards or buttons.
 - Introduce a second accent color.

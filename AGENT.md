@@ -31,17 +31,14 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
   - Builds `SavedJobHistory` and `PlaybackBundle`.
   - Serves local media through `vocalflow-media://` and a local HTTP fallback.
   - Handles history, asset discovery, media access, and microphone permission.
-
 - `apps/desktop/src/renderer/App.tsx`
   - Main React UI.
   - Contains guided input flow, review views, Karaoke Room, playback controller, and microphone monitor.
   - `usePlaybackController()` is the single owner of play/pause/seek/currentTime/duration and preview sync.
   - `useMicrophoneMonitor()` lists audio input devices and routes mic input to local output in monitor mode.
-
 - `apps/desktop/src/shared/types.ts`
   - Shared Electron/preload/renderer types.
   - Important types: `SavedJobHistory`, `PlaybackBundle`, `GeneratedAsset`, `GeneratedAssetRole`.
-
 - `skills/audio-subtitles/scripts/generate_subtitles.py`
   - CLI source for subtitle generation, download, local package creation, and optional separation.
 
@@ -82,7 +79,7 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
 
 ## Desktop Design System Rules
 
-> Read [`DESIGN.md`](./DESIGN.md) before any visual or UI change. It is the source of truth for color, typography, spacing, motion, surfaces (Studio vs Stage), and refactor priorities. The bullets below are the operational rules that complement it; visual decisions live in `DESIGN.md`.
+> Read `[DESIGN.md](./DESIGN.md)` before any visual or UI change. It is the source of truth for color, typography, spacing, motion, surfaces (Studio vs Stage), and refactor priorities. The bullets below are the operational rules that complement it; visual decisions live in `DESIGN.md`.
 
 - Always consult `DESIGN.md` before adding colors, font sizes, radii, easing values, or new components. If a token you need is missing, add it to `DESIGN.md` first (with a Decisions Log entry), then use it.
 - Keep `apps/desktop/src/renderer/App.tsx` as the current component source of truth until the renderer is split into smaller modules.
