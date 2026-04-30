@@ -84,5 +84,19 @@
     "restart": "Restart",
     "play": "Play",
     "pause": "Pause"
+  },
+  "playlist": {
+    "title": "Playlist",
+    "autoNext": "Auto next",
+    "phoneRequest": "Phone request"
+  },
+  "lyricsEditor": {
+    "button": "Lyrics",
+    "title": "Lyric Sync",
+    "hint": "Tap the line you're hearing to sync lyrics",
+    "done": "Done",
+    "empty": "No editable lyrics yet.",
+    "nudgeEarlier": "Move lyrics 0.1s earlier",
+    "nudgeLater": "Move lyrics 0.1s later"
   }
 }

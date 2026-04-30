@@ -84,5 +84,19 @@
     "restart": "重新开始",
     "play": "播放",
     "pause": "暂停"
+  },
+  "playlist": {
+    "title": "播放列表",
+    "autoNext": "自动下一首",
+    "phoneRequest": "手机点歌"
+  },
+  "lyricsEditor": {
+    "button": "歌词",
+    "title": "歌词同步",
+    "hint": "点当前听到的歌词行来校准时间",
+    "done": "完成",
+    "empty": "暂无可编辑歌词。",
+    "nudgeEarlier": "歌词提前 0.1 秒",
+    "nudgeLater": "歌词延后 0.1 秒"
   }
 }

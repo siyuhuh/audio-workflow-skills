@@ -169,6 +169,7 @@ interface PlaybackController {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
+  endedCount: number;
   canControl: boolean;
   play: () => void;
   pause: () => void;
@@ -370,6 +371,8 @@ export default function App() {
   const [progressStages, setProgressStages] = useState<Map<string, StageProgress>>(() => new Map());
   const [roomDrawerOpen, setRoomDrawerOpen] = useState(false);
   const captureInputRef = useRef<HTMLInputElement | null>(null);
+  const handledEndedCountRef = useRef(0);
+  const autoplayPackageIdRef = useRef<string | null>(null);
 
   const activeJob = useMemo(
     () => (activeJobId ? jobs.find((job) => job.id === activeJobId) ?? null : selectedHistoryId ? null : jobs[0] ?? null),
@@ -926,9 +929,9 @@ export default function App() {
     }
   }
 
-  async function processRoomQueueItem(item: RoomQueueItem) {
+  async function processRoomQueueItem(item: RoomQueueItem, enterAfterComplete = false): Promise<JobResult | null> {
     if (isRunning || item.status !== "queued") {
-      return;
+      return null;
     }
     try {
       setRoomMessage(t("capture:room.processing", { title: item.title }));
@@ -949,9 +952,18 @@ export default function App() {
         )
       );
       setRoomMessage(complete ? t("capture:room.processed") : t("capture:room.requestFailed"));
+      if (enterAfterComplete && complete && result?.historyEntry) {
+        autoplayPackageIdRef.current = result.historyEntry.id;
+        setSelectedHistoryId(result.historyEntry.id);
+        setActiveJobId(null);
+        setReviewTab("karaoke");
+        setAppScene("karaoke-room");
+      }
+      return result;
     } catch (error) {
       setRoomStatus(await audioWorkflow.finishRoomQueueItem(item.id, "failed", null, error instanceof Error ? error.message : t("capture:room.failed")));
       setRoomMessage(error instanceof Error ? error.message : t("capture:room.failed"));
+      return null;
     }
   }
 
@@ -1055,6 +1067,27 @@ export default function App() {
     setAppScene(entry?.workflowMode === "karaoke" ? "karaoke-room" : "workspace");
   }
 
+  function enterKaraokeFromHistoryAndPlay(historyId: string) {
+    autoplayPackageIdRef.current = historyId;
+    enterKaraokeFromHistory(historyId);
+  }
+
+  async function playNextInRoom() {
+    const queuedRoomItem = roomQueue.find((item) => item.status === "queued");
+    if (queuedRoomItem) {
+      await processRoomQueueItem(queuedRoomItem, true);
+      return;
+    }
+    if (!activeReview) {
+      return;
+    }
+    const currentIndex = karaokePackages.findIndex((entry) => entry.id === activeReview.id);
+    const nextPackage = currentIndex >= 0 ? karaokePackages[currentIndex + 1] : karaokePackages[0];
+    if (nextPackage) {
+      enterKaraokeFromHistoryAndPlay(nextPackage.id);
+    }
+  }
+
   function toggleFormat(format: OutputFormat) {
     const nextFormats = options.formats.includes(format)
       ? options.formats.filter((item) => item !== format)
@@ -1086,6 +1119,28 @@ export default function App() {
       formats: ensureKaraokeFormats(options.formats)
     });
   }
+
+  useEffect(() => {
+    if (appScene !== "karaoke-room" || playbackController.endedCount === 0) {
+      return;
+    }
+    if (handledEndedCountRef.current === playbackController.endedCount) {
+      return;
+    }
+    handledEndedCountRef.current = playbackController.endedCount;
+    void playNextInRoom();
+  }, [appScene, playbackController.endedCount]);
+
+  useEffect(() => {
+    if (appScene !== "karaoke-room" || !activeReview || autoplayPackageIdRef.current !== activeReview.id) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      playbackController.play();
+      autoplayPackageIdRef.current = null;
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [activeReview?.id, appScene, playbackController.mediaUrl]);
 
   if (appScene === "lyrics-review" && activeReview) {
     return (
@@ -1119,6 +1174,7 @@ export default function App() {
           cues={cues}
           playbackBundle={activeReview.playbackBundle}
           playbackController={playbackController}
+          roomQueue={roomQueue}
           songOptions={
             karaokePackages.some((entry) => entry.id === activeReview.id)
               ? karaokePackages.map((entry) => ({ id: entry.id, title: reviewDisplayTitle(entry) }))
@@ -1140,12 +1196,23 @@ export default function App() {
           selectedSubtitleName={
             selectedSubtitlePath ? fileNameFromPath(selectedSubtitlePath) : t("package:badges.noLyrics")
           }
+          selectedSubtitlePath={selectedSubtitlePath}
+          scriptStatus={scriptStatus}
+          scriptText={scriptText}
           onBackHome={() => setAppScene("workspace")}
           onBackToLyrics={() => setAppScene("lyrics-review")}
           onLyricEffectChange={setLyricEffect}
           onLyricFontChange={setLyricFont}
           onOpenOriginalVideo={() => activeReview.sourceUrl && audioWorkflow.openExternalUrl(activeReview.sourceUrl)}
           onPackageChange={enterKaraokeFromHistory}
+          onProcessRoomItem={(item) => {
+            void processRoomQueueItem(item, true);
+          }}
+          onRemoveRoomItem={removeRoomItem}
+          onScriptChange={setScriptText}
+          onSaveLyrics={() => {
+            void saveScript();
+          }}
           onSplitVocals={splitActiveReview}
           onTrackRoleChange={setTrackRole}
           isRunning={isRunning}
@@ -1501,7 +1568,9 @@ export default function App() {
         nextRoomRequest={nextRoomRequest}
         isRunning={isRunning}
         onCopyLink={copyRemoteRoomLink}
-        onProcessItem={processRoomQueueItem}
+        onProcessItem={(item) => {
+          void processRoomQueueItem(item);
+        }}
         onRemoveItem={removeRoomItem}
         onClearQueue={clearRoomQueue}
         t={t}
@@ -1869,6 +1938,7 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [endedCount, setEndedCount] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -2180,6 +2250,7 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
     isPlayingRef.current = false;
     setIsPlaying(false);
     pausePreview();
+    setEndedCount((count) => count + 1);
   }
 
   function onSeeking(event: SyntheticEvent<HTMLMediaElement>) {
@@ -2207,6 +2278,7 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
     currentTime,
     duration,
     isPlaying,
+    endedCount,
     canControl: Boolean(mediaUrl),
     play,
     pause,

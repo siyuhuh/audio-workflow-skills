@@ -46,6 +46,9 @@ export function FloatingBottomNav({
   const shouldReduceMotion = useReducedMotion();
   const [collapsed, setCollapsed] = useState(false);
   const dockRef = useRef<HTMLElement | null>(null);
+  const dragAreaRef = useRef<HTMLDivElement | null>(null);
+  const suppressExpandClickRef = useRef(false);
+  const suppressExpandClickTimerRef = useRef<number | null>(null);
   const [hoverFill, setHoverFill] = useState<HoverFillState>({
     x: 0,
     y: 0,
@@ -88,6 +91,25 @@ export function FloatingBottomNav({
   const handleHoverTarget = (event: MouseEvent<HTMLButtonElement> | FocusEvent<HTMLButtonElement>) => {
     showHoverFill(event.currentTarget);
   };
+  const suppressNextExpandClick = () => {
+    suppressExpandClickRef.current = true;
+    if (suppressExpandClickTimerRef.current !== null) {
+      window.clearTimeout(suppressExpandClickTimerRef.current);
+    }
+    suppressExpandClickTimerRef.current = window.setTimeout(() => {
+      suppressExpandClickRef.current = false;
+      suppressExpandClickTimerRef.current = null;
+    }, 160);
+  };
+  const handleCollapsedExpandClick = (event: MouseEvent<HTMLButtonElement>) => {
+    if (suppressExpandClickRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressExpandClickRef.current = false;
+      return;
+    }
+    setCollapsed(false);
+  };
   const menuTransition = shouldReduceMotion
     ? { duration: 0.01 }
     : { duration: 0.68, type: "tween" as const, ease: [0.76, 0, 0.24, 1] as const };
@@ -96,50 +118,69 @@ export function FloatingBottomNav({
     : { duration: 0.2, ease: [0.23, 1, 0.32, 1] as const };
 
   return (
-    <motion.aside
-      ref={dockRef}
-      layout
-      data-active-view={active}
-      data-collapsed={collapsed}
-      aria-label={t("common:nav.label")}
-      onMouseLeave={hideHoverFill}
-      onBlur={handleDockBlur}
-      initial={false}
-      animate={{
-        width: collapsed ? 44 : 286,
-        height: collapsed ? 44 : 58,
-        borderRadius: 999
-      }}
-      transition={menuTransition}
-      className={cn(
-        "floatingDock group fixed right-1/2 z-[45] overflow-hidden rounded-full border backdrop-blur-xl",
-        "translate-x-1/2 shadow-[var(--shadow-overlay)]",
-        isKaraoke
-          ? "bottom-[max(18px,env(safe-area-inset-bottom))] border-white/15 bg-black/60"
-          : "bottom-[max(18px,env(safe-area-inset-bottom))] border-border/80 bg-overlay/90"
-      )}
-    >
-      <motion.span
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute left-0 top-0 z-0 rounded-full",
-          isKaraoke ? "bg-white/10" : "bg-muted"
-        )}
+    <div ref={dragAreaRef} className="pointer-events-none fixed inset-0 z-[45]">
+      <motion.aside
+        ref={dockRef}
+        layout
+        drag={collapsed}
+        dragConstraints={dragAreaRef}
+        dragElastic={0.08}
+        dragMomentum={false}
+        onDragStart={() => {
+          if (collapsed) {
+            suppressExpandClickRef.current = true;
+          }
+        }}
+        onDragEnd={(_, info) => {
+          if (collapsed && Math.hypot(info.offset.x, info.offset.y) > 3) {
+            suppressNextExpandClick();
+          }
+        }}
+        data-active-view={active}
+        data-collapsed={collapsed}
+        aria-label={t("common:nav.label")}
+        onMouseLeave={hideHoverFill}
+        onBlur={handleDockBlur}
+        initial={false}
         animate={{
-          opacity: hoverFill.visible ? 1 : 0,
-          x: hoverFill.x,
-          y: hoverFill.y,
-          width: hoverFill.width,
-          height: hoverFill.height
+          width: collapsed ? 44 : 286,
+          height: collapsed ? 44 : 58,
+          borderRadius: 999
         }}
-        transition={{
-          x: { duration: shouldReduceMotion ? 0.01 : 0.22, ease: [0.34, 1.25, 0.52, 1] },
-          y: { duration: shouldReduceMotion ? 0.01 : 0.22, ease: [0.34, 1.25, 0.52, 1] },
-          width: { duration: shouldReduceMotion ? 0.01 : 0.22, ease: [0.34, 1.25, 0.52, 1] },
-          height: { duration: shouldReduceMotion ? 0.01 : 0.22, ease: [0.34, 1.25, 0.52, 1] },
-          opacity: { duration: shouldReduceMotion ? 0.01 : 0.12 }
-        }}
-      />
+        transition={menuTransition}
+        className={cn(
+          "floatingDock group fixed z-[45] overflow-hidden rounded-full border backdrop-blur-xl",
+          "pointer-events-auto shadow-[var(--shadow-overlay)]",
+          isKaraoke
+            ? "left-[18px] top-1/2 -translate-y-1/2"
+            : "bottom-[max(18px,env(safe-area-inset-bottom))] right-1/2 translate-x-1/2",
+          collapsed && "cursor-grab active:cursor-grabbing",
+          isKaraoke
+            ? "border-white/15 bg-black/60"
+            : "border-border/80 bg-overlay/90"
+        )}
+      >
+        <motion.span
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute left-0 top-0 z-0 rounded-full",
+            isKaraoke ? "bg-white/10" : "bg-muted"
+          )}
+          animate={{
+            opacity: hoverFill.visible && !collapsed ? 1 : 0,
+            x: hoverFill.x,
+            y: hoverFill.y,
+            width: hoverFill.width,
+            height: hoverFill.height
+          }}
+          transition={{
+            x: { duration: shouldReduceMotion ? 0.01 : 0.22, ease: [0.34, 1.25, 0.52, 1] },
+            y: { duration: shouldReduceMotion ? 0.01 : 0.22, ease: [0.34, 1.25, 0.52, 1] },
+            width: { duration: shouldReduceMotion ? 0.01 : 0.22, ease: [0.34, 1.25, 0.52, 1] },
+            height: { duration: shouldReduceMotion ? 0.01 : 0.22, ease: [0.34, 1.25, 0.52, 1] },
+            opacity: { duration: shouldReduceMotion ? 0.01 : 0.12 }
+          }}
+        />
 
       <AnimatePresence mode="popLayout" initial={false}>
         {collapsed ? (
@@ -147,7 +188,7 @@ export function FloatingBottomNav({
             key="collapsed"
             type="button"
             aria-label={t("common:nav.expand")}
-            onClick={() => setCollapsed(false)}
+            onClick={handleCollapsedExpandClick}
             initial={{ opacity: 0, scale: 0.72, rotate: -12 }}
             animate={{ opacity: 1, scale: 1, rotate: 0 }}
             exit={{ opacity: 0, scale: 0.72, rotate: 12 }}
@@ -252,7 +293,8 @@ export function FloatingBottomNav({
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.aside>
+      </motion.aside>
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
-import { type CSSProperties, type RefObject, useMemo } from "react";
-import { motion } from "motion/react";
+import { type CSSProperties, type PointerEvent, type RefObject, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import type { GeneratedAsset, PlaybackBundle, SavedJobHistory } from "../../shared/types";
+import type { GeneratedAsset, PlaybackBundle, RoomQueueItem, SavedJobHistory } from "../../shared/types";
 import { type Cue, formatClock } from "../lib/lyrics";
 import { motionDuration, motionEase } from "../lib/motion";
 import { cn } from "../lib/cn";
@@ -31,6 +31,7 @@ interface PlaybackController {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
+  endedCount: number;
   canControl: boolean;
   play: () => void;
   pause: () => void;
@@ -79,6 +80,7 @@ interface KaraokeRoomSceneProps {
   cues: Cue[];
   playbackBundle: PlaybackBundle;
   playbackController: PlaybackController;
+  roomQueue: RoomQueueItem[];
   songOptions: SongOption[];
   trackAssets: TrackAssets;
   trackRole: TrackRole;
@@ -88,12 +90,19 @@ interface KaraokeRoomSceneProps {
   reviewTitle: string;
   selectedMediaName: string;
   selectedSubtitleName: string;
+  selectedSubtitlePath: string;
+  scriptStatus: string;
+  scriptText: string;
   onBackHome: () => void;
   onBackToLyrics: () => void;
   onLyricEffectChange: (effect: LyricEffect) => void;
   onLyricFontChange: (font: LyricFont) => void;
   onOpenOriginalVideo: () => void;
   onPackageChange: (historyId: string) => void;
+  onProcessRoomItem: (item: RoomQueueItem) => void | Promise<void>;
+  onRemoveRoomItem: (itemId: string) => void | Promise<void>;
+  onScriptChange: (content: string) => void;
+  onSaveLyrics: () => void | Promise<void>;
   onSplitVocals: () => void;
   onTrackRoleChange: (role: TrackRole) => void;
   isRunning: boolean;
@@ -106,6 +115,7 @@ export function KaraokeRoomScene({
   cues,
   playbackBundle,
   playbackController,
+  roomQueue,
   songOptions,
   trackAssets,
   trackRole,
@@ -115,17 +125,27 @@ export function KaraokeRoomScene({
   reviewTitle,
   selectedMediaName,
   selectedSubtitleName,
+  selectedSubtitlePath,
+  scriptStatus,
+  scriptText,
   onBackHome,
   onBackToLyrics,
   onLyricEffectChange,
   onLyricFontChange,
   onOpenOriginalVideo,
   onPackageChange,
+  onProcessRoomItem,
+  onRemoveRoomItem,
+  onScriptChange,
+  onSaveLyrics,
   onSplitVocals,
   onTrackRoleChange,
   isRunning
 }: KaraokeRoomSceneProps) {
   const { t } = useTranslation();
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [lyricsEditorOpen, setLyricsEditorOpen] = useState(false);
+  const [lyricsOffsetSec, setLyricsOffsetSec] = useState(0);
   const previousCue = activeCueIndex > 0 ? cues[activeCueIndex - 1] : null;
   const nextCue = activeCueIndex >= 0 ? cues[activeCueIndex + 1] : cues[0] ?? null;
   const showVisualPreview = Boolean(playbackController.previewUrl);
@@ -156,6 +176,47 @@ export function KaraokeRoomScene({
         : "original"
       : (trackRole as "original" | "backing");
   const cueKey = activeCue ? `${activeCue.start}-${activeCue.end}-${activeCue.text}` : "empty-cue";
+  const progressRef = useRef<HTMLDivElement | null>(null);
+  const progressPercent = progressMax > 0 ? Math.min(100, Math.max(0, (progressValue / progressMax) * 100)) : 0;
+
+  function seekFromProgressPointer(event: PointerEvent<HTMLDivElement>) {
+    if (!hasPlayableMedia || progressMax <= 0) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    playbackController.seek(ratio * progressMax, playbackController.isPlaying);
+  }
+
+  function handleProgressPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!hasPlayableMedia) {
+      return;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    seekFromProgressPointer(event);
+  }
+
+  function handleProgressPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+    seekFromProgressPointer(event);
+  }
+
+  function applyLyricOffset(offsetSeconds: number) {
+    if (!scriptText.trim() || Math.abs(offsetSeconds) < 0.001) {
+      return;
+    }
+    const shifted = shiftTimedText(scriptText, offsetSeconds);
+    if (shifted !== scriptText) {
+      setLyricsOffsetSec((current) => current + offsetSeconds);
+      onScriptChange(shifted);
+    }
+  }
+
+  function syncCueToPlayback(cue: Cue) {
+    applyLyricOffset(playbackController.currentTime - cue.start);
+  }
 
   const visualizerBars = useMemo(
     () =>
@@ -166,6 +227,7 @@ export function KaraokeRoomScene({
       }),
     [playbackController.currentTime]
   );
+  const roomQueuedItems = roomQueue.filter((item) => item.status === "queued" || item.status === "running");
 
   return (
     <motion.main
@@ -287,7 +349,46 @@ export function KaraokeRoomScene({
         </div>
 
         {/* Transport dock */}
-        <aside className="z-[2] grid gap-3 border-t border-ktv-line bg-ktv-bg/90 px-6 py-4 backdrop-blur-xl">
+        <aside className="relative z-[2] grid gap-3 bg-ktv-bg/90 px-6 pb-4 pt-4 backdrop-blur-xl">
+          <div
+            ref={progressRef}
+            role="slider"
+            aria-label="Playback position"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(progressMax)}
+            aria-valuenow={Math.round(progressValue)}
+            aria-valuetext={`${formatClock(progressValue)} / ${progressMax > 0 ? formatClock(progressMax) : "--:--"}`}
+            data-disabled={!hasPlayableMedia}
+            className="stageTopProgress"
+            onPointerDown={handleProgressPointerDown}
+            onPointerMove={handleProgressPointerMove}
+            onPointerUp={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (!hasPlayableMedia || progressMax <= 0) {
+                return;
+              }
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                playbackController.seek(Math.max(0, progressValue - 5), playbackController.isPlaying);
+              }
+              if (event.key === "ArrowRight") {
+                event.preventDefault();
+                playbackController.seek(Math.min(progressMax, progressValue + 5), playbackController.isPlaying);
+              }
+            }}
+            tabIndex={hasPlayableMedia ? 0 : -1}
+          >
+            <span className="stageTopProgressTrack" />
+            <span className="stageTopProgressFill" style={{ width: `${progressPercent}%` }} />
+            <span className="stageTopProgressThumb" style={{ left: `${progressPercent}%` }} />
+            <span className="stageTopProgressTime" style={{ left: `${progressPercent}%` }}>
+              {formatClock(progressValue)} / {progressMax > 0 ? formatClock(progressMax) : "--:--"}
+            </span>
+          </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
             <div className="flex min-w-0 items-center gap-3">
               <div
@@ -307,14 +408,18 @@ export function KaraokeRoomScene({
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-self-center">
+              <span className="font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
+                {formatClock(progressValue)}
+              </span>
               <button
                 type="button"
                 disabled={!hasPlayableMedia}
                 onClick={playbackController.restart}
-                className={transportBtnClasses}
+                aria-label={t("room:transport.restart")}
+                title={t("room:transport.restart")}
+                className={transportIconBtnClasses}
               >
                 <Icon name="restart" />
-                {t("room:transport.restart")}
               </button>
               <button
                 type="button"
@@ -324,12 +429,11 @@ export function KaraokeRoomScene({
                     ? playbackController.pause
                     : playbackController.play
                 }
-                className={cn(transportBtnClasses, "bg-ktv-accent text-black hover:enabled:bg-ktv-accent/90")}
+                aria-label={playbackController.isPlaying ? t("room:transport.pause") : t("room:transport.play")}
+                title={playbackController.isPlaying ? t("room:transport.pause") : t("room:transport.play")}
+                className={cn(transportIconBtnClasses, "bg-ktv-accent text-black hover:enabled:bg-ktv-accent/90")}
               >
                 <Icon name={playbackController.isPlaying ? "pause" : "play"} />
-                {playbackController.isPlaying
-                  ? t("room:transport.pause")
-                  : t("room:transport.play")}
               </button>
               <button
                 type="button"
@@ -340,11 +444,15 @@ export function KaraokeRoomScene({
                     playbackController.isPlaying
                   )
                 }
-                className={transportBtnClasses}
+                aria-label="-5s"
+                title="-5s"
+                className={transportIconBtnClasses}
               >
                 <Icon name="rewind" />
-                -5s
               </button>
+              <span className="font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
+                {progressMax > 0 ? formatClock(progressMax) : "--:--"}
+              </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 lg:justify-self-end">
@@ -487,6 +595,93 @@ export function KaraokeRoomScene({
                 </button>
               ) : null}
 
+              <button
+                type="button"
+                onClick={() => setLyricsEditorOpen(true)}
+                className={transportBtnClasses}
+              >
+                <Icon name="lyrics" />
+                {t("room:lyricsEditor.button")}
+              </button>
+
+              <details className="group relative" open={playlistOpen} onToggle={(event) => setPlaylistOpen(event.currentTarget.open)}>
+                <summary
+                  className={cn(
+                    transportBtnClasses,
+                    "list-none cursor-pointer [&::-webkit-details-marker]:hidden"
+                  )}
+                >
+                  <Icon name="menu" />
+                  {t("room:playlist.title")}
+                </summary>
+                <div className="absolute bottom-full right-0 z-30 mb-2 grid w-[min(360px,calc(100vw-32px))] max-h-[60vh] gap-3 overflow-y-auto rounded-lg border border-ktv-line bg-ktv-surface p-3 shadow-[var(--shadow-overlay)]">
+                  <header className="flex items-center justify-between gap-3">
+                    <strong className="text-sm font-semibold text-white">
+                      {t("room:playlist.title")}
+                      <span className="ml-1 text-xs text-ktv-text-muted tabular-nums">
+                        {songOptions.length + roomQueuedItems.length}
+                      </span>
+                    </strong>
+                    <span className="text-xs font-medium text-ktv-text-muted">{t("room:playlist.autoNext")}</span>
+                  </header>
+                  <div className="grid gap-1">
+                    {roomQueuedItems.map((item) => (
+                      <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-2 py-2 text-left text-white/82 hover:bg-white/5">
+                        <div className="min-w-0">
+                          <strong className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold">
+                            {item.title}
+                          </strong>
+                          <span className="text-xs text-ktv-text-muted">
+                            {t("room:playlist.phoneRequest")} · {item.requestedBy}
+                          </span>
+                        </div>
+                        <div className="flex gap-1">
+                          {item.status === "queued" ? (
+                            <button
+                              type="button"
+                              onClick={() => void onProcessRoomItem(item)}
+                              disabled={isRunning}
+                              className="grid size-8 place-items-center rounded-full border border-ktv-line text-white/80 hover:border-white/30 hover:bg-white/10 disabled:opacity-40"
+                              aria-label={t("room:queueRun")}
+                            >
+                              <Icon name="play" />
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => void onRemoveRoomItem(item.id)}
+                            disabled={item.status === "running"}
+                            className="grid size-8 place-items-center rounded-full border border-ktv-line text-white/60 hover:border-white/30 hover:bg-white/10 disabled:opacity-40"
+                            aria-label={t("room:queueRemove")}
+                          >
+                            <Icon name="trash" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {songOptions.map((entry, index) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => onPackageChange(entry.id)}
+                        data-active={entry.id === activeReview.id}
+                        className={cn(
+                          "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md px-2 py-2 text-left",
+                          entry.id === activeReview.id ? "bg-ktv-accent/20 text-white" : "text-white/82 hover:bg-white/5"
+                        )}
+                      >
+                        <span className="font-mono text-xs text-ktv-text-muted tabular-nums">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold">
+                          {entry.title}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </details>
+
               <details className="group relative">
                 <summary
                   className={cn(
@@ -600,29 +795,6 @@ export function KaraokeRoomScene({
             </div>
           </div>
 
-          <div className="grid gap-1.5">
-            <input
-              aria-label="Playback position"
-              type="range"
-              min="0"
-              max={progressMax || 0}
-              step="0.1"
-              value={progressValue}
-              disabled={!hasPlayableMedia}
-              onInput={(event) =>
-                playbackController.seek(Number(event.currentTarget.value), playbackController.isPlaying)
-              }
-              onChange={(event) =>
-                playbackController.seek(Number(event.currentTarget.value), playbackController.isPlaying)
-              }
-              className="w-full accent-ktv-accent disabled:opacity-40"
-            />
-            <div className="flex items-center justify-between font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
-              <span>{formatClock(progressValue)}</span>
-              <span>{progressMax > 0 ? formatClock(progressMax) : "--:--"}</span>
-            </div>
-          </div>
-
           {playbackController.mediaUrl && !showLocalVideo ? (
             <audio
               key={playbackController.mediaUrl}
@@ -642,10 +814,197 @@ export function KaraokeRoomScene({
             />
           ) : null}
         </aside>
+
+        <AnimatePresence>
+          {lyricsEditorOpen ? (
+            <motion.div
+              className="fixed inset-0 z-40 grid place-items-center bg-black/36 px-4 py-8 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: motionDuration.fast, ease: motionEase }}
+              role="dialog"
+              aria-label={t("room:lyricsEditor.title")}
+            >
+              <motion.section
+                className="grid max-h-[min(760px,88vh)] w-[min(560px,calc(100vw-32px))] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl border border-ktv-line bg-black/88 text-white shadow-[var(--shadow-overlay)]"
+                initial={{ y: 18, scale: 0.98 }}
+                animate={{ y: 0, scale: 1 }}
+                exit={{ y: 12, scale: 0.98 }}
+                transition={{ duration: motionDuration.panel, ease: motionEase }}
+              >
+                <header className="flex flex-wrap items-center justify-between gap-3 border-b border-ktv-line px-4 py-3">
+                  <div className="grid gap-0.5">
+                    <strong className="inline-flex items-center gap-2 text-sm font-semibold text-white">
+                      <Icon name="lyrics" />
+                      {t("room:lyricsEditor.title")}
+                    </strong>
+                    <span className="text-xs font-medium text-ktv-text-muted">
+                      {selectedSubtitleName}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => applyLyricOffset(-0.1)}
+                      disabled={!selectedSubtitlePath}
+                      className={transportIconBtnClasses}
+                      aria-label={t("room:lyricsEditor.nudgeEarlier")}
+                    >
+                      -
+                    </button>
+                    <span className="min-w-[72px] rounded-full border border-ktv-line bg-ktv-surface px-3 py-2 text-center font-mono text-xs font-semibold text-white">
+                      {lyricsOffsetSec >= 0 ? "+" : ""}
+                      {lyricsOffsetSec.toFixed(2)}s
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => applyLyricOffset(0.1)}
+                      disabled={!selectedSubtitlePath}
+                      className={transportIconBtnClasses}
+                      aria-label={t("room:lyricsEditor.nudgeLater")}
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void onSaveLyrics();
+                        setLyricsEditorOpen(false);
+                      }}
+                      className={cn(transportBtnClasses, "bg-white text-black hover:enabled:bg-white/90")}
+                    >
+                      {t("room:lyricsEditor.done")}
+                    </button>
+                  </div>
+                </header>
+
+                <div className="grid gap-2 border-b border-ktv-line px-4 py-3">
+                  <div className="flex items-center justify-between font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
+                    <span>{formatClock(progressValue)}</span>
+                    <span>{progressMax > 0 ? formatClock(progressMax) : "--:--"}</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-white/12">
+                    <div
+                      className="h-full rounded-full bg-ktv-accent"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  <p className="m-0 text-center text-xs font-medium text-ktv-text-muted">
+                    {t("room:lyricsEditor.hint")}
+                  </p>
+                </div>
+
+                <div className="grid min-h-0 grid-cols-1 gap-0 overflow-hidden md:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+                  <div className="min-h-0 overflow-y-auto border-b border-ktv-line p-3 md:border-b-0 md:border-r">
+                    <div className="grid auto-rows-min gap-1">
+                      {cues.map((cue, index) => (
+                        <button
+                          key={`${cue.start}-${index}`}
+                          type="button"
+                          onClick={() => syncCueToPlayback(cue)}
+                          data-active={index === activeCueIndex}
+                          className={cn(
+                            "grid grid-cols-[54px_minmax(0,1fr)] items-center gap-2 rounded-md px-3 py-2 text-left",
+                            index === activeCueIndex ? "bg-white/12 text-white" : "text-white/72 hover:bg-white/6"
+                          )}
+                        >
+                          <span className="font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
+                            {formatClock(cue.start)}
+                          </span>
+                          <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">
+                            {cue.text}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <textarea
+                    value={scriptText}
+                    onChange={(event) => onScriptChange(event.target.value)}
+                    spellCheck={false}
+                    disabled={!selectedSubtitlePath}
+                    className="min-h-[280px] resize-none border-0 bg-black/20 p-4 font-mono text-sm leading-relaxed text-white outline-none placeholder:text-white/35 disabled:opacity-55"
+                    placeholder={t("room:lyricsEditor.empty")}
+                  />
+                </div>
+
+                <footer className="flex items-center justify-between gap-3 border-t border-ktv-line px-4 py-3">
+                  <span className="text-xs font-medium text-ktv-text-muted">{scriptStatus}</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setLyricsEditorOpen(false)}
+                      className={transportBtnClasses}
+                    >
+                      {t("common:actions.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onSaveLyrics()}
+                      disabled={!selectedSubtitlePath}
+                      className={cn(transportBtnClasses, "bg-ktv-accent text-black hover:enabled:bg-ktv-accent/90")}
+                    >
+                      {t("common:actions.save")}
+                    </button>
+                  </div>
+                </footer>
+              </motion.section>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </section>
     </motion.main>
   );
 }
 
+function secondsFromTimestamp(hours: number, minutes: number, seconds: number, fraction: string): number {
+  const fractionValue = fraction ? Number(`0.${fraction.padEnd(3, "0").slice(0, 3)}`) : 0;
+  return hours * 3600 + minutes * 60 + seconds + fractionValue;
+}
+
+function formatTimestamp(totalSeconds: number, separator: "," | ".", fractionLength: number, hourWidth: number): string {
+  const safeSeconds = Math.max(0, totalSeconds);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = Math.floor(safeSeconds % 60);
+  const fractionBase = 10 ** fractionLength;
+  const fraction = Math.round((safeSeconds - Math.floor(safeSeconds)) * fractionBase);
+  return `${String(hours).padStart(hourWidth, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}${separator}${String(fraction).padStart(fractionLength, "0").slice(0, fractionLength)}`;
+}
+
+function formatLrcTimestamp(totalSeconds: number, minuteWidth: number, fractionLength: number): string {
+  const safeSeconds = Math.max(0, totalSeconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = Math.floor(safeSeconds % 60);
+  const fractionBase = 10 ** fractionLength;
+  const fraction = Math.round((safeSeconds - Math.floor(safeSeconds)) * fractionBase);
+  return `[${String(minutes).padStart(minuteWidth, "0")}:${String(seconds).padStart(2, "0")}.${String(fraction).padStart(fractionLength, "0").slice(0, fractionLength)}]`;
+}
+
+function shiftTimedText(text: string, offsetSeconds: number): string {
+  let shifted = text.replace(
+    /\b(\d{1,2}):(\d{2}):(\d{2})([,.])(\d{1,3})\b/g,
+    (match, hourText: string, minuteText: string, secondText: string, separator: "," | ".", fractionText: string) => {
+      const nextSeconds =
+        secondsFromTimestamp(Number(hourText), Number(minuteText), Number(secondText), fractionText) + offsetSeconds;
+      return formatTimestamp(nextSeconds, separator, fractionText.length, hourText.length);
+    }
+  );
+
+  shifted = shifted.replace(
+    /\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]/g,
+    (match, minuteText: string, secondText: string, fractionText = "00") => {
+      const nextSeconds = Number(minuteText) * 60 + Number(secondText) + Number(`0.${fractionText}`) + offsetSeconds;
+      return formatLrcTimestamp(nextSeconds, minuteText.length, fractionText.length || 2);
+    }
+  );
+
+  return shifted;
+}
+
 const transportBtnClasses =
   "inline-flex min-h-9 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-ktv-line bg-transparent px-4 text-sm font-medium text-white/85 transition-colors duration-150 ease-out hover:enabled:border-white/30 hover:enabled:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]";
+
+const transportIconBtnClasses =
+  "inline-grid size-9 place-items-center rounded-full border border-ktv-line bg-transparent text-white/85 transition-colors duration-150 ease-out hover:enabled:border-white/30 hover:enabled:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]";
