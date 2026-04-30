@@ -17,13 +17,22 @@
     "subtitle": "Subtitle"
   },
   "languageHint": "Auto, en, zh, ja",
+  "languageOptions": {
+    "auto": "Auto",
+    "english": "English",
+    "chinese": "中文",
+    "japanese": "日本語",
+    "korean": "한국어"
+  },
   "search": {
     "toggle": "Media search",
-    "hint": "YouTube and Bilibili discovery via yt-dlp (first run may install packages).",
+    "hint": "Search public videos",
     "youtube": "YouTube",
     "bilibili": "Bilibili",
     "placeholder": "Artist, song title, or keywords",
-    "appendKaraoke": "Bias toward karaoke uploads",
+    "appendKaraoke": "Backing version",
+    "splitVocalsDefault": "Split vocals",
+    "karaokeSplitWarning": "Karaoke uploads often remove the lead vocal. If you also split vocals, stem separation and subtitle generation may fail. Turn off karaoke bias when you need vocals.",
     "useThisLink": "Use this link",
     "openInBrowser": "Open in browser",
     "noResults": "No videos matched. Try different keywords.",

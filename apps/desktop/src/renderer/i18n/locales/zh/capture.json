@@ -17,13 +17,22 @@
     "subtitle": "字幕"
   },
   "languageHint": "Auto、en、zh、ja",
+  "languageOptions": {
+    "auto": "自动",
+    "english": "English",
+    "chinese": "中文",
+    "japanese": "日语",
+    "korean": "韩语"
+  },
   "search": {
     "toggle": "媒体搜索",
-    "hint": "通过 yt-dlp 搜索 YouTube 与 Bilibili（首次运行可能需要安装依赖）。",
+    "hint": "搜索公开视频",
     "youtube": "YouTube",
     "bilibili": "Bilibili",
     "placeholder": "歌手、歌名或关键词",
-    "appendKaraoke": "偏向卡拉 OK 版本",
+    "appendKaraoke": "偏向伴奏版",
+    "splitVocalsDefault": "分离人声",
+    "karaokeSplitWarning": "卡拉 OK 版本通常已经去掉主唱。如果同时分离人声，分轨和字幕生成可能失败；需要人声时建议关闭“偏向卡拉 OK 版本”。",
     "useThisLink": "使用此链接",
     "openInBrowser": "在浏览器打开",
     "noResults": "没有匹配的视频，试试换个关键词。",

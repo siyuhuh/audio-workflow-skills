@@ -1,3 +1,4 @@
+import { motion } from "motion/react";
 import { cn } from "../lib/cn";
 import type { Translator } from "../lib/types";
 import type { AppLocale } from "../../shared/types";
@@ -14,7 +15,7 @@ export function LanguageSwitcher({ value, onChange, t }: LanguageSwitcherProps) 
     <div
       role="group"
       aria-label={t("common:language.label")}
-      className="inline-flex rounded-full border border-border bg-card p-[2px] shadow-2xs"
+      className="relative grid grid-cols-2 rounded-md border border-border bg-card p-1 shadow-2xs"
     >
       {SUPPORTED_LOCALES.map((locale) => {
         const selected = locale === value;
@@ -26,14 +27,23 @@ export function LanguageSwitcher({ value, onChange, t }: LanguageSwitcherProps) 
             aria-pressed={selected}
             onClick={() => void onChange(locale)}
             className={cn(
-              "min-h-7 rounded-full px-3 text-sm font-medium transition-colors duration-150 ease-out",
+              "relative min-h-9 min-w-28 rounded-md px-4 text-sm font-semibold transition-colors duration-150 ease-out",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
               selected
-                ? "bg-line-strong text-card"
+                ? "text-primary-foreground"
                 : "bg-transparent text-muted-foreground hover:text-foreground"
             )}
           >
-            {locale === "en" ? t("common:language.english") : t("common:language.chinese")}
+            {selected ? (
+              <motion.span
+                layoutId="language-switcher-active"
+                className="absolute inset-0 rounded-md bg-primary shadow-xs"
+                transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.7 }}
+              />
+            ) : null}
+            <span className="relative z-[1]">
+              {locale === "en" ? t("common:language.english") : t("common:language.chinese")}
+            </span>
           </button>
         );
       })}

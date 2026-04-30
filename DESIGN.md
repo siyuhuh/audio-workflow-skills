@@ -30,26 +30,29 @@ The app still uses existing CSS class names, but Tailwind theme variables are av
 - **Shape:** `0.5rem` radius as the default. Larger radii are allowed only for floating docks and pills.
 - **Depth:** Use the supplied small shadow tokens. Avoid the previous flat Linear look and avoid huge blurred hero shadows.
 - **Color behavior:** Green is the primary action, active state, and high-energy highlight. Avoid pink/purple as the main accent.
+- **Accent variants:** Users may switch between approved green-family accents in Settings. Variants must stay within the green/teal range and continue mapping through `--primary`, `--accent`, `--ring`, and `--ktv-accent`.
 - **Default theme:** Dark Mode is the product default. Light mode remains available as an explicit setting.
 
 ## Core Tokens
 
 Use these exact token families in `styles.css`.
 
-| Token | Light value | Dark value | Role |
-|------|-------------|------------|------|
-| `--background` | `oklch(0.9809 0.0025 228.7836)` | `oklch(0.1450 0.0120 264.2926)` | App canvas |
-| `--foreground` | `oklch(0.3211 0 0)` | `oklch(0.9219 0 0)` | Primary text |
-| `--card` | `oklch(1 0 0)` | `oklch(0.2050 0.0100 264.2926)` | Cards and panels |
-| `--primary` | `oklch(0.7395 0.2268 142.8504)` | `oklch(0.7395 0.2268 142.8504)` | Primary action / green accent |
-| `--secondary` | `oklch(0.8148 0.0819 225.7537)` | `oklch(0.2700 0.0120 264.2926)` | Secondary surfaces |
-| `--muted` | `oklch(0.8828 0.0285 98.1033)` | `oklch(0.2600 0.0080 264.2926)` | Muted blocks |
-| `--accent` | `oklch(0.7395 0.2268 142.8504)` | `oklch(0.7395 0.2268 142.8504)` | High-energy green highlight |
-| `--destructive` | `oklch(0.6368 0.2078 25.3313)` | same | Destructive state |
-| `--border` / `--input` | `oklch(0.8699 0 0)` | `oklch(0.3100 0.0060 264.2926)` | Borders and inputs |
-| `--ring` | primary | dark primary | Focus ring |
 
-Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, and `--ktv-*` must map back to these tokens. Do not create independent palettes unless a new token is added here first.
+| Token                  | Light value                     | Dark value                      | Role                          |
+| ---------------------- | ------------------------------- | ------------------------------- | ----------------------------- |
+| `--background`         | `oklch(0.9809 0.0025 228.7836)` | `oklch(0.1450 0.0120 264.2926)` | App canvas                    |
+| `--foreground`         | `oklch(0.3211 0 0)`             | `oklch(0.9219 0 0)`             | Primary text                  |
+| `--card`               | `oklch(1 0 0)`                  | `oklch(0.2050 0.0100 264.2926)` | Cards and panels              |
+| `--primary`            | `oklch(0.7395 0.2268 142.8504)` | `oklch(0.7395 0.2268 142.8504)` | Primary action / green accent |
+| `--secondary`          | `oklch(0.8148 0.0819 225.7537)` | `oklch(0.2700 0.0120 264.2926)` | Secondary surfaces            |
+| `--muted`              | `oklch(0.8828 0.0285 98.1033)`  | `oklch(0.2600 0.0080 264.2926)` | Muted blocks                  |
+| `--accent`             | `oklch(0.7395 0.2268 142.8504)` | `oklch(0.7395 0.2268 142.8504)` | High-energy green highlight   |
+| `--destructive`        | `oklch(0.6368 0.2078 25.3313)`  | same                            | Destructive state             |
+| `--border` / `--input` | `oklch(0.8699 0 0)`             | `oklch(0.3100 0.0060 264.2926)` | Borders and inputs            |
+| `--ring`               | primary                         | dark primary                    | Focus ring                    |
+
+
+Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, and `--ktv-`* must map back to these tokens. Do not create independent palettes unless a new token is added here first.
 
 ## Typography
 
@@ -101,9 +104,13 @@ Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, an
 
 ## Decisions Log
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| 2026-04-28 | Adopted Studio Paper + Warm Stage | Initial direction reduced neon karaoke tropes and clarified Studio vs Stage. |
-| 2026-04-29 | Tried Linear Editorial Minimalism | Helped simplify the UI but felt too restrained for the desired product mood. |
-| 2026-04-29 | Adopted supplied Tailwind v4 OKLCH style tokens | User preferred the provided pastel token set with Poppins, subtle shadows, soft surfaces, and more expressive color. |
-| 2026-04-29 | Switched to dark-first green accent | User clarified the current accent felt pink and wanted the green from the dark dashboard reference, with a darker default background and Dark Mode by default. |
+
+| Date       | Decision                                        | Rationale                                                                                                                                                      |
+| ---------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-04-28 | Adopted Studio Paper + Warm Stage               | Initial direction reduced neon karaoke tropes and clarified Studio vs Stage.                                                                                   |
+| 2026-04-29 | Tried Linear Editorial Minimalism               | Helped simplify the UI but felt too restrained for the desired product mood.                                                                                   |
+| 2026-04-29 | Adopted supplied Tailwind v4 OKLCH style tokens | User preferred the provided pastel token set with Poppins, subtle shadows, soft surfaces, and more expressive color.                                           |
+| 2026-04-29 | Switched to dark-first green accent             | User clarified the current accent felt pink and wanted the green from the dark dashboard reference, with a darker default background and Dark Mode by default. |
+| 2026-04-30 | Added green-family accent variants              | Settings now allows controlled green/teal accent switching while preserving the product's green-led brand direction.                                           |
+
+

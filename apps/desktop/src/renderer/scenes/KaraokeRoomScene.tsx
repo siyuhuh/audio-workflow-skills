@@ -8,6 +8,7 @@ import { cn } from "../lib/cn";
 import { Button } from "../components/ui/Button";
 import { Eyebrow } from "../components/ui/Eyebrow";
 import { HoverFillGroup } from "../components/ui/HoverFillGroup";
+import { Icon } from "../components/ui/Icon";
 import {
   KaraokeLyricLine,
   type LyricEffect,
@@ -287,86 +288,69 @@ export function KaraokeRoomScene({
 
         {/* Transport dock */}
         <aside className="z-[2] grid gap-3 border-t border-ktv-line bg-ktv-bg/90 px-6 py-4 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
-            <div
-              className="grid size-10 place-items-center rounded-md bg-ktv-accent text-base font-semibold text-black"
-              aria-hidden="true"
-            >
-              {reviewTitle.slice(0, 2).toUpperCase()}
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
+            <div className="flex min-w-0 items-center gap-3">
+              <div
+                className="grid size-10 place-items-center rounded-md bg-ktv-accent text-base font-semibold text-black"
+                aria-hidden="true"
+              >
+                {reviewTitle.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="grid min-w-0 gap-0.5">
+                <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white">
+                  {reviewTitle}
+                </strong>
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs font-normal text-ktv-text-muted">
+                  {trackRoleLabel} · {selectedMediaName}
+                </span>
+              </div>
             </div>
-            <div className="grid min-w-0 gap-0.5">
-              <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white">
-                {reviewTitle}
-              </strong>
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs font-normal text-ktv-text-muted">
-                {trackRoleLabel} · {selectedMediaName}
-              </span>
-            </div>
-          </div>
 
-          <div className="grid gap-1.5">
-            <input
-              aria-label="Playback position"
-              type="range"
-              min="0"
-              max={progressMax || 0}
-              step="0.1"
-              value={progressValue}
-              disabled={!hasPlayableMedia}
-              onInput={(event) =>
-                playbackController.seek(Number(event.currentTarget.value), playbackController.isPlaying)
-              }
-              onChange={(event) =>
-                playbackController.seek(Number(event.currentTarget.value), playbackController.isPlaying)
-              }
-              className="w-full accent-ktv-accent disabled:opacity-40"
-            />
-            <div className="flex items-center justify-between font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
-              <span>{formatClock(progressValue)}</span>
-              <span>{progressMax > 0 ? formatClock(progressMax) : "--:--"}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={!hasPlayableMedia}
-              onClick={playbackController.restart}
-              className={transportBtnClasses}
-            >
-              {t("room:transport.restart")}
-            </button>
-            <button
-              type="button"
-              disabled={!hasPlayableMedia}
-              onClick={
-                playbackController.isPlaying
-                  ? playbackController.pause
-                  : playbackController.play
-              }
-              className={cn(transportBtnClasses, "bg-ktv-accent text-black hover:enabled:bg-ktv-accent/90")}
-            >
-              {playbackController.isPlaying
-                ? t("room:transport.pause")
-                : t("room:transport.play")}
-            </button>
-            <button
-              type="button"
-              disabled={!hasPlayableMedia}
-              onClick={() =>
-                playbackController.seek(
-                  Math.max(0, playbackController.currentTime - 5),
+            <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-self-center">
+              <button
+                type="button"
+                disabled={!hasPlayableMedia}
+                onClick={playbackController.restart}
+                className={transportBtnClasses}
+              >
+                <Icon name="restart" />
+                {t("room:transport.restart")}
+              </button>
+              <button
+                type="button"
+                disabled={!hasPlayableMedia}
+                onClick={
                   playbackController.isPlaying
-                )
-              }
-              className={transportBtnClasses}
-            >
-              -5s
-            </button>
+                    ? playbackController.pause
+                    : playbackController.play
+                }
+                className={cn(transportBtnClasses, "bg-ktv-accent text-black hover:enabled:bg-ktv-accent/90")}
+              >
+                <Icon name={playbackController.isPlaying ? "pause" : "play"} />
+                {playbackController.isPlaying
+                  ? t("room:transport.pause")
+                  : t("room:transport.play")}
+              </button>
+              <button
+                type="button"
+                disabled={!hasPlayableMedia}
+                onClick={() =>
+                  playbackController.seek(
+                    Math.max(0, playbackController.currentTime - 5),
+                    playbackController.isPlaying
+                  )
+                }
+                className={transportBtnClasses}
+              >
+                <Icon name="rewind" />
+                -5s
+              </button>
+            </div>
 
-            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 lg:justify-self-end">
               <HoverFillGroup<TrackRole>
                 ariaLabel={t("room:trackRole")}
+                className="grid-cols-2"
                 value={mainTrackRole}
                 onChange={onTrackRoleChange}
                 items={[
@@ -390,9 +374,10 @@ export function KaraokeRoomScene({
                     "list-none cursor-pointer [&::-webkit-details-marker]:hidden"
                   )}
                 >
+                  <Icon name="sliders" />
                   {t("room:style")}
                 </summary>
-                <div className="absolute bottom-full right-0 z-10 mb-2 grid w-[min(380px,calc(100vw-32px))] gap-4 rounded-xl border border-ktv-line bg-ktv-surface p-4 shadow-[var(--shadow-overlay)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
+                <div className="absolute bottom-full right-[calc(100%+10px)] z-10 mb-2 grid w-[min(380px,calc(100vw-32px))] gap-4 rounded-xl border border-ktv-line bg-ktv-surface p-4 shadow-[var(--shadow-overlay)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
                   <header className="flex items-start justify-between gap-3">
                     <div className="grid gap-1">
                       <strong className="text-sm font-semibold text-white">{t("room:stylePanel")}</strong>
@@ -497,6 +482,7 @@ export function KaraokeRoomScene({
                   disabled={isRunning}
                   className={transportBtnClasses}
                 >
+                  <Icon name="music" />
                   {isRunning ? t("package:splitRunning") : t("package:splitVocals")}
                 </button>
               ) : null}
@@ -508,9 +494,10 @@ export function KaraokeRoomScene({
                     "list-none cursor-pointer [&::-webkit-details-marker]:hidden"
                   )}
                 >
+                  <Icon name="settings" />
                   {t("room:settings")}
                 </summary>
-                <div className="absolute bottom-full right-0 z-10 mb-2 grid w-[320px] max-h-[60vh] gap-3 overflow-y-auto rounded-lg border border-ktv-line bg-ktv-surface p-3 shadow-[var(--shadow-overlay)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
+                <div className="absolute bottom-full right-0 z-20 mb-2 grid w-[min(380px,calc(100vw-32px))] max-h-[60vh] gap-3 overflow-y-auto rounded-lg border border-ktv-line bg-ktv-surface p-3 shadow-[var(--shadow-overlay)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
                   <MicrophoneMonitorPanel monitor={microphoneMonitor} />
 
                   <label className="grid gap-1.5">
@@ -563,12 +550,13 @@ export function KaraokeRoomScene({
                           )
                         }
                         className={cn(
-                          "min-h-8 rounded-full border px-3 text-xs font-medium",
+                          "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold whitespace-nowrap",
                           trackRole === "vocal"
                             ? "border-primary bg-primary text-primary-foreground"
                             : "border-ktv-line bg-transparent text-white/80 hover:border-white/30"
                         )}
                       >
+                        <Icon name={trackRole === "vocal" ? "restart" : "mic"} />
                         {trackRole === "vocal" ? t("room:returnTrack") : t("room:useTrack")}
                       </button>
                     </div>
@@ -609,6 +597,29 @@ export function KaraokeRoomScene({
                   </div>
                 </div>
               </details>
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <input
+              aria-label="Playback position"
+              type="range"
+              min="0"
+              max={progressMax || 0}
+              step="0.1"
+              value={progressValue}
+              disabled={!hasPlayableMedia}
+              onInput={(event) =>
+                playbackController.seek(Number(event.currentTarget.value), playbackController.isPlaying)
+              }
+              onChange={(event) =>
+                playbackController.seek(Number(event.currentTarget.value), playbackController.isPlaying)
+              }
+              className="w-full accent-ktv-accent disabled:opacity-40"
+            />
+            <div className="flex items-center justify-between font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
+              <span>{formatClock(progressValue)}</span>
+              <span>{progressMax > 0 ? formatClock(progressMax) : "--:--"}</span>
             </div>
           </div>
 

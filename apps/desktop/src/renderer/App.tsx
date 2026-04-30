@@ -1,4 +1,4 @@
-import { type CSSProperties, type DragEvent, type ReactNode, type RefObject, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type DragEvent, type RefObject, type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import QRCode from "qrcode";
 import { useTranslation } from "react-i18next";
@@ -51,12 +51,14 @@ import {
 } from "./components/MicrophoneMonitorPanel";
 import { LyricsReviewScene } from "./scenes/LyricsReviewScene";
 import { KaraokeRoomScene } from "./scenes/KaraokeRoomScene";
+import { TopologyBackgroundCanvas } from "./components/visual/TopologyBackgroundCanvas";
 import { cn } from "./lib/cn";
 import { Button } from "./components/ui/Button";
 import { Eyebrow } from "./components/ui/Eyebrow";
 import { Field } from "./components/ui/Field";
 import { Checkbox } from "./components/ui/Checkbox";
 import { SegmentedControl } from "./components/ui/SegmentedControl";
+import { Icon } from "./components/ui/Icon";
 
 function isSampleHistoryEntry(entry: SavedJobHistory): boolean {
   return entry.input.startsWith("sample:") || entry.id.startsWith("sample:");
@@ -104,9 +106,10 @@ interface FeaturedPackageEntryProps {
   variant: "continue" | "sample";
   onEnter: () => void;
   onOpen: () => void;
+  onDelete: () => void;
 }
 
-function FeaturedPackageEntry({ entry, variant, onEnter, onOpen }: FeaturedPackageEntryProps) {
+function FeaturedPackageEntry({ entry, variant, onEnter, onOpen, onDelete }: FeaturedPackageEntryProps) {
   const title = reviewDisplayTitle(entry);
   const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
   const coverPath =
@@ -121,6 +124,7 @@ function FeaturedPackageEntry({ entry, variant, onEnter, onOpen }: FeaturedPacka
       variant={variant}
       onEnter={onEnter}
       onOpen={onOpen}
+      onDelete={onDelete}
       title={title}
       canEnter={canEnter}
       coverUrl={coverUrl}
@@ -139,32 +143,6 @@ type JobStatus = "idle" | "running" | "complete" | "failed" | "canceled";
 type ReviewTab = "karaoke" | "script" | "files";
 type AppScene = "workspace" | "lyrics-review" | "karaoke-room";
 
-interface StatusPillProps {
-  state: JobStatus;
-  children: ReactNode;
-}
-
-function StatusPill({ state, children }: StatusPillProps) {
-  const stateClass =
-    state === "running"
-      ? "border-primary/45 bg-accent-soft text-accent-strong"
-      : state === "complete"
-        ? "border-success/45 bg-success-soft text-success"
-        : state === "failed" || state === "canceled"
-          ? "border-danger/45 bg-danger-soft text-danger"
-          : "border-border bg-card text-muted-foreground";
-
-  return (
-    <div
-      className={cn(
-        "inline-flex min-h-8 items-center rounded-full border px-3 text-xs font-medium",
-        stateClass
-      )}
-    >
-      {children}
-    </div>
-  );
-}
 type TrackRole = "original" | "backing" | "vocal" | "custom";
 
 interface JobRecord {
@@ -237,7 +215,7 @@ const defaultOptions: JobOptions = {
   outputDir: "",
   subtitleSource: "auto",
   localFallback: true,
-  separate: false,
+  separate: true,
   saveAudio: false,
   keepPlatformSubs: false,
   model: "medium",
@@ -248,6 +226,10 @@ const defaultOptions: JobOptions = {
   formats: ["lrc", "json", "ass"]
 };
 
+function isAccentColor(value: unknown): value is AccentColor {
+  return value === "green" || value === "lime" || value === "mint" || value === "teal";
+}
+
 function createHttpAudioWorkflowApi(): AudioWorkflowApi {
   const baseUrl = "http://127.0.0.1:5175";
   const readFallbackSettings = (): UserSettings => {
@@ -256,7 +238,7 @@ function createHttpAudioWorkflowApi(): AudioWorkflowApi {
       return {
         locale: parsed.locale === "en" || parsed.locale === "zh" ? parsed.locale : null,
         themeMode: parsed.themeMode === "light" || parsed.themeMode === "dark" || parsed.themeMode === "system" ? parsed.themeMode : "dark",
-        accentColor: parsed.accentColor === "green" ? parsed.accentColor : "green"
+        accentColor: isAccentColor(parsed.accentColor) ? parsed.accentColor : "green"
       };
     } catch {
       return { locale: null, themeMode: "dark", accentColor: "green" };
@@ -375,9 +357,10 @@ export default function App() {
   const [lyricFont, setLyricFont] = useState<LyricFont>("rounded");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [youtubePanelOpen, setYoutubePanelOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<"home" | "add">("home");
   const [mediaSearchPlatform, setMediaSearchPlatform] = useState<"youtube" | "bilibili">("youtube");
   const [youtubeQuery, setYoutubeQuery] = useState("");
-  const [youtubeAppendKaraoke, setYoutubeAppendKaraoke] = useState(true);
+  const [youtubeAppendKaraoke, setYoutubeAppendKaraoke] = useState(false);
   const [youtubeResults, setYoutubeResults] = useState<YoutubeSearchResult[]>([]);
   const [youtubeSearching, setYoutubeSearching] = useState(false);
   const [youtubeError, setYoutubeError] = useState("");
@@ -459,10 +442,10 @@ export default function App() {
   }, [history, options.input]);
   const roomQueue = roomStatus?.queue ?? [];
   const nextRoomRequest = roomQueue.find((item) => item.status === "queued") ?? null;
-  const showWorkspace = Boolean(activeReview || jobs.length > 0 || advancedOpen);
+  const showWorkspace = Boolean(activeReview || jobs.length > 0 || advancedOpen || workspaceMode === "add");
   const showActivityPane = Boolean(jobs.length > 0 || advancedOpen);
   const effectiveTheme = themeMode === "system" ? (systemPrefersDark ? "dark" : "light") : themeMode;
-  const currentNavTarget: AppNavTarget = appScene === "karaoke-room" ? "karaoke" : youtubePanelOpen || document.activeElement === captureInputRef.current ? "add" : "home";
+  const currentNavTarget: AppNavTarget = appScene === "karaoke-room" ? "karaoke" : workspaceMode;
   const canNavigateToKaraoke = Boolean(activeReview?.workflowMode === "karaoke" && activeReview.playbackBundle.controllable && selectedSubtitlePath);
 
   useEffect(() => {
@@ -744,7 +727,7 @@ export default function App() {
     updateOptions({
       workflowMode,
       localFallback: workflowMode === "karaoke",
-      separate: workflowMode === "karaoke" ? options.separate : false,
+      separate: workflowMode === "karaoke",
       saveAudio: false,
       formats: workflowMode === "karaoke" ? ["lrc", "json", "ass"] : ["srt"]
     });
@@ -790,6 +773,7 @@ export default function App() {
   function applyYoutubeResult(row: YoutubeSearchResult) {
     updateOptions({ input: row.url });
     setYoutubeError("");
+    setWorkspaceMode("add");
   }
 
   function openCachedInputPackage() {
@@ -799,16 +783,19 @@ export default function App() {
     setSelectedHistoryId(cachedPackageForInput.id);
     setActiveJobId(null);
     setReviewTab("karaoke");
+    setWorkspaceMode("home");
     setAppScene(cachedPackageForInput.workflowMode === "karaoke" ? "lyrics-review" : "workspace");
     setStatusMessage(t("capture:cache.openedExisting"));
   }
 
   function navigateHome() {
+    setWorkspaceMode("home");
     setAppScene("workspace");
     setYoutubePanelOpen(false);
   }
 
   function navigateAdd() {
+    setWorkspaceMode("add");
     setAppScene("workspace");
     setYoutubePanelOpen(true);
     window.setTimeout(() => captureInputRef.current?.focus(), 0);
@@ -862,6 +849,7 @@ export default function App() {
     const firstFile = event.dataTransfer.files.item(0) as (File & { path?: string }) | null;
     if (firstFile?.path) {
       updateOptions({ input: firstFile.path });
+      setWorkspaceMode("add");
     }
   }
 
@@ -882,6 +870,7 @@ export default function App() {
     setJobs((current) => [nextJob, ...current]);
     setActiveJobId(jobId);
     setSelectedHistoryId(null);
+    setWorkspaceMode("add");
     logsRef.current = "";
     setLogs("");
     setProgressStages(new Map());
@@ -1161,6 +1150,7 @@ export default function App() {
           onTrackRoleChange={setTrackRole}
           isRunning={isRunning}
         />
+        {floatingNav}
       </div>
     );
   }
@@ -1175,60 +1165,83 @@ export default function App() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: motionDuration.base, ease: motionEase }}
     >
+      <TopologyBackgroundCanvas />
       <section
         className="grid gap-6"
         onDrop={handleDrop}
         onDragOver={(event) => event.preventDefault()}
       >
         {/* Top bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5" aria-label={t("common:appName")}>
-            <span
-              className="grid size-8 place-items-center rounded-md bg-primary text-sm font-semibold text-primary-foreground shadow-xs"
-              aria-hidden="true"
-            >
-              VF
+        <header className="brandHeader">
+          <div className="brandLogo" aria-label={t("common:appName")}>
+            <span className="brandLogoLine">
+              <span className="brandLogoStrong">Vocal</span>
+              <span className="brandLogoLight">Flow</span>
             </span>
-            <span className="text-sm font-semibold text-foreground">{t("common:appName")}</span>
+            <span className="brandLogoMeta">{t("common:home.established")}</span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => setSettingsOpen(true)}>{t("settings:button")}</Button>
-            <Button
-              data-active={roomDrawerOpen}
+
+          <div className="brandHeaderActions">
+            <button
+              className="brandIconButton"
+              type="button"
               onClick={() => setRoomDrawerOpen((open) => !open)}
+              aria-label={t("room:drawerToggle")}
               aria-expanded={roomDrawerOpen}
               aria-controls="vocalflow-room-drawer"
-              className={cn(
-                roomDrawerOpen && "border-line-strong bg-muted text-foreground"
-              )}
             >
-              <span>{t("room:drawerToggle")}</span>
+              <Icon name="qr" />
               {(roomQueue.length > 0 || roomStatus?.nowPlaying) ? (
-                <span
-                  className="ml-1 inline-block size-2 rounded-full bg-primary shadow-[0_0_0_3px_color-mix(in_oklch,var(--ring)_18%,transparent)]"
-                  aria-label={t("room:statusDot")}
-                />
+                <span className="brandIconStatusDot" aria-label={t("room:statusDot")} />
               ) : null}
-            </Button>
-            <StatusPill state={activeJob?.status ?? "idle"}>{statusMessage}</StatusPill>
+            </button>
+            <button
+              className="brandIconButton"
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label={t("settings:button")}
+            >
+              <Icon name="settings" />
+            </button>
           </div>
-        </div>
+        </header>
 
-        {/* Hero */}
-        <div className="grid gap-2">
-          <Eyebrow>{t("capture:heroSubtitle")}</Eyebrow>
-          <h1 className="m-0 max-w-[720px] text-[clamp(36px,5vw,48px)] font-semibold leading-none tracking-tight text-foreground">
-            {t("home:title")}
-          </h1>
-          <p className="m-0 max-w-[620px] text-base font-normal leading-normal text-muted-foreground">
-            {t("home:subtitle")}
-          </p>
-        </div>
+        {/* Brand hero */}
+        <section className="brandHero grid items-center gap-8" data-workspace-mode={workspaceMode}>
+          <div className="grid max-w-[820px] content-start gap-5">
+            <div className="grid gap-4">
+              <Eyebrow>{workspaceMode === "add" ? t("common:home.addKicker") : t("common:home.kicker")}</Eyebrow>
+              <h1 className="m-0 max-w-[780px] text-[clamp(44px,7vw,76px)] font-semibold leading-[0.95] tracking-[-0.06em] text-foreground">
+                {workspaceMode === "add" ? t("common:home.addTitle") : t("common:home.title")}
+              </h1>
+              <p className="m-0 max-w-[660px] text-[clamp(16px,2vw,20px)] font-normal leading-relaxed text-muted-foreground">
+                {workspaceMode === "add" ? t("common:home.addSubtitle") : t("common:home.subtitle")}
+              </p>
+              {workspaceMode === "home" ? (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={navigateKaraoke}
+                    disabled={!canNavigateToKaraoke}
+                    className="gap-2"
+                  >
+                    <Icon name="play" />
+                    {t("common:actions.enterKaraoke")}
+                  </Button>
+                  <Button size="lg" onClick={navigateAdd} className="gap-2">
+                    <Icon name="plus" />
+                    {t("common:nav.add")}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
 
         {/* Capture composer */}
+        {workspaceMode === "add" ? (
         <div className="grid gap-3">
-          <p className="m-0 text-sm font-medium text-faint">{t("home:captureHint")}</p>
-          <div className="grid gap-3 rounded-lg border border-border bg-elevated p-4 shadow-sm backdrop-blur-md">
+          <p className="m-0 text-sm font-medium text-faint">{t("common:home.captureHint")}</p>
+          <div className="brandCaptureCard grid gap-3 rounded-lg border border-border bg-elevated p-4 shadow-sm backdrop-blur-md">
             <label className="block text-sm font-medium text-muted-foreground" htmlFor="input">
               {t("capture:inputLabel")}
             </label>
@@ -1248,6 +1261,7 @@ export default function App() {
                 disabled={!options.input.trim() || isRunning}
                 className="min-w-[120px]"
               >
+                <Icon name={cachedPackageForInput ? "folder" : "spark"} />
                 {cachedPackageForInput ? t("capture:cache.openExisting") : t("common:actions.run")}
               </Button>
               <Button size="lg" onClick={cancelJob} disabled={!isRunning}>
@@ -1265,115 +1279,6 @@ export default function App() {
               </>
             ) : null}
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                selected={youtubePanelOpen}
-                onClick={() => setYoutubePanelOpen((open) => !open)}
-                aria-expanded={youtubePanelOpen}
-              >
-                {t("capture:search.toggle")}
-              </Button>
-              <span className="text-sm font-medium text-faint">{t("capture:search.hint")}</span>
-            </div>
-
-            {youtubePanelOpen ? (
-              <div className="grid gap-3 rounded-md border border-border bg-card p-3">
-                <SegmentedControl
-                  value={mediaSearchPlatform}
-                  options={[
-                    ["youtube", t("capture:search.youtube")],
-                    ["bilibili", t("capture:search.bilibili")]
-                  ]}
-                  onChange={setMediaSearchPlatform}
-                />
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                  <input
-                    value={youtubeQuery}
-                    onChange={(event) => setYoutubeQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void runYoutubeDiscovery();
-                      }
-                    }}
-                    placeholder={t("capture:search.placeholder")}
-                    aria-label={t("capture:search.toggle")}
-                    className="min-h-10 w-full rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
-                  />
-                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={youtubeAppendKaraoke}
-                      onChange={(event) => setYoutubeAppendKaraoke(event.target.checked)}
-                      className="size-4 cursor-pointer accent-primary"
-                    />
-                    <span>{t("capture:search.appendKaraoke")}</span>
-                  </label>
-                  <Button
-                    onClick={() => void runYoutubeDiscovery()}
-                    disabled={youtubeSearching || !youtubeQuery.trim()}
-                  >
-                    {youtubeSearching ? t("common:actions.searching") : t("common:actions.search")}
-                  </Button>
-                </div>
-                {youtubeError ? (
-                  <p className="m-0 text-sm font-medium text-danger">{youtubeError}</p>
-                ) : null}
-                {youtubeResults.length > 0 ? (
-                  <ul
-                    aria-label={t("capture:search.toggle")}
-                    className="m-0 grid max-h-[52vh] list-none gap-0 overflow-y-auto overflow-x-hidden rounded-md border border-border p-0"
-                  >
-                    {youtubeResults.map((row) => (
-                      <li
-                        key={row.videoId}
-                        className="flex gap-3 border-b border-border bg-card p-2.5 last:border-b-0"
-                      >
-                        <div className="aspect-video w-40 max-w-[38vw] flex-none self-center overflow-hidden rounded-md bg-black">
-                          {searchResultThumbnail(row) ? (
-                            <img
-                              src={searchResultThumbnail(row)}
-                              alt=""
-                              loading="lazy"
-                              width={160}
-                              height={90}
-                              className="block h-auto w-full object-cover"
-                            />
-                          ) : (
-                            <span className="grid aspect-video place-items-center text-sm font-bold text-white/85">
-                              {row.platform === "bilibili"
-                                ? t("capture:search.bilibili")
-                                : t("capture:search.youtube")}
-                            </span>
-                          )}
-                        </div>
-                        <div className="grid min-w-0 flex-1 gap-1.5">
-                          <div className="overflow-hidden text-ellipsis text-base font-semibold leading-snug text-foreground">
-                            {row.title}
-                          </div>
-                          <div className="text-xs font-medium text-muted-foreground">
-                            {row.channel ? `${row.channel} · ` : ""}
-                            {row.durationLabel || "—"}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button size="sm" onClick={() => applyYoutubeResult(row)}>
-                              {t("capture:search.useThisLink")}
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => void audioWorkflow.openExternalUrl(row.url)}
-                            >
-                              {t("capture:search.openInBrowser")}
-                            </Button>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-
             <div className="flex flex-wrap items-end gap-3">
               <div className="w-[220px] max-w-full">
                 <SegmentedControl
@@ -1385,68 +1290,203 @@ export default function App() {
                   onChange={setWorkflowMode}
                 />
               </div>
-              <label className="grid w-40 gap-1">
+              <label className="grid w-44 gap-1">
                 <span className="text-xs font-medium text-muted-foreground">
                   {t("common:language.label")}
                 </span>
-                <input
+                <select
                   value={options.language}
                   onChange={(event) => updateOptions({ language: event.target.value })}
-                  placeholder={t("capture:languageHint")}
-                  className="min-h-9 w-full rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
-                />
+                  className="min-h-9 w-full rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
+                >
+                  <option value="">{t("capture:languageOptions.auto")}</option>
+                  <option value="en">{t("capture:languageOptions.english")}</option>
+                  <option value="zh">{t("capture:languageOptions.chinese")}</option>
+                  <option value="ja">{t("capture:languageOptions.japanese")}</option>
+                  <option value="ko">{t("capture:languageOptions.korean")}</option>
+                </select>
               </label>
-              <Button onClick={chooseInput}>{t("capture:selectFile")}</Button>
-              <Button onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
+              <Button onClick={chooseInput} className="gap-2">
+                <Icon name="folder" />
+                {t("capture:selectFile")}
+              </Button>
+              <Button onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen} className="gap-2">
+                <Icon name="settings" />
                 {advancedOpen ? t("capture:advanced.hide") : t("capture:advanced.show")}
               </Button>
             </div>
           </div>
+          <section className="mediaSearchCard grid gap-3 rounded-lg border border-border bg-card/80 p-4 shadow-sm backdrop-blur-md">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="grid size-8 place-items-center rounded-full border border-line-soft bg-muted text-muted-foreground">
+                  <Icon name="search" />
+                </span>
+                <div>
+                  <h2 className="m-0 text-base font-semibold text-foreground">{t("capture:search.toggle")}</h2>
+                  <p className="m-0 text-sm font-medium text-faint">{t("capture:search.hint")}</p>
+                </div>
+              </div>
+            </div>
+            <SegmentedControl
+              value={mediaSearchPlatform}
+              options={[
+                ["youtube", t("capture:search.youtube")],
+                ["bilibili", t("capture:search.bilibili")]
+              ]}
+              onChange={setMediaSearchPlatform}
+            />
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <input
+                value={youtubeQuery}
+                onChange={(event) => setYoutubeQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void runYoutubeDiscovery();
+                  }
+                }}
+                placeholder={t("capture:search.placeholder")}
+                aria-label={t("capture:search.toggle")}
+                className="min-h-10 w-full rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
+              />
+              <Button
+                onClick={() => void runYoutubeDiscovery()}
+                disabled={youtubeSearching || !youtubeQuery.trim()}
+                className="gap-2"
+              >
+                <Icon name="search" />
+                {youtubeSearching ? t("common:actions.searching") : t("common:actions.search")}
+              </Button>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <Checkbox
+                label={t("capture:search.appendKaraoke")}
+                checked={youtubeAppendKaraoke}
+                onChange={setYoutubeAppendKaraoke}
+              />
+              <Checkbox
+                label={t("capture:search.splitVocalsDefault")}
+                checked={options.separate}
+                disabled={options.workflowMode !== "karaoke"}
+                onChange={(checked) => updateOptions({ separate: checked })}
+              />
+            </div>
+            {youtubeAppendKaraoke && options.separate && options.workflowMode === "karaoke" ? (
+              <p className="m-0 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-sm font-medium text-warning">
+                {t("capture:search.karaokeSplitWarning")}
+              </p>
+            ) : null}
+            {youtubeError ? (
+              <p className="m-0 text-sm font-medium text-danger">{youtubeError}</p>
+            ) : null}
+            {youtubeResults.length > 0 ? (
+              <ul
+                aria-label={t("capture:search.toggle")}
+                className="m-0 grid max-h-[52vh] list-none gap-0 overflow-y-auto overflow-x-hidden rounded-md border border-border p-0"
+              >
+                {youtubeResults.map((row) => (
+                  <li
+                    key={row.videoId}
+                    className="flex gap-3 border-b border-border bg-card p-2.5 last:border-b-0"
+                  >
+                    <div className="aspect-video w-40 max-w-[38vw] flex-none self-center overflow-hidden rounded-md bg-black">
+                      {searchResultThumbnail(row) ? (
+                        <img
+                          src={searchResultThumbnail(row)}
+                          alt=""
+                          loading="lazy"
+                          width={160}
+                          height={90}
+                          className="block h-auto w-full object-cover"
+                        />
+                      ) : (
+                        <span className="grid aspect-video place-items-center text-sm font-bold text-white/85">
+                          {row.platform === "bilibili"
+                            ? t("capture:search.bilibili")
+                            : t("capture:search.youtube")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid min-w-0 flex-1 gap-1.5">
+                      <div className="overflow-hidden text-ellipsis text-base font-semibold leading-snug text-foreground">
+                        {row.title}
+                      </div>
+                      <div className="text-xs font-medium text-muted-foreground">
+                        {row.channel ? `${row.channel} · ` : ""}
+                        {row.durationLabel || "—"}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={() => applyYoutubeResult(row)}>
+                          {t("capture:search.useThisLink")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => void audioWorkflow.openExternalUrl(row.url)}
+                        >
+                          {t("capture:search.openInBrowser")}
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
         </div>
+        ) : null}
+          </div>
+        </section>
 
         <StageChain stages={progressStages} isRunning={isRunning} t={t} />
 
-        {featuredPackage ? (
-          <FeaturedPackageEntry
-            entry={featuredPackage.entry}
-            variant={featuredVariant}
-            onEnter={() => enterKaraokeFromHistory(featuredPackage.entry.id)}
-            onOpen={() => selectHistoryEntry(featuredPackage.entry.id)}
-          />
-        ) : null}
+        {workspaceMode === "home" ? (
+          <section className="selectionGallery grid gap-4" aria-label={t("library:shelfHeader")}>
+            {featuredPackage ? (
+              <FeaturedPackageEntry
+                entry={featuredPackage.entry}
+                variant={featuredVariant}
+                onEnter={() => enterKaraokeFromHistory(featuredPackage.entry.id)}
+                onOpen={() => selectHistoryEntry(featuredPackage.entry.id)}
+                onDelete={() => removeHistoryEntries(featuredPackage.duplicateIds)}
+              />
+            ) : null}
 
-        {shelfPackages.length > 0 ? (
-          <section
-            aria-label={t("library:shelfHeader")}
-            className="grid gap-3 rounded-lg border border-border bg-card p-4 shadow-sm"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <Eyebrow className="m-0">{t("library:shelfHeader")}</Eyebrow>
-              <span className="text-xs font-medium text-faint tabular-nums">
-                {shelfPackages.length}
-              </span>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {shelfPackages.map(({ entry, duplicateIds }) => (
-                <ProcessedResourceCardEntry
-                  key={entry.id}
-                  entry={entry}
-                  onEnter={() => enterKaraokeFromHistory(entry.id)}
-                  onReview={() => selectHistoryEntry(entry.id)}
-                  onDelete={() => removeHistoryEntries(duplicateIds)}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
+            {shelfPackages.length > 0 ? (
+              <section className="grid gap-3 rounded-lg border border-border bg-card/72 p-4 shadow-sm backdrop-blur-md">
+                <div className="flex items-center justify-between gap-3">
+                  <Eyebrow className="m-0">{t("library:shelfHeader")}</Eyebrow>
+                  <span className="text-xs font-medium text-faint tabular-nums">
+                    {shelfPackages.length}
+                  </span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {shelfPackages.map(({ entry, duplicateIds }) => (
+                    <ProcessedResourceCardEntry
+                      key={entry.id}
+                      entry={entry}
+                      onEnter={() => enterKaraokeFromHistory(entry.id)}
+                      onReview={() => selectHistoryEntry(entry.id)}
+                      onDelete={() => removeHistoryEntries(duplicateIds)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
-        {!featuredPackage && shelfPackages.length === 0 ? (
-          <section
-            aria-label={t("library:emptyTitle")}
-            className="grid gap-2 rounded-lg border border-dashed border-border bg-elevated p-8 text-center"
-          >
-            <h2 className="m-0 text-lg font-semibold text-foreground">{t("library:emptyTitle")}</h2>
-            <p className="m-0 text-sm font-medium text-muted-foreground">{t("library:emptyBody")}</p>
+            {!featuredPackage && shelfPackages.length === 0 ? (
+              <section
+                aria-label={t("library:emptyTitle")}
+                className="grid gap-3 rounded-lg border border-dashed border-border bg-elevated p-8 text-center"
+              >
+                <h2 className="m-0 text-lg font-semibold text-foreground">{t("library:emptyTitle")}</h2>
+                <p className="m-0 text-sm font-medium text-muted-foreground">{t("library:emptyBody")}</p>
+                <Button onClick={navigateAdd} className="mx-auto gap-2">
+                  <Icon name="plus" />
+                  {t("common:nav.add")}
+                </Button>
+              </section>
+            ) : null}
           </section>
         ) : null}
       </section>
@@ -1615,7 +1655,7 @@ export default function App() {
           <AnimatePresence initial={false}>
             {advancedOpen ? (
               <motion.section
-                className="grid gap-3 overflow-hidden"
+                className="-m-1 grid gap-3 overflow-hidden p-1"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}

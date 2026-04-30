@@ -6,14 +6,17 @@
     "title": "外观",
     "description": "默认使用深色模式。VocalFlow 使用一枚绿色强调色承载控件与高亮。",
     "modeLabel": "主题模式",
-    "accentLabel": "Style token",
+    "accentLabel": "主题色",
     "modes": {
       "system": "跟随系统",
       "light": "浅色",
       "dark": "深色"
     },
     "accents": {
-      "green": "Dashboard 绿"
+      "green": "Dashboard 绿",
+      "lime": "青柠绿",
+      "mint": "薄荷绿",
+      "teal": "湖水绿"
     }
   },
   "language": {

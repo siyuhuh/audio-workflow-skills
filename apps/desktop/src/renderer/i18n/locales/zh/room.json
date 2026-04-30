@@ -63,8 +63,8 @@
     "systemDefault": "系统默认输入",
     "level": "监听音量",
     "headphones": "建议佩戴耳机，避免回声啸叫。",
-    "noiseReduction": "降噪 / 回声抑制",
-    "noiseReductionHint": "可能减少啸叫，但也可能影响唱歌音色。"
+    "noiseReduction": "回声抑制",
+    "noiseReductionHint": "减少啸叫，可能影响音色。"
   },
   "editLyrics": "编辑歌词",
   "noLocalTrack": "没有本地音轨",

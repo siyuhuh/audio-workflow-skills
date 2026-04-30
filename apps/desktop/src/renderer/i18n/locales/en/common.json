@@ -15,25 +15,34 @@
   },
   "nav": {
     "label": "Primary navigation",
-    "home": "Home",
+    "home": "Album",
     "add": "Add",
-    "karaoke": "Karaoke"
+    "karaoke": "Room",
+    "minimize": "Minimize menu",
+    "expand": "Expand menu"
   },
   "dock": {
-    "homeTitle": "Library",
+    "homeTitle": "Album",
     "homeEmpty": "Browse packages or try a sample",
     "addTitle": "Add song",
     "addEmpty": "Paste a link, search media, or choose a file",
-    "karaokeTitle": "Karaoke",
+    "karaokeTitle": "Room",
     "karaokeEmpty": "Choose a package to sing",
     "ready": "Ready",
     "needsPackage": "Needs package",
     "cached": "Cached"
   },
   "home": {
-    "title": "Turn any song into a practice room.",
-    "subtitle": "Paste a link or drop local media. VocalFlow builds lyrics, playback, preview video, and vocal split assets into one local package.",
-    "captureHint": "Start with a song"
+    "title": "Your private karaoke studio, ready from any link.",
+    "subtitle": "Paste a song, drop a file, or search the web. VocalFlow turns it into synced lyrics, stems, playback, and export-ready subtitles in one local package.",
+    "captureHint": "Drop a song into the studio",
+    "kicker": "Karaoke studio for creators",
+    "addKicker": "Add a new song",
+    "addTitle": "Bring another track into VocalFlow.",
+    "addSubtitle": "Paste a link, search YouTube or Bilibili, or choose a local file. This is the capture desk; the Home view stays focused on singing.",
+    "established": "Est. 2026",
+    "navCapture": "Capture",
+    "navPractice": "Album"
   },
   "actions": {
     "run": "Run",

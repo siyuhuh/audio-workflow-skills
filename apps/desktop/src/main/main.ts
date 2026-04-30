@@ -42,6 +42,10 @@ let roomNowPlaying: RoomQueueItem | null = null;
 
 const jobProgressClients = new Set<Electron.WebContents>();
 
+function isAccentColor(value: unknown): value is UserSettings["accentColor"] {
+  return value === "green" || value === "lime" || value === "mint" || value === "teal";
+}
+
 function desktopIconPath(): string {
   return path.join(__dirname, "../../build/icon.png");
 }
@@ -409,7 +413,7 @@ function mergeUserSettings(current: UserSettings, patch: Partial<UserSettings> |
   }
   if ("accentColor" in patch) {
     const accentColor = patch.accentColor;
-    next.accentColor = accentColor === "green" ? accentColor : current.accentColor;
+    next.accentColor = isAccentColor(accentColor) ? accentColor : current.accentColor;
   }
   return next;
 }

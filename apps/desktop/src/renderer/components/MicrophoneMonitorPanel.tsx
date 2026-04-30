@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
+import { Icon } from "./ui/Icon";
 
 export interface AudioInputDevice {
   deviceId: string;
@@ -38,7 +39,10 @@ export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps)
     >
       <header className="flex items-center justify-between gap-3">
         <div className="grid gap-0.5">
-          <strong className="text-sm font-semibold text-white">{t("room:mic.title")}</strong>
+          <strong className="inline-flex items-center gap-2 text-sm font-semibold text-white">
+            <Icon name="mic" />
+            <span className="whitespace-nowrap">{t("room:mic.title")}</span>
+          </strong>
           <span className="text-xs font-medium text-ktv-text-muted">{displayStatus}</span>
         </div>
         <button
@@ -46,12 +50,13 @@ export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps)
           data-selected={monitor.isMonitoring}
           onClick={() => monitor.setIsMonitoring(!monitor.isMonitoring)}
           className={cn(
-            "min-h-8 rounded-full border px-3 text-xs font-medium transition-colors",
+            "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors",
             monitor.isMonitoring
               ? "border-primary bg-primary text-primary-foreground"
               : "border-ktv-line bg-transparent text-white/80 hover:border-white/30 hover:bg-white/5"
           )}
         >
+          <Icon name="headphones" />
           {monitor.isMonitoring ? t("room:mic.monitorOn") : t("room:mic.monitor")}
         </button>
       </header>
@@ -83,22 +88,38 @@ export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps)
         />
       </label>
 
-      <label className="flex items-start gap-3 rounded-md border border-ktv-line bg-ktv-surface-strong p-2.5">
-        <input
-          type="checkbox"
-          checked={monitor.noiseReduction}
-          onChange={(event) => monitor.setNoiseReduction(event.currentTarget.checked)}
-          className="mt-0.5 size-4 cursor-pointer accent-primary"
-        />
-        <span className="grid gap-0.5">
-          <strong className="text-sm font-medium text-white">
-            {t("room:mic.noiseReduction")}
-          </strong>
-          <em className="text-xs font-normal not-italic text-ktv-text-muted">
-            {t("room:mic.noiseReductionHint")}
-          </em>
-        </span>
-      </label>
+      <div className="rounded-md border border-ktv-line bg-ktv-surface-strong p-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="grid min-w-0 gap-0.5">
+            <strong className="inline-flex items-center gap-2 text-sm font-semibold text-white">
+              <Icon name="settings" />
+              <span className="whitespace-nowrap">{t("room:mic.noiseReduction")}</span>
+            </strong>
+            <span className="text-xs font-normal leading-snug text-ktv-text-muted">
+              {t("room:mic.noiseReductionHint")}
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={monitor.noiseReduction}
+            onClick={() => monitor.setNoiseReduction(!monitor.noiseReduction)}
+            className={cn(
+              "relative h-7 w-12 flex-none rounded-full border transition-colors",
+              monitor.noiseReduction
+                ? "border-primary bg-primary"
+                : "border-ktv-line bg-black/20"
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-1/2 size-5 -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform",
+                monitor.noiseReduction ? "translate-x-[22px]" : "translate-x-1"
+              )}
+            />
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

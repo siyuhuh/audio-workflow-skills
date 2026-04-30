@@ -13,7 +13,10 @@
       "dark": "Dark"
     },
     "accents": {
-      "green": "Dashboard green"
+      "green": "Dashboard",
+      "lime": "Lime",
+      "mint": "Mint",
+      "teal": "Teal"
     }
   },
   "language": {

@@ -171,6 +171,33 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 48%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--muted-foreground) 42%, transparent);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--muted-foreground) 62%, transparent);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 html,
@@ -257,6 +284,56 @@ body {
   --color-accent: var(--primary);
   --color-accent-strong: color-mix(in oklch, var(--primary) 82%, var(--foreground));
   --color-accent-soft: color-mix(in oklch, var(--primary) 26%, var(--card));
+  --color-ktv-accent: var(--ktv-accent);
+  --color-ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
+}
+
+:is(.appShell, .appSceneFrame)[data-accent="green"] {
+  --primary: oklch(0.7395 0.2268 142.8504);
+  --accent: oklch(0.7395 0.2268 142.8504);
+  --ring: oklch(0.7395 0.2268 142.8504);
+  --ktv-accent: oklch(0.7395 0.2268 142.8504);
+  --ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
+}
+
+:is(.appShell, .appSceneFrame)[data-accent="lime"] {
+  --primary: oklch(0.7900 0.2200 132.5000);
+  --accent: oklch(0.7900 0.2200 132.5000);
+  --ring: oklch(0.7900 0.2200 132.5000);
+  --ktv-accent: oklch(0.7900 0.2200 132.5000);
+  --ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
+}
+
+:is(.appShell, .appSceneFrame)[data-accent="mint"] {
+  --primary: oklch(0.7800 0.1700 160.0000);
+  --accent: oklch(0.7800 0.1700 160.0000);
+  --ring: oklch(0.7800 0.1700 160.0000);
+  --ktv-accent: oklch(0.7800 0.1700 160.0000);
+  --ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
+}
+
+:is(.appShell, .appSceneFrame)[data-accent="teal"] {
+  --primary: oklch(0.7400 0.1500 185.0000);
+  --accent: oklch(0.7400 0.1500 185.0000);
+  --ring: oklch(0.7400 0.1500 185.0000);
+  --ktv-accent: oklch(0.7400 0.1500 185.0000);
+  --ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
+}
+
+[data-accent-swatch="green"] {
+  background: oklch(0.7395 0.2268 142.8504);
+}
+
+[data-accent-swatch="lime"] {
+  background: oklch(0.7900 0.2200 132.5000);
+}
+
+[data-accent-swatch="mint"] {
+  background: oklch(0.7800 0.1700 160.0000);
+}
+
+[data-accent-swatch="teal"] {
+  background: oklch(0.7400 0.1500 185.0000);
 }
 
 @theme inline {
@@ -329,7 +406,8 @@ body {
   --color-ktv-surface-strong: oklch(0.235 0.012 264.2926);
   --color-ktv-line: color-mix(in oklch, oklch(0.9219 0 0) 14%, transparent);
   --color-ktv-text-muted: color-mix(in oklch, oklch(0.9219 0 0) 72%, transparent);
-  --color-ktv-accent: oklch(0.7395 0.2268 142.8504);
+  --color-ktv-accent: var(--ktv-accent);
+  --color-ktv-accent-2: var(--ktv-accent-2);
 }
 
 @layer base {
@@ -384,11 +462,33 @@ textarea:focus-visible {
 }
 
 .appShell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   min-height: 100vh;
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: clamp(16px, 2.4vw, 32px) clamp(16px, 3vw, 40px) 104px;
+  padding: clamp(112px, 12vh, 140px) clamp(20px, 4vw, 56px) 104px;
+  background: var(--background);
+}
+
+.appShell::before,
+.appShell::after {
+  display: none;
+}
+
+.topologyBackgroundCanvas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.appShell > section {
+  position: relative;
+  z-index: 1;
 }
 
 .appSceneFrame {
@@ -398,6 +498,301 @@ textarea:focus-visible {
 .appShell[data-has-workspace="false"] {
   display: grid;
   align-content: center;
+}
+
+.brandHeader {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 32px;
+  pointer-events: none;
+}
+
+.brandLogo,
+.brandHeaderActions,
+.brandIconButton {
+  pointer-events: auto;
+}
+
+.brandLogo {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  color: var(--foreground);
+}
+
+.brandLogoLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.brandLogoStrong {
+  font-weight: 700;
+}
+
+.brandLogoLight {
+  font-weight: 300;
+}
+
+.brandLogoMeta {
+  margin-top: 3px;
+  color: var(--color-text-faint);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.brandHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brandIconButton {
+  position: relative;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--card) 58%, transparent);
+  color: var(--foreground);
+  opacity: 0.62;
+  backdrop-filter: blur(12px);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    background-color var(--motion-duration-fast) var(--motion-ease-out),
+    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--springen-ease);
+}
+
+.brandIconButton:hover,
+.brandIconButton:focus-visible,
+.brandIconButton[aria-expanded="true"] {
+  border-color: color-mix(in oklch, var(--primary) 34%, var(--border));
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.brandIconStatusDot {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 18%, transparent);
+}
+
+.brandHero {
+  min-height: min(420px, calc(100vh - 260px));
+}
+
+.appShell[data-has-workspace="true"] .brandHero {
+  min-height: auto;
+  align-items: start;
+}
+
+.brandHero[data-workspace-mode="home"] {
+  align-content: end;
+}
+
+.brandHero[data-workspace-mode="add"] {
+  min-height: auto;
+}
+
+.brandCaptureCard {
+  background: color-mix(in oklch, var(--card) 88%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.selectionGallery {
+  perspective: 1200px;
+}
+
+.selectionTile {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.selectionTile::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in oklch, var(--primary) 32%, transparent);
+  border-radius: inherit;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.selectionTile:hover::after {
+  opacity: 1;
+}
+
+.selectionTile:hover {
+  border-color: color-mix(in oklch, var(--primary) 38%, var(--border));
+}
+
+.selectionActions {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  z-index: 12;
+  padding: 8px;
+  border: 1px solid color-mix(in oklch, white 14%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, black 62%, transparent);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition:
+    opacity var(--motion-duration-base) var(--motion-ease-out),
+    transform var(--motion-duration-base) var(--springen-ease);
+  backdrop-filter: blur(14px);
+}
+
+.selectionTile:hover .selectionActions,
+.selectionTile:focus-within .selectionActions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.selectionTrashButton {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 14;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in oklch, var(--destructive) 48%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, black 58%, transparent);
+  color: color-mix(in oklch, var(--destructive) 78%, white);
+  opacity: 0;
+  transform: scale(0.92);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--springen-ease),
+    background-color var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+  backdrop-filter: blur(12px);
+}
+
+.selectionTile:hover .selectionTrashButton,
+.selectionTile:focus-within .selectionTrashButton {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.selectionTrashButton:hover,
+.selectionTrashButton:focus-visible {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+.selectionPlayBadge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 8;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, white 20%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, black 44%, transparent);
+  color: white;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.9);
+  transition:
+    opacity var(--motion-duration-base) var(--motion-ease-out),
+    transform var(--motion-duration-base) var(--springen-ease);
+  backdrop-filter: blur(14px);
+}
+
+.selectionTile:hover .selectionPlayBadge,
+.selectionTile:focus-within .selectionPlayBadge {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.albumHoloCard {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #1f2933, #10110f 55%, #304638);
+  pointer-events: none;
+}
+
+.albumHoloCard canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.albumHoloCard::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background:
+    radial-gradient(circle at 25% 18%, rgba(255, 255, 255, 0.18), transparent 24%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.52));
+  mix-blend-mode: screen;
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.floatingDock:hover .floatingDockTip,
+.floatingDock:focus-within .floatingDockTip {
+  visibility: visible;
+  opacity: 1 !important;
+  translate: 0 0;
+  transform: translateY(0);
+}
+
+.floatingDockTip {
+  visibility: hidden;
+  translate: 0 4px;
+}
+
+@media (max-width: 600px) {
+  .appShell {
+    padding-top: 96px;
+  }
+
+  .brandHeader {
+    padding: 16px 20px;
+  }
+
+  .brandIconButton {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 .roomLyrics {
@@ -616,7 +1011,7 @@ textarea:focus-visible {
 
 .hoverFillGroup {
   position: relative;
-  display: grid;
+  display: inline-grid;
   gap: 3px;
   min-width: 0;
   overflow: hidden;
@@ -659,7 +1054,7 @@ textarea:focus-visible {
   overflow: hidden;
   border: 0;
   border-radius: var(--radius-pill);
-  padding: 0 10px;
+  padding: 0 14px;
   background: transparent;
   color: rgba(255, 255, 255, 0.74);
   font-size: var(--font-size-sm);

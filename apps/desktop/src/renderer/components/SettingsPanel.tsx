@@ -8,7 +8,7 @@ import { Eyebrow } from "./ui/Eyebrow";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
 const THEME_MODES: readonly ThemeMode[] = ["system", "light", "dark"] as const;
-const ACCENT_COLORS: readonly AccentColor[] = ["green"] as const;
+const ACCENT_COLORS: readonly AccentColor[] = ["green", "lime", "mint", "teal"] as const;
 
 interface SettingsPanelProps {
   open: boolean;
@@ -100,7 +100,7 @@ export function SettingsPanel({
               <div
                 role="group"
                 aria-label={t("settings:appearance.accentLabel")}
-                className="grid grid-cols-1 gap-2"
+                className="grid grid-cols-2 gap-2"
               >
                 {ACCENT_COLORS.map((color) => {
                   const selected = color === accentColor;
@@ -119,6 +119,7 @@ export function SettingsPanel({
                     >
                       <span
                         className="block size-3.5 rounded-full bg-primary"
+                        data-accent-swatch={color}
                         style={{ boxShadow: "0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent)" }}
                       />
                       {t(`settings:appearance.accents.${color}`)}

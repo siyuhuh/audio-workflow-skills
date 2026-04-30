@@ -25,7 +25,7 @@ export function Checkbox({ label, checked, disabled = false, onChange, className
         onChange={(event) => onChange(event.target.checked)}
         className="size-4 cursor-pointer accent-primary"
       />
-      <span>{label}</span>
+      <span className="whitespace-nowrap">{label}</span>
     </label>
   );
 }

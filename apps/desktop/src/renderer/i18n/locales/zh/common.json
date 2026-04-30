@@ -15,25 +15,34 @@
   },
   "nav": {
     "label": "主导航",
-    "home": "首页",
+    "home": "选歌",
     "add": "添加",
-    "karaoke": "演唱"
+    "karaoke": "歌房",
+    "minimize": "最小化菜单",
+    "expand": "展开菜单"
   },
   "dock": {
-    "homeTitle": "资源库",
+    "homeTitle": "选歌",
     "homeEmpty": "浏览歌曲包，或试一首示例",
     "addTitle": "添加歌曲",
     "addEmpty": "粘贴链接、搜索媒体或选择文件",
-    "karaokeTitle": "演唱",
+    "karaokeTitle": "歌房",
     "karaokeEmpty": "先选择一个歌曲包",
     "ready": "可进入",
     "needsPackage": "需要歌曲包",
     "cached": "已有缓存"
   },
   "home": {
-    "title": "把任何歌曲变成练唱房间。",
-    "subtitle": "贴链接或拖入本地媒体。VocalFlow 会把歌词、播放、预览视频和人声分离资源打包成本地歌曲包。",
-    "captureHint": "从一首歌开始"
+    "title": "把任意链接变成你的私人练唱房。",
+    "subtitle": "贴入歌曲、拖入文件，或直接搜索全网。VocalFlow 会把同步歌词、人声分离、播放和可导出的字幕打包成本地歌曲包。",
+    "captureHint": "把一首歌放进工作室",
+    "kicker": "为创作者准备的卡拉 OK 工作室",
+    "addKicker": "添加新歌曲",
+    "addTitle": "把另一首歌带进 VocalFlow。",
+    "addSubtitle": "粘贴链接、搜索 YouTube / Bilibili，或选择本地文件。这里专门负责采集；首页只专注于选歌和演唱。",
+    "established": "Est. 2026",
+    "navCapture": "采集",
+    "navPractice": "选歌"
   },
   "actions": {
     "run": "运行",

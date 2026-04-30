@@ -1,6 +1,10 @@
+import { useState } from "react";
+import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import { Button } from "./ui/Button";
+import { Icon } from "./ui/Icon";
+import { AlbumHoloCard } from "./visual/AlbumHoloCard";
 
 interface ProcessedResourceCardProps {
   title: string;
@@ -28,14 +32,21 @@ export function ProcessedResourceCard({
   onDelete
 }: ProcessedResourceCardProps) {
   const { t } = useTranslation();
+  const [focused, setFocused] = useState(false);
 
   return (
-    <article
+    <motion.article
       data-disabled={!canEnter}
       data-variant={isSample ? "sample" : "user"}
+      onMouseEnter={() => setFocused(true)}
+      onMouseLeave={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      whileHover={canEnter ? { y: -8, scale: 1.015 } : undefined}
+      transition={{ type: "spring", stiffness: 420, damping: 30, mass: 0.8 }}
       className={cn(
-        "relative grid min-w-0 gap-2 overflow-hidden rounded-xl bg-[#10110f] shadow-md",
-        "border",
+        "selectionTile group relative grid min-w-0 overflow-hidden rounded-lg bg-[#10110f] shadow-md",
+        "border transition-colors duration-200 ease-out",
         isSample
           ? "border-[color-mix(in_oklch,var(--secondary)_54%,var(--color-border))] bg-card"
           : "border-foreground/15"
@@ -49,26 +60,24 @@ export function ProcessedResourceCard({
 
       <button
         type="button"
+        onClick={onDelete}
+        aria-label={t("common:actions.remove")}
+        className="selectionTrashButton"
+      >
+        <Icon name="trash" />
+      </button>
+
+      <button
+        type="button"
         disabled={!canEnter}
         onClick={onEnter}
-        className="relative block w-full min-h-[150px] overflow-hidden border-0 bg-[#11130f] p-0 text-left text-white disabled:cursor-default disabled:opacity-100"
+        className="relative block w-full min-h-[210px] overflow-hidden border-0 bg-[#11130f] p-0 text-left text-white disabled:cursor-default disabled:opacity-100"
       >
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,#1f2933,#10110f_55%,#304638),#10110f]">
-          {coverUrl ? (
-            <video
-              src={coverUrl}
-              muted
-              playsInline
-              preload="metadata"
-              className="size-full object-cover opacity-85 [filter:saturate(0.9)_contrast(1.04)_brightness(0.82)]"
-            />
-          ) : (
-            <div className="grid size-full place-items-center bg-[linear-gradient(to_bottom,rgba(0,0,0,0.04),rgba(0,0,0,0.5)),repeating-linear-gradient(135deg,rgba(255,255,255,0.12)_0_1px,transparent_1px_12px),#27322b] text-[58px] font-black text-white/90">
-              {title.slice(0, 2).toUpperCase()}
-            </div>
-          )}
-        </div>
+        <AlbumHoloCard title={title} coverUrl={coverUrl} active={focused} className="absolute inset-0" />
         <div className="absolute inset-0 grid content-end gap-1 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.1),transparent_34%,rgba(0,0,0,0.84)),linear-gradient(to_right,rgba(0,0,0,0.45),transparent)] p-3.5">
+          <span className="selectionPlayBadge">
+            <Icon name="play" />
+          </span>
           <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-lg font-black text-white [text-shadow:0_2px_14px_rgba(0,0,0,0.72)]">
             {title}
           </strong>
@@ -86,27 +95,22 @@ export function ProcessedResourceCard({
         </div>
       </button>
 
-      <div className="flex flex-wrap items-center gap-2 px-2.5 pb-2.5">
+      <div className="selectionActions flex flex-wrap items-center gap-2">
         <Button
           variant="primary"
           size="sm"
           disabled={!canEnter}
           onClick={onEnter}
-          className="text-sm"
+          className="gap-1.5 text-sm"
         >
+          <Icon name="mic" />
           {canEnter ? t("package:enterKaraoke") : t("package:badges.needsMedia")}
         </Button>
-        <Button size="sm" onClick={onReview} className="text-sm">
-          {t("package:openPackage")}
-        </Button>
-        <Button
-          size="sm"
-          onClick={onDelete}
-          className="ml-auto border-white/20 bg-white/10 text-sm text-white/80 hover:enabled:border-white/35 hover:enabled:bg-white/15"
-        >
-          {t("common:actions.remove")}
+        <Button size="sm" onClick={onReview} className="gap-1.5 text-sm">
+          <Icon name="folder" />
+          {t("library:editPackage")}
         </Button>
       </div>
-    </article>
+    </motion.article>
   );
 }

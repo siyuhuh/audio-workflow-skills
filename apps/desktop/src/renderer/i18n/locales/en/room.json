@@ -63,8 +63,8 @@
     "systemDefault": "System default input",
     "level": "Monitor level",
     "headphones": "Use headphones to avoid feedback.",
-    "noiseReduction": "Noise/Echo reduction",
-    "noiseReductionHint": "Can reduce feedback, but may change singing tone."
+    "noiseReduction": "Echo reduction",
+    "noiseReductionHint": "Reduces feedback; may affect tone."
   },
   "editLyrics": "Edit lyrics",
   "noLocalTrack": "No local track",
