@@ -1404,7 +1404,9 @@ function discoverAssets(
     addSafeExistingFile(outputFiles, file);
   }
 
-  if (parsed.outputDir && existsSync(parsed.outputDir)) {
+  // Prefer the CLI's explicit file list. Scanning a shared output directory can
+  // pull in another song's recently-written audio/video and corrupt the package.
+  if (outputFiles.size === 0 && parsed.outputDir && existsSync(parsed.outputDir)) {
     for (const file of listReviewFiles(parsed.outputDir, changedAfterMs)) {
       addSafeExistingFile(outputFiles, file);
     }
@@ -1737,7 +1739,7 @@ function registerHistoryAccess(entry: SavedJobHistory): void {
 
 function refreshHistoryEntry(entry: SavedJobHistory): SavedJobHistory {
   const sourceAssets = entry.assets.length > 0 ? entry.assets : discoverAssets(entry, entry).assets;
-  const assets = sourceAssets.map((asset) => {
+  const refreshedAssets = sourceAssets.map((asset) => {
     const refreshed = classifyAsset(asset.path);
     return {
       ...asset,
@@ -1745,15 +1747,94 @@ function refreshHistoryEntry(entry: SavedJobHistory): SavedJobHistory {
       exists: existsSync(asset.path)
     };
   });
+  const assets = pruneHistoryAssets(entry, refreshedAssets);
   const sourceUrl = entry.sourceUrl ?? sourceUrlForInput(entry.input);
   return {
     ...entry,
     assets,
     sourceUrl,
-    primarySubtitle: selectPrimarySubtitle(assets) ?? entry.primarySubtitle,
-    primaryMedia: selectPrimaryMedia(entry, assets) ?? entry.primaryMedia,
+    primarySubtitle: selectPrimarySubtitle(assets),
+    primaryMedia: selectPrimaryMedia(entry, assets),
     playbackBundle: buildPlaybackBundle(entry, assets)
   };
+}
+
+function pruneHistoryAssets(entry: SavedJobHistory, assets: GeneratedAsset[]): GeneratedAsset[] {
+  if (entry.input.startsWith("sample:")) {
+    return assets;
+  }
+
+  const sourceId = sourceMediaIdForEntry(entry);
+  if (sourceId) {
+    const matching = assets.filter((asset) => assetPathContainsMediaId(asset.path, sourceId));
+    if (matching.length > 0) {
+      return matching;
+    }
+  }
+
+  const reviewKey = historyAssetFamilyKey(entry);
+  if (!reviewKey) {
+    return assets;
+  }
+
+  const matching = assets.filter((asset) => keysReferToSameMedia(mediaFamilyKey(asset.path), reviewKey));
+  return matching.length > 0 ? matching : assets;
+}
+
+function sourceMediaIdForEntry(entry: Pick<SavedJobHistory, "input" | "sourceUrl">): string | null {
+  const sourceUrl = entry.sourceUrl ?? sourceUrlForInput(entry.input);
+  if (!sourceUrl) {
+    return null;
+  }
+  return sourceMediaIdFromUrl(sourceUrl);
+}
+
+function sourceMediaIdFromUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (hostname === "youtu.be") {
+      return normalizeMediaId(url.pathname.split("/").filter(Boolean)[0] ?? "");
+    }
+    if (hostname.endsWith("youtube.com")) {
+      return normalizeMediaId(url.searchParams.get("v") ?? url.pathname.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/)?.[1] ?? "");
+    }
+    if (hostname.endsWith("bilibili.com") || hostname === "b23.tv") {
+      return normalizeMediaId(url.pathname.match(/\/video\/([^/?#]+)/)?.[1] ?? url.pathname.split("/").filter(Boolean)[0] ?? "");
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function normalizeMediaId(value: string): string | null {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  return normalized || null;
+}
+
+function assetPathContainsMediaId(filePath: string, mediaId: string): boolean {
+  return normalizeMediaId(path.basename(filePath))?.includes(mediaId) ?? false;
+}
+
+function historyAssetFamilyKey(entry: Pick<SavedJobHistory, "input" | "primaryMedia" | "primarySubtitle" | "playbackBundle" | "assets">): string {
+  const candidates = [
+    !isHttpUrl(entry.input) ? entry.input : "",
+    entry.playbackBundle.localAudioPath,
+    entry.playbackBundle.localVideoPath,
+    entry.primaryMedia,
+    entry.primarySubtitle,
+    entry.assets.find((asset) => asset.exists && asset.role === "original")?.path,
+    entry.assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem"))?.path
+  ];
+
+  for (const candidate of candidates) {
+    const key = candidate ? mediaFamilyKey(candidate) : "";
+    if (key) {
+      return key;
+    }
+  }
+  return "";
 }
 
 function dedupeHistoryEntries(entries: SavedJobHistory[]): SavedJobHistory[] {
@@ -1777,7 +1858,7 @@ function dedupeHistoryEntries(entries: SavedJobHistory[]): SavedJobHistory[] {
 function mergeHistoryEntries(primary: SavedJobHistory, secondary: SavedJobHistory): SavedJobHistory {
   const newest = Date.parse(secondary.createdAt) >= Date.parse(primary.createdAt) ? secondary : primary;
   const oldest = newest === secondary ? primary : secondary;
-  const assets = uniqueAssets([...primary.assets, ...secondary.assets]);
+  const mergedAssets = uniqueAssets([...primary.assets, ...secondary.assets]);
   const mergedInput = newest.input || oldest.input;
   const mergedSourceUrl = newest.sourceUrl ?? oldest.sourceUrl ?? sourceUrlForInput(mergedInput);
   const merged: SavedJobHistory = {
@@ -1788,15 +1869,18 @@ function mergeHistoryEntries(primary: SavedJobHistory, secondary: SavedJobHistor
     workflowMode: primary.workflowMode === "karaoke" || secondary.workflowMode === "karaoke" ? "karaoke" : newest.workflowMode,
     outputDir: newest.outputDir || oldest.outputDir,
     generatedFiles: uniquePaths([...primary.generatedFiles, ...secondary.generatedFiles]),
-    assets,
+    assets: mergedAssets,
     sourceUrl: mergedSourceUrl,
-    primarySubtitle: selectPrimarySubtitle(assets) ?? newest.primarySubtitle ?? oldest.primarySubtitle,
+    primarySubtitle: selectPrimarySubtitle(mergedAssets),
     primaryMedia: null,
     playbackBundle: newest.playbackBundle
   };
 
-  merged.primaryMedia = selectPrimaryMedia(merged, assets) ?? newest.primaryMedia ?? oldest.primaryMedia;
-  merged.playbackBundle = buildPlaybackBundle(merged, assets);
+  merged.assets = pruneHistoryAssets(merged, mergedAssets);
+  merged.generatedFiles = uniquePaths(merged.generatedFiles).filter((file) => merged.assets.some((asset) => path.resolve(asset.path) === path.resolve(file)));
+  merged.primarySubtitle = selectPrimarySubtitle(merged.assets);
+  merged.primaryMedia = selectPrimaryMedia(merged, merged.assets);
+  merged.playbackBundle = buildPlaybackBundle(merged, merged.assets);
   registerHistoryAccess(merged);
   return merged;
 }

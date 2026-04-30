@@ -59,7 +59,7 @@ export function StageChain({ stages, isRunning, t }: StageChainProps) {
       role="status"
       aria-live="polite"
       data-running={isRunning ? "true" : "false"}
-      className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2 rounded-lg border border-border bg-elevated p-3 shadow-sm"
+      className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] items-start gap-3 rounded-lg border border-border bg-elevated p-3 shadow-sm"
     >
       {visible.map((stage) => {
         const progress = stages.get(stage.id);
@@ -69,10 +69,10 @@ export function StageChain({ stages, isRunning, t }: StageChainProps) {
         const fraction = clampProgress(progress.progress);
         const state = progress.failed ? "failed" : progress.done ? "done" : fraction > 0 ? "active" : "pending";
         return (
-          <div key={stage.id} className="grid gap-1">
+          <div key={stage.id} className="grid min-w-0 gap-1">
             <div
               className={cn(
-                "text-xs font-semibold uppercase tracking-wide",
+                "truncate text-xs font-semibold uppercase tracking-wide",
                 stateLabelClasses[state]
               )}
             >
@@ -88,7 +88,9 @@ export function StageChain({ stages, isRunning, t }: StageChainProps) {
               />
             </div>
             {progress.message ? (
-              <div className="text-xs font-medium text-faint">{progress.message}</div>
+              <div className="truncate text-xs font-medium text-faint" title={progress.message}>
+                {progress.message}
+              </div>
             ) : null}
           </div>
         );

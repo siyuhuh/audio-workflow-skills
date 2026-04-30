@@ -237,7 +237,7 @@ const defaultOptions: JobOptions = {
   outputDir: "",
   subtitleSource: "auto",
   localFallback: true,
-  separate: true,
+  separate: false,
   saveAudio: false,
   keepPlatformSubs: false,
   model: "medium",
