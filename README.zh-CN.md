@@ -8,8 +8,8 @@ VocalFlow Studio 是一个面向唱歌练习、视频字幕和人声分离的桌
 
 最新版本：[v0.1.4](https://github.com/gottaegbert/audio-workflow-skills/releases/tag/v0.1.4)
 
-- [下载 macOS Apple Silicon 版 (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow.Studio-0.1.4-mac-arm64.dmg)
-- [下载 Windows x64 版 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow.Studio-0.1.4-win-x64.exe)
+- [下载 macOS Apple Silicon 版 (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow-0.1.4-mac-arm64.dmg)
+- [下载 Windows x64 版 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow-0.1.4-win-x64.exe)
 
 桌面 app 已内置 `audio-subtitles` 脚本、Python runtime 和 ffmpeg。首次使用时，它会在用户的 app data 目录创建本地 runtime，并按需安装 URL 下载、本地识别和可选人声分离需要的 Python packages。首次运行需要联网。
 

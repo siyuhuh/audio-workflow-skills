@@ -8,8 +8,8 @@ VocalFlow Studio is a desktop and CLI toolkit for singing practice, video subtit
 
 Latest release: [v0.1.4](https://github.com/gottaegbert/audio-workflow-skills/releases/tag/v0.1.4)
 
-- [Download for macOS Apple Silicon (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow.Studio-0.1.4-mac-arm64.dmg)
-- [Download for Windows x64 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow.Studio-0.1.4-win-x64.exe)
+- [Download for macOS Apple Silicon (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow-0.1.4-mac-arm64.dmg)
+- [Download for Windows x64 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow-0.1.4-win-x64.exe)
 
 The desktop app includes the `audio-subtitles` script, a bundled Python runtime, and bundled ffmpeg. On first use, it creates a local runtime in the user's app data directory and installs the Python packages needed for URL downloads, local transcription, and optional vocal separation. The first run needs internet access.
 
