@@ -82,8 +82,10 @@
   },
   "transport": {
     "restart": "重新开始",
+    "previous": "上一首",
     "play": "播放",
-    "pause": "暂停"
+    "pause": "暂停",
+    "next": "下一首"
   },
   "playlist": {
     "title": "播放列表",

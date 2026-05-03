@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v0.1.3"
+        description: "Release tag, for example v0.1.4"
         required: true
-        default: "v0.1.3"
+        default: "v0.1.4"
 
 permissions:
   contents: write
@@ -109,7 +109,13 @@ jobs:
           prerelease: true
           files: release-assets/*
           body: |
-            Desktop prototype installers for VocalFlow Studio.
+            VocalFlow Studio desktop prototype release.
+
+            What's new:
+            - Brand-style album browser with animated topographic background lines and 3D holographic cards
+            - Clearer add flow with separated media search, language dropdown, and default vocal splitting
+            - Karaoke room playlist continuation, previous/next playback, top divider progress, mobile QR access, and lyrics timing editor
+            - Adjustable green-family accent themes and cleaner room controls
 
             Assets:
             - macOS: download the `.dmg`

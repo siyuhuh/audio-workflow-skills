@@ -6,12 +6,19 @@ VocalFlow Studio is a desktop and CLI toolkit for singing practice, video subtit
 
 ## Download
 
-Latest release: [v0.1.3](https://github.com/gottaegbert/audio-workflow-skills/releases/tag/v0.1.3)
+Latest release: [v0.1.4](https://github.com/gottaegbert/audio-workflow-skills/releases/tag/v0.1.4)
 
-- [Download for macOS Apple Silicon (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.3/VocalFlow.Studio-0.1.3-mac-arm64.dmg)
-- [Download for Windows x64 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.3/VocalFlow.Studio-0.1.3-win-x64.exe)
+- [Download for macOS Apple Silicon (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow.Studio-0.1.4-mac-arm64.dmg)
+- [Download for Windows x64 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow.Studio-0.1.4-win-x64.exe)
 
 The desktop app includes the `audio-subtitles` script, a bundled Python runtime, and bundled ffmpeg. On first use, it creates a local runtime in the user's app data directory and installs the Python packages needed for URL downloads, local transcription, and optional vocal separation. The first run needs internet access.
+
+## What's New in v0.1.4
+
+- Redesigned the desktop home screen around a brand-style album browser with animated topographic background lines and 3D holographic cards.
+- Added clearer add-flow options: media search is separated, language is a dropdown, karaoke-version and vocal-splitting choices are distinct, and vocal splitting is enabled by default.
+- Improved the karaoke room with an icon-only transport, previous/next playback, playlist continuation, top divider progress bar, mobile room QR access, and an in-room lyrics timing editor.
+- Added adjustable green-family accent themes, cleaner scrollbars, improved language toggle, and clearer room controls.
 
 ## Use Cases
 
@@ -172,8 +179,8 @@ media-mp3 --browser chrome "https://www.bilibili.com/video/BV..."
 Maintainers can push a version tag to let GitHub Actions build desktop installers and upload them to a GitHub Release:
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 Release assets:

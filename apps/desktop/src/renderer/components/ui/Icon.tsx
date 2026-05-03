@@ -4,10 +4,13 @@ export type IconName =
   | "folder"
   | "headphones"
   | "home"
+  | "lyrics"
   | "menu"
   | "mic"
   | "minimize"
   | "music"
+  | "next"
+  | "previous"
   | "play"
   | "plus"
   | "qr"
@@ -29,10 +32,13 @@ const paths: Record<IconName, string[]> = {
   folder: ["M3.5 6.5h5l1.4 2h6.6v8h-13z", "M3.5 8.5h15v8h-15z"],
   headphones: ["M4.5 11v-1a5.5 5.5 0 0 1 11 0v1", "M4.5 11.5h2v4h-2z", "M13.5 11.5h2v4h-2z", "M13.5 15.5c0 1-1.2 1.8-3.5 1.8"],
   home: ["M3.5 10.5 10 4l6.5 6.5", "M5.5 9.5v7h9v-7"],
+  lyrics: ["M5 5.5h10", "M5 8.5h7", "M5 11.5h10", "M5 14.5h6"],
   menu: ["M4.5 6.5h11", "M4.5 10h11", "M4.5 13.5h11"],
   mic: ["M10 3.5a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 10 3.5Z", "M5 9.5a5 5 0 0 0 10 0", "M10 14.5v3", "M7 17.5h6"],
   minimize: ["M5 10h10"],
   music: ["M7 14.5a2 2 0 1 1-1.2-1.8L15 10.5", "M15 12.5V4.5L7 6.5v8"],
+  next: ["M5.5 5.5 11 10l-5.5 4.5z", "M14.5 5.5v9"],
+  previous: ["M14.5 5.5 9 10l5.5 4.5z", "M5.5 5.5v9"],
   play: ["M7 5.5v9l7-4.5z"],
   plus: ["M10 4.5v11", "M4.5 10h11"],
   qr: ["M4.5 4.5h4v4h-4z", "M11.5 4.5h4v4h-4z", "M4.5 11.5h4v4h-4z", "M11.5 11.5h1.8", "M15.5 11.5v1.8", "M11.5 15.5h4", "M13.5 13.5h2"],

@@ -41,21 +41,24 @@ For packaged users, Python packages are installed automatically into the user's 
 
 ## Current Scope
 
+- Browse processed songs in the album-style home screen.
 - Paste YouTube/Bilibili URL or select a local file/folder.
+- Search media from a separate add-flow card.
 - Choose subtitle source: Auto, Platform, or Local Whisper.
 - Optional local fallback.
-- Optional source separation.
+- Vocal/instrumental source separation, enabled by default for new karaoke jobs.
 - Configure model, language, subtitle language selector, browser cookies, output folder, and output formats.
 - Run one job at a time with live logs.
 - Open output folder or generated files.
+- Practice in the room with playlist continuation, previous/next playback, mobile QR access, and lyrics timing edits.
 
 ## Release Installers
 
 This project uses GitHub Actions to build release installers from version tags:
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 The workflow uploads:
@@ -68,5 +71,4 @@ The packaged app includes the `audio-subtitles` script, bundled Python, and bund
 ## Not Included Yet
 
 - Batch queue execution.
-- Timeline lyric editor.
 - Auto-update.

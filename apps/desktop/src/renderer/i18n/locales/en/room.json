@@ -82,8 +82,10 @@
   },
   "transport": {
     "restart": "Restart",
+    "previous": "Previous",
     "play": "Play",
-    "pause": "Pause"
+    "pause": "Pause",
+    "next": "Next"
   },
   "playlist": {
     "title": "Playlist",

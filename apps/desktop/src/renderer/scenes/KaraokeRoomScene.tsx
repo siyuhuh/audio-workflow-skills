@@ -101,6 +101,8 @@ interface KaraokeRoomSceneProps {
   onPackageChange: (historyId: string) => void;
   onProcessRoomItem: (item: RoomQueueItem) => void | Promise<void>;
   onRemoveRoomItem: (itemId: string) => void | Promise<void>;
+  onPlayNext: () => void | Promise<void>;
+  onPlayPrevious: () => void | Promise<void>;
   onScriptChange: (content: string) => void;
   onSaveLyrics: () => void | Promise<void>;
   onSplitVocals: () => void;
@@ -136,6 +138,8 @@ export function KaraokeRoomScene({
   onPackageChange,
   onProcessRoomItem,
   onRemoveRoomItem,
+  onPlayNext,
+  onPlayPrevious,
   onScriptChange,
   onSaveLyrics,
   onSplitVocals,
@@ -408,18 +412,15 @@ export function KaraokeRoomScene({
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-self-center">
-              <span className="font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
-                {formatClock(progressValue)}
-              </span>
               <button
                 type="button"
                 disabled={!hasPlayableMedia}
-                onClick={playbackController.restart}
-                aria-label={t("room:transport.restart")}
-                title={t("room:transport.restart")}
+                onClick={() => void onPlayPrevious()}
+                aria-label={t("room:transport.previous")}
+                title={t("room:transport.previous")}
                 className={transportIconBtnClasses}
               >
-                <Icon name="restart" />
+                <Icon name="previous" />
               </button>
               <button
                 type="button"
@@ -438,21 +439,13 @@ export function KaraokeRoomScene({
               <button
                 type="button"
                 disabled={!hasPlayableMedia}
-                onClick={() =>
-                  playbackController.seek(
-                    Math.max(0, playbackController.currentTime - 5),
-                    playbackController.isPlaying
-                  )
-                }
-                aria-label="-5s"
-                title="-5s"
+                onClick={() => void onPlayNext()}
+                aria-label={t("room:transport.next")}
+                title={t("room:transport.next")}
                 className={transportIconBtnClasses}
               >
-                <Icon name="rewind" />
+                <Icon name="next" />
               </button>
-              <span className="font-mono text-xs font-semibold text-ktv-text-muted tabular-nums">
-                {progressMax > 0 ? formatClock(progressMax) : "--:--"}
-              </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 lg:justify-self-end">
@@ -848,7 +841,7 @@ export function KaraokeRoomScene({
                       type="button"
                       onClick={() => applyLyricOffset(-0.1)}
                       disabled={!selectedSubtitlePath}
-                      className={transportIconBtnClasses}
+                      className="grid size-9 place-items-center rounded-full border border-white/20 bg-white/8 text-base font-semibold text-white transition-colors hover:enabled:border-white/35 hover:enabled:bg-white/14 disabled:opacity-40"
                       aria-label={t("room:lyricsEditor.nudgeEarlier")}
                     >
                       -
@@ -861,7 +854,7 @@ export function KaraokeRoomScene({
                       type="button"
                       onClick={() => applyLyricOffset(0.1)}
                       disabled={!selectedSubtitlePath}
-                      className={transportIconBtnClasses}
+                      className="grid size-9 place-items-center rounded-full border border-white/20 bg-white/8 text-base font-semibold text-white transition-colors hover:enabled:border-white/35 hover:enabled:bg-white/14 disabled:opacity-40"
                       aria-label={t("room:lyricsEditor.nudgeLater")}
                     >
                       +
@@ -872,7 +865,7 @@ export function KaraokeRoomScene({
                         void onSaveLyrics();
                         setLyricsEditorOpen(false);
                       }}
-                      className={cn(transportBtnClasses, "bg-white text-black hover:enabled:bg-white/90")}
+                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-ktv-accent bg-ktv-accent px-5 text-sm font-semibold text-black shadow-sm transition-colors hover:enabled:bg-ktv-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]"
                     >
                       {t("room:lyricsEditor.done")}
                     </button>

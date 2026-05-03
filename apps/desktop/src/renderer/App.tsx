@@ -1088,6 +1088,22 @@ export default function App() {
     }
   }
 
+  function playPreviousInRoom() {
+    if (!activeReview) {
+      return;
+    }
+    const currentIndex = karaokePackages.findIndex((entry) => entry.id === activeReview.id);
+    const previousPackage =
+      currentIndex > 0
+        ? karaokePackages[currentIndex - 1]
+        : currentIndex === 0
+          ? karaokePackages.at(-1)
+          : null;
+    if (previousPackage && previousPackage.id !== activeReview.id) {
+      enterKaraokeFromHistoryAndPlay(previousPackage.id);
+    }
+  }
+
   function toggleFormat(format: OutputFormat) {
     const nextFormats = options.formats.includes(format)
       ? options.formats.filter((item) => item !== format)
@@ -1209,6 +1225,10 @@ export default function App() {
             void processRoomQueueItem(item, true);
           }}
           onRemoveRoomItem={removeRoomItem}
+          onPlayNext={() => {
+            void playNextInRoom();
+          }}
+          onPlayPrevious={playPreviousInRoom}
           onScriptChange={setScriptText}
           onSaveLyrics={() => {
             void saveScript();
