@@ -51,6 +51,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      - name: Set up Python (for bundled-models fetch script)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -66,6 +71,22 @@ jobs:
             "https://github.com/astral-sh/python-build-standalone/releases/download/20260414/${{ matrix.python_asset }}"
           tar -xzf python-runtime.tar.gz -C vendor/python-runtime
           rm python-runtime.tar.gz
+
+      # Pre-download separator + whisper weights into apps/desktop/vendor/
+      # so they end up inside the .dmg / .nsis as `extraResources`.
+      # See apps/desktop/scripts/fetch-bundled-models.sh for layout details.
+      # PYTHON=python is required on windows-latest where `python3` isn't
+      # always on PATH inside git-bash.
+      - name: Download bundled separator + whisper models
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          PYTHON: python
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "huggingface_hub>=0.24,<1.0"
+          ./scripts/fetch-bundled-models.sh
 
       - name: Build installer
         run: ${{ matrix.command }}
@@ -111,14 +132,30 @@ jobs:
           body: |
             VocalFlow Studio desktop prototype release.
 
-            What's new:
-            - Brand-style album browser with animated topographic background lines and 3D holographic cards
-            - Clearer add flow with separated media search, language dropdown, and default vocal splitting
-            - Karaoke room playlist continuation, previous/next playback, top divider progress, mobile QR access, and lyrics timing editor
-            - Adjustable green-family accent themes and cleaner room controls
+            What's new in this build:
+
+            **Out-of-box reliability**
+            - Bundled vocal-separator weights (`UVR-MDX-NET-Inst_HQ_3.onnx`) and a `faster-whisper-small` HF cache snapshot ship inside the installer; first run no longer needs network access for the default workflow.
+            - Auto-detect Ultimate Vocal Remover if installed locally, and symlink its model files into a shadow folder so audio-separator finds them without copying gigabytes around.
+            - Smart separator-model picker prefers known-good UVR / bundled weights over partially-downloaded files, eliminating the `PytorchStreamReader` corruption loop.
+
+            **Network resilience**
+            - HuggingFace mirror setting (Settings → "HuggingFace mirror"), with a one-click China mirror preset that routes traffic through `hf-mirror.com`.
+            - HuggingFace token field for higher rate limits; malformed tokens are now silently rejected instead of breaking every download.
+
+            **Speed**
+            - `large-v3-turbo` transcription is now 4–12× faster (we were accidentally routing it through the OpenAI Whisper backend instead of CTranslate2).
+            - Whisper model load now overlaps with download + separation + convert, saving 5–20 s per typical job.
+            - URL preview card shows title / duration / uploader inline within ~1 s of pasting the link.
+
+            **UX polish**
+            - Live job status pill in the brand header so progress is visible even when scrolled away.
+            - Notification toaster surfaces stage failures with localized recovery actions ("Disable separation", "Open settings", "Copy log", etc.) instead of the old silent skip.
+            - Activity column de-duplicates retries — one card per distinct input regardless of how many times it was attempted.
+            - `manifest.json` written next to every package output for stable identity and role-tagged assets.
 
             Assets:
-            - macOS: download the `.dmg`
-            - Windows: download the `.exe`
+            - macOS Apple Silicon: download the `.dmg`
+            - Windows x64: download the `.exe`
 
-            Note: this desktop app includes the `audio-subtitles` script, a bundled Python runtime, and bundled ffmpeg. On first use it creates a local runtime under the user's app data directory and installs the Python packages needed for URL download, local transcription, and optional vocal separation.
+            Bundled into the installer: Python 3.12 standalone runtime, ffmpeg-static, the vocal separator + Whisper model weights, and the `audio-subtitles` CLI. On first launch the app creates a local Python venv under your user-data folder and pip-installs the runtime packages (~2 minutes, one-time).

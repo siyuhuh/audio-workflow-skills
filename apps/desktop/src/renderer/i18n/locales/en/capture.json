@@ -10,7 +10,40 @@
     "command": "Command",
     "commandPlaceholder": "Enter input to preview the CLI command.",
     "logs": "Logs",
-    "logsPlaceholder": "Logs will stream here while a job is running."
+    "logsPlaceholder": "Logs will stream here while a job is running.",
+    "fields": {
+      "subtitleSource": "Subtitle source",
+      "whisperModel": "Whisper model",
+      "platformLanguages": "Platform subtitle languages",
+      "browserCookies": "Browser cookies",
+      "cookiesFile": "cookies.txt",
+      "vocalSplit": "Vocal split",
+      "localFallback": "Local fallback",
+      "keepRawVtt": "Keep raw VTT",
+      "playableAudioAuto": "Playable audio auto",
+      "keepExtractedAudio": "Keep extracted audio",
+      "outputFormats": "Output formats",
+      "outputFolder": "Output folder",
+      "choose": "Choose"
+    },
+    "options": {
+      "auto": "Auto",
+      "platform": "Platform",
+      "local": "Local"
+    },
+    "placeholders": {
+      "subLangs": "Auto, zh.*,en.*,ja.*",
+      "browser": "chrome or safari",
+      "cookies": "/path/to/cookies.txt",
+      "outputDir": "Default output folder"
+    }
+  },
+  "script": {
+    "status": {
+      "saving": "Saving",
+      "saved": "Saved",
+      "loaded": "Loaded"
+    }
   },
   "modes": {
     "karaoke": "Karaoke",
@@ -68,5 +101,116 @@
     "openExisting": "Open existing",
     "openedExisting": "Opened existing package.",
     "redownload": "Re-download"
+  },
+  "error": {
+    "authRequired": {
+      "title": "Sign-in required",
+      "body": "The site needs cookies. Open desktop options, paste browser cookies, then retry."
+    },
+    "noCaptions": {
+      "title": "No captions found",
+      "body": "Switch to local transcription to generate subtitles from the audio."
+    },
+    "rateLimited": {
+      "title": "Rate limited",
+      "body": "Wait a few minutes before retrying, or try a different language."
+    },
+    "hfRateLimited": {
+      "title": "HuggingFace rate limit",
+      "body": "Anonymous downloads from huggingface.co are throttled. Paste an HF token in Settings to lift the limit, or set a mirror endpoint if you can't reach huggingface.co at all."
+    },
+    "network": {
+      "title": "Network error",
+      "body": "Check your connection and retry."
+    },
+    "modelMissing": {
+      "title": "Missing model",
+      "body": "Run the setup command to install the local model."
+    },
+    "separatorMissing": {
+      "title": "Separator missing",
+      "body": "Disable vocal separation to continue, or run the setup command to install it."
+    },
+    "ffmpegMissing": {
+      "title": "ffmpeg missing",
+      "body": "Run the setup command to install ffmpeg."
+    },
+    "ytdlpMissing": {
+      "title": "yt-dlp missing",
+      "body": "Run the setup command to update yt-dlp."
+    },
+    "diskFull": {
+      "title": "Disk full",
+      "body": "Free some space or pick a different output folder, then retry."
+    },
+    "canceled": {
+      "title": "Job canceled",
+      "body": "The current job was stopped."
+    },
+    "unknown": {
+      "title": "Job failed",
+      "body": "Copy the log to investigate what went wrong."
+    },
+    "action": {
+      "openAdvancedCookies": "Open cookies settings",
+      "enableLocalFallback": "Use local transcription",
+      "waitAndRetry": "Got it",
+      "copySetupCommand": "Copy setup command",
+      "disableSeparation": "Disable separation",
+      "retry": "Retry",
+      "openOutputFolder": "Open output folder",
+      "copyLog": "Copy log",
+      "openHfTokenSettings": "Add HF token",
+      "openSeparatorModelDirSettings": "Use local models",
+      "dismiss": "Dismiss"
+    },
+    "copySuccess": {
+      "command": "Setup command copied",
+      "log": "Logs copied"
+    }
+  },
+  "warn": {
+    "separationSkipped": {
+      "title": "Vocal separation skipped",
+      "body": "Continuing with the original audio so subtitles can still be produced. Disable separation in Advanced, install the separator, or copy the log to investigate."
+    }
+  },
+  "notify": {
+    "successTitle": "{{title}} ready",
+    "successBody": "Download, transcription and subtitles are ready.",
+    "skippedSuffix": "Skipped: {{stages}}",
+    "viewAction": "View package",
+    "enterKaraokeAction": "Enter karaoke"
+  },
+  "jobStream": {
+    "stage": {
+      "queued": "Queued",
+      "metadata": "Reading metadata",
+      "captions": "Fetching captions",
+      "audio": "Audio",
+      "separation": "Separating vocals",
+      "transcribe": "Transcribing",
+      "writeOutputs": "Writing outputs",
+      "manifest": "Saving package"
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Working",
+      "succeeded": "Ready",
+      "failed": "Failed"
+    },
+    "etaPrefix": "ETA",
+    "progressUnknown": "Working…",
+    "noActiveJob": "",
+    "headerLabel": "Job status"
+  },
+  "preview": {
+    "loading": "Reading link…",
+    "loaded": "Loaded",
+    "error": "Could not read this link",
+    "duration": "Duration",
+    "originYoutube": "YouTube",
+    "originBilibili": "Bilibili",
+    "originUrl": "URL"
   }
 }

@@ -31,16 +31,37 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
   - Builds `SavedJobHistory` and `PlaybackBundle`.
   - Serves local media through `vocalflow-media://` and a local HTTP fallback.
   - Handles history, asset discovery, media access, and microphone permission.
+  - Parses CLI stderr into structured `JobEvent`s (queued / stage / log / succeeded / failed) and broadcasts on the unified `job:event` channel.
+- `apps/desktop/src/main/lib/`
+  - `errorReason.ts` — maps CLI stderr + exit codes to `JobErrorReason` + `JobErrorHint` (auth_required, no_captions, model_missing, ffmpeg_missing, …) for the `job:failed` toast pipeline.
+  - `jobProgressParser.ts` — turns yt-dlp `[download] X%` lines, ffmpeg `-progress pipe:2` key/value blocks, and the Python `emit_progress` JSON envelope into canonical `JobStage` events; throttled emit + ffmpeg fragment suppression keep the IPC stream clean.
+  - `packageManifest.ts` — `buildPackageManifest()` + atomic `writePackageManifest()` (writes `manifest.json.tmp` then `renameSync`); `readPackageManifest()` returns null on missing/corrupt/unknown-schema files; `hydrateHistoryFromManifest()` lifts manifest-canonical fields onto a `SavedJobHistory` row when `packageId` matches.
+  - `urlMetadata.ts` (added by SAG-D) — yt-dlp `--dump-single-json` prefetch with LRU cache + inflight dedupe; backs the `metadata:prefetch` IPC handler.
 - `apps/desktop/src/renderer/App.tsx`
   - Main React UI.
   - Contains guided input flow, review views, Karaoke Room, playback controller, and microphone monitor.
   - `usePlaybackController()` is the single owner of play/pause/seek/currentTime/duration and preview sync.
   - `useMicrophoneMonitor()` lists audio input devices and routes mic input to local output in monitor mode.
-- `apps/desktop/src/shared/types.ts`
-  - Shared Electron/preload/renderer types.
-  - Important types: `SavedJobHistory`, `PlaybackBundle`, `GeneratedAsset`, `GeneratedAssetRole`.
+  - Subscribes to `audioWorkflow.onJobFailed` for localized toasts (with hint actions) and to `useActiveJobStream()` for the live progress indicator.
+- `apps/desktop/src/renderer/lib/`
+  - `notifications.ts` — singleton toast store (`useNotifications()`); used by the toaster + by job lifecycle effects.
+  - `jobStream.ts` — singleton job-event store (`useActiveJobStream()`, `useJobStream(jobId)`); subscribes to `audioWorkflow.onJobEvent` once per session, evicts terminal snapshots after 60 s.
+  - `packageStats.ts` — single source of truth for shelf / featured / dedup counts derived from history.
+- `apps/desktop/src/renderer/components/`
+  - `NotificationToaster.tsx` — bottom-right (desktop) / bottom-center (narrow) toast stack with `motion/react`.
+  - `LiveJobStatus.tsx` — fine-grained progress line above the legacy `<StageChain>`. Indeterminate state when `progress < 0`.
+  - `StageChain.tsx` — coarse stage chain (legacy `progressStages` map). Coexists with `LiveJobStatus`; do not remove.
+  - `HeaderJobStatusPill.tsx` — compact status pill mounted in the brand header. Surfaces the same `useActiveJobStream()` snapshot as `LiveJobStatus` but stays visible regardless of scroll. Click scrolls the inline `<LiveJobStatus>` into view; terminal pills auto-fade (success 6 s, failure 12 s).
+  - `UrlPreviewCard.tsx` (added by SAG-D) — shows title / duration / uploader for a pasted URL before the user clicks Run.
+- `apps/desktop/src/shared/`
+  - `types.ts` — shared Electron/preload/renderer types. Important: `SavedJobHistory`, `PlaybackBundle`, `GeneratedAsset`, `GeneratedAssetRole`, `AudioWorkflowApi`, `UrlMetadataPreview`.
+  - `job-events.ts` — `JobEvent` union + `JobStage` (`queued | metadata | captions | audio | separation | transcribe | writeOutputs | manifest`) + `JobErrorReason`/`JobErrorHint`.
+  - `package-manifest.ts` — `PackageManifest` + `PackageSourceKey` + `PackageAsset`. Filename: `manifest.json` at the root of every package output dir. Schema version: 1.
 - `skills/audio-subtitles/scripts/generate_subtitles.py`
   - CLI source for subtitle generation, download, local package creation, and optional separation.
+  - Emits structured `emit_progress` JSON envelopes to stderr at every stage boundary; yt-dlp runs with `--newline`; ffmpeg runs with `-progress pipe:2 -nostats -loglevel warning`; faster-whisper streams per-segment progress through a callback.
+  - Whisper preload: `should_preload_whisper()` decides whether to spawn a daemon thread (`_start_whisper_preload()`) that runs the model load in parallel with download/separation. `transcribe()` joins the thread before running and reuses the loaded model when the engine matches. Add `--no-preload-whisper` to disable on low-RAM systems.
+- Whisper engine selection: the desktop `pickWordEngine(model)` helper sends `--word-engine faster_whisper` for any model whose name contains `turbo` (currently `large-v3-turbo`) and `--word-engine auto` for everything else. Rationale: `whisper-timestamped` runs OpenAI whisper with `beam_size=5 + best_of=5 + 6-temperature fallback + per-word cross-attention alignment`, which is dramatically slower than `faster-whisper` (CTranslate2). For the `turbo` checkpoint, the alignment quality is no better than CTranslate2's native word timestamps so the speed cost isn't worth it. For older `medium`/`large` checkpoints the alignment precision is more useful, so `auto` keeps preferring `whisper-timestamped`.
 
 ## Current Playback Rules
 
@@ -108,37 +129,40 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
 
 ## Recently Addressed Problems
 
+- Transcription on `large-v3-turbo` was 4–12× slower than expected because `--word-engine auto` routed it through `whisper-timestamped` (OpenAI whisper + multi-temperature + cross-attention alignment). Desktop now uses `pickWordEngine(model)` which sends `--word-engine faster_whisper` for any turbo checkpoint and `auto` for everything else.
+- Vocal separation failures fell through silently — the user only saw `Separation skipped` in the stage chain. The CLI still emits `emit_progress("separate", failed=True)` for the recoverable path, but the `JobEvent.stage` payload now carries `failed?: boolean`, the renderer's `JobStreamSnapshot` records `failedStages`, and a dedicated effect in `App.tsx` pushes a one-shot warning toast (with "Disable separation" / "Copy setup command" / "Copy log" actions) the moment a stage flips into the failed state.
+- Vocal separation always failed when the user had no HF Hub access. Three layered fixes ship together:
+  1. **Local model reuse**. `UserSettings` gained `separatorModelDir` (Settings → "Vocal separator models folder"). The desktop forwards it as `--separator-model-dir <dir>` to the CLI, which passes it through to `audio-separator --model_file_dir`. Combined with `--separator-model <name>` the entire run stays offline.
+  2. **UVR auto-detect**. `apps/desktop/src/main/lib/uvrDetect.ts` scans the platform-specific UVR install paths, materialises a flat shadow folder of weight files via symlinks under `userData/separator-models/uvr-link/`, and (when the user hasn't picked their own folder) sets `separatorModelDir` to that shadow folder on app boot. A "Re-detect UVR" button + an "Auto-linked from UVR" badge ship in Settings.
+  3. **Smart model picker**. `pickPreferredSeparatorModel(dir)` in the same file scans the dir for the highest-quality model that's actually present (audio-separator's default `model_bs_roformer_ep_317_sdr_12.9755.ckpt` first, then `UVR-MDX-NET-Voc_FT.onnx`, `UVR-MDX-NET-Inst_HQ_3.onnx`, etc.). The desktop passes the picked model as `--separator-model <name>` so audio-separator never falls through to its built-in default and tries to download the BS-Roformer from HF Hub when the local pool doesn't contain it.
+  Bonus fix in the CLI: `stem_score()` now matches the parenthetical group `(Vocals)` / `(Instrumental)` with decisive weight before scanning for substrings, so model names containing `Inst` (e.g. `UVR-MDX-NET-Inst_HQ_3`) no longer poison the vocal-stem heuristic.
+- HuggingFace Hub access for users in restricted networks. `UserSettings` gained `hfEndpoint` (Settings → "HuggingFace mirror"); the main process injects it as `HF_ENDPOINT` into every CLI subprocess so all `huggingface_hub` clients route through the chosen host. A "Use China mirror" preset fills `https://hf-mirror.com`. `withHuggingFaceEnv()` (renamed from `withHuggingFaceToken()`) injects both `HF_TOKEN` and `HF_ENDPOINT` together.
+- HF rate limits. `errorReason.classify()` recognises `"unauthenticated requests to the HF Hub"` and `huggingface_hub … rate limit / 429` patterns as the `hf_rate_limited` reason with action `openHfTokenSettings`; audio-separator runtime download/timeout failures map to `separator_missing` with action `openSeparatorModelDirSettings`. Both actions scroll Settings to the right input field via `openSettingsToField()`.
+- Corrupt model files left behind by killed audio-separator runs caused `PytorchStreamReader failed reading zip archive` on every subsequent run, even when a perfectly-good UVR symlink for a different model was sitting in the same folder. `pickPreferredSeparatorModel` now ranks symlinks (UVR-managed, integrity guaranteed by UVR's own download) above plain files, and skips plain files smaller than 5 MB outright (almost certainly partial downloads). `cleanupCorruptDownloads` runs at boot and on every "Re-detect UVR" click to prune those stubs. `errorReason.ts` recognises `pytorchstreamreader … failed reading zip archive` / `checkpoint file is corrupted` / `failed to load roformer model` so the user gets a "Use local models" toast that scrolls Settings to the separator-dir field.
+- Malformed HF tokens. Settings → HuggingFace token uses `type="password"`, so a user pasting the wrong clipboard value (e.g. the "Copy setup command" toast text) had no visual feedback — the bogus value got injected as `HF_TOKEN` and broke every subsequent download. `mergeUserSettings` now validates `^hf_[A-Za-z0-9_]{20,}$` and silently drops malformed input. `loadUserSettings` re-runs the validation against the on-disk file at boot and writes a cleaned version back when anything was rejected, so users with already-corrupted settings auto-heal on next launch.
+- Activity column duplicated retries. Each `runJob()` appended a new `JobRecord` to `jobs`, so a flaky bilibili import that took 4 retries to succeed produced 4 stacked cards with the same title. `runJob` now filters out any prior `jobs[]` entry whose `input` matches the new run, so the activity column shows one card per distinct input regardless of how many times it was attempted. (History-side dedup via `historyPackageKey` was already in place and is untouched.)
 - Old preview videos could be mixed with new song audio when several jobs shared one output directory.
 - Backing/Vocal switching could surface stems from another song.
 - Duplicate history entries appeared after running vocal split.
 - The start screen was simplified so the first action is URL/file input.
 - Karaoke Room now supports microphone input selection and monitor output.
+- CLI progress was opaque: yt-dlp `\r`-rewriting bars never reached the renderer, ffmpeg printed once at the end, and stderr from a few `subprocess.PIPE` callsites was swallowed entirely. The Python CLI now flushes line-terminated progress for every external tool and the main process parses those into canonical `JobStage` events on the `job:event` channel.
+- Job failures used to surface only as a generic Error in the renderer log. They now flow through `classifyError()` → `JobFailedEvent` → localized toast with recovery actions (open cookies pane, enable local fallback, copy install command, retry, copy log).
+- Capture form felt blank for 2-4 s after pasting a URL. A debounced `metadata:prefetch` IPC handler now hits yt-dlp `--dump-single-json --skip-download` and shows the title / duration / uploader inline before the user clicks Run.
+- Default whisper model flipped from `medium` → `large-v3-turbo` (~2× faster transcribe with comparable WER on most songs). One-time ~1.5 GB model download on first run; the live status surface narrates the download.
+- Per-package `manifest.json` is now written atomically next to every successful job's outputs, with stable `packageId` + `sourceKey` + role-tagged assets. The reader (`loadSavedHistory()`) now prefers the manifest when it exists and back-fills missing manifests on first load, so older `history.json` rows converge on manifest-canonicality without a separate migration step.
+- The brand header now shows a compact `HeaderJobStatusPill` (stage label + percent + colored dot) so the user knows a job is alive even when scrolled away from the capture form. Clicking it scrolls the inline `<LiveJobStatus>` back into view. Terminal pills auto-fade (success 6 s, failure 12 s) and the `useActiveJobStream` hook now keeps the snapshot active through the eviction window so the tail state never flashes off.
+- Whisper model load now overlaps with download + separation + convert via a daemon thread spawned in `generate_subtitles.py` when transcription is "almost certain" (local files, `--separate`, `--force-local`, `--local-fallback`, `--subtitle-source local`). Wall-clock saving is 5–20 s per typical job. Add `--no-preload-whisper` to opt out on low-RAM systems.
+- Out-of-box experience for end users. `apps/desktop/src/main/lib/bundledModels.ts` resolves two opt-in bundle folders shipped via `extraResources`: `vendor/separator-models/` (flat `.onnx` / `.pth` / `.ckpt` files) and `vendor/whisper-cache/` (a HuggingFace Hub layout). On boot, `detectAndLinkUvr()` symlinks the bundled separator weights into the same shadow folder UVR uses, and `ensureHfHomeDir()` copies the bundled Whisper snapshot into a writable user-data folder and pins `HF_HOME` to it. Every CLI subprocess inherits `HF_HOME` via `withHuggingFaceEnv()`. Maintainers run `apps/desktop/scripts/fetch-bundled-models.sh` once before `pnpm dist:mac` / `dist:win` to populate the `vendor/` folders (default budget ~310 MB: `UVR-MDX-NET-Inst_HQ_3.onnx` + `Systran/faster-whisper-small`). When the script hasn't run (typical for `pnpm dev`), every helper returns `null` and the existing UVR-or-HF download flow is preserved unchanged.
 
 ## Development Plan
 
 ### Phase 1: Package Data Model
 
-- Introduce a durable package identity:
-  - `packageId`
-  - `packageType`
-  - `sourceKey`
-  - `sourceUrl`
-  - `title`
-  - `createdAt`
-  - `updatedAt`
-  - `outputDir`
-  - `assets`
-  - `playbackBundle`
-- Model package children explicitly:
-  - `lyrics`
-  - `media`
-  - `preview`
-  - `stems`
-  - `recordings`
-  - `exports`
-- Prefer a per-job `manifest.json` in each output package first.
+- Durable package identity is shipped: `PackageManifest` in `apps/desktop/src/shared/package-manifest.ts`, written atomically by `apps/desktop/src/main/lib/packageManifest.ts` after every successful job. Identity fields (`packageId`, `packageType`, `sourceKey`, `sourceUrl`, `title`, timestamps, `outputDir`, `assets`, `playbackBundle`) are all populated.
+- Reader migration is shipped: `loadSavedHistory()` calls `migrateHistoryWithManifests()` on first read. Each entry that has a matching `manifest.json` (`packageId === entry.id`) is hydrated via `hydrateHistoryFromManifest()`; entries lacking a manifest get one back-written for the most-recent `outputDir`-sharing entry. Bundled `samples/` packages (no `version: 1`) are kept on the legacy `readSamplePackage` path so the schema collision is invisible.
+- Recordings + exports children are still implicit on disk; add `recordings` to the manifest when the recording feature lands.
 - Consider SQLite later if search/filtering/history grows beyond simple package metadata.
-- Stop relying on broad directory scans as the primary source of truth.
 
 ### Phase 2: Asset Role Reliability
 
@@ -195,4 +219,7 @@ The desktop app should orchestrate the workflow and UI. The CLI remains the medi
 
 ## Suggested Next Step
 
-Implement a manifest-backed package index. This is the cleanest way to stop cross-song asset mixing permanently and will make future database migration straightforward.
+1. **Race captions vs audio download for URL inputs**. The whisper preload landed, but caption-fetch and audio-download still run sequentially. When `subtitle_source` is `auto`/`local-fallback`, kicking off both subprocesses concurrently and letting the first usable result win would shave another 5–15 s on the captions-fail path. This requires careful subprocess lifecycle management (cancel/cleanup the loser, dedupe `yt-dlp` output dirs) — left for a later round to keep the recent ship safe.
+2. **Persist user model preference** in `UserSettings` so power users don't have to re-pick from Advanced every session.
+3. **Surface preload state in the live status panel.** Today the user sees a `Loading model` flash only at the start of the transcribe stage; with preload, that flash is gone and the model just appears "ready". Adding a low-priority `Preloading model` line that fades when the load finishes would make the new behavior legible.
+4. **Manifest-backed dedup for shared `outputDir`s.** When two jobs land in the same user-chosen output folder (the default `~/Downloads/VocalFlow Studio`), only one `manifest.json` survives — the latest job's. The hydration path already handles this safely (it skips lifting when `packageId` mismatches), but a long-term fix is per-job sub-folders or a `manifests/` index file.

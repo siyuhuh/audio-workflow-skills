@@ -20,9 +20,44 @@ import type {
   RoomQueueItem,
   RoomStatus,
   SavedJobHistory,
+  UrlMetadataPreview,
   UserSettings,
   YoutubeSearchResult
 } from "../shared/types.js";
+import type { JobEvent } from "../shared/job-events.js";
+import { classifyError } from "./lib/errorReason.js";
+import { prefetchUrlMetadata } from "./lib/urlMetadata.js";
+import {
+  createParseState,
+  mapScriptStage,
+  parseRawProgressLine,
+  shouldEmitRaw,
+  type RawParseState
+} from "./lib/jobProgressParser.js";
+import {
+  buildPackageManifest,
+  hydrateHistoryFromManifest,
+  readPackageManifest,
+  writePackageManifest
+} from "./lib/packageManifest.js";
+import type { PackageSourceKey } from "../shared/package-manifest.js";
+import {
+  cleanupCorruptDownloads,
+  detectUvrModelsRoot,
+  pickPreferredSeparatorModel,
+  syncUvrShadowFolder,
+  vocalflowManagedSeparatorDir,
+  type UvrDetectionPayload
+} from "./lib/uvrDetect.js";
+import {
+  bundledSeparatorModelsDir,
+  bundledWhisperHfHomeDir,
+  dirSizeBytes,
+  seedBundledSeparator,
+  seedBundledWhisperCache
+} from "./lib/bundledModels.js";
+
+type JobFailedEvent = Extract<JobEvent, { kind: "failed" }>;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDisplayName = "VocalFlow";
@@ -34,7 +69,15 @@ const webLogClients = new Set<ServerResponse>();
 const roomEventClients = new Set<ServerResponse>();
 let savedHistory: SavedJobHistory[] = [];
 let hiddenSampleIds = new Set<string>();
-let userSettings: UserSettings = { locale: null, themeMode: "dark", accentColor: "green" };
+const DEFAULT_USER_SETTINGS: UserSettings = {
+  locale: null,
+  themeMode: "dark",
+  accentColor: "green",
+  hfToken: null,
+  hfEndpoint: null,
+  separatorModelDir: null
+};
+let userSettings: UserSettings = { ...DEFAULT_USER_SETTINGS };
 let webApiServer: Server | null = null;
 const roomToken = randomUUID().replaceAll("-", "").slice(0, 12);
 let roomQueue: RoomQueueItem[] = [];
@@ -181,6 +224,7 @@ function audioSubtitlesInvocation(runtime?: PreparedRuntime): CommandInvocation 
 
 function createWindow(): void {
   const iconPath = desktopIconPath();
+  const isMac = process.platform === "darwin";
   const window = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -189,6 +233,14 @@ function createWindow(): void {
     title: appDisplayName,
     icon: iconPath,
     backgroundColor: "#0b0c10",
+    ...(isMac
+      ? {
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: { x: 16, y: 16 }
+        }
+      : {
+          autoHideMenuBar: true
+        }),
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -219,6 +271,16 @@ app.whenReady().then(() => {
 
   loadSavedHistory();
   loadUserSettings();
+  // Auto-detect UVR before the renderer mounts so settings load with the
+  // shadow folder already wired in. Failures are non-fatal and the
+  // renderer can re-trigger detection from the Settings drawer.
+  try {
+    detectAndLinkUvr();
+  } catch (error) {
+    console.warn(
+      `[separator] UVR auto-detect threw: ${error instanceof Error ? error.message : error}`
+    );
+  }
   registerMediaProtocol();
   registerIpcHandlers();
   registerMediaPermissions();
@@ -270,6 +332,16 @@ function registerIpcHandlers(): void {
       properties: ["openDirectory", "createDirectory"]
     });
 
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
+
+  // Generic folder picker for Settings (e.g. UVR models folder). Distinct
+  // from `select-output-dir` so we don't surface "create directory" UX
+  // for read-only model folders.
+  ipcMain.handle("dialog:select-folder", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"]
+    });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
 
@@ -335,6 +407,29 @@ function registerIpcHandlers(): void {
     return runBilibiliSearch(String(query ?? ""), Boolean(appendKaraoke));
   });
 
+  ipcMain.handle("metadata:prefetch", async (_event, input: string): Promise<UrlMetadataPreview | null> => {
+    const trimmed = String(input ?? "").trim();
+    if (!trimmed) {
+      return null;
+    }
+    try {
+      // Reuse the existing yt-dlp-only runtime stub used by media search so we
+      // don't trigger whisper/separator install probes for a pure metadata
+      // fetch. The placeholder URL keeps `runtimeNeeds` returning ytDlp-only
+      // even when the user's pasted URL is Bilibili.
+      const runtime = await prepareAudioRuntime(ytdlpSearchPlaceholderOptions(), () => {});
+      if (!runtime.python) {
+        return null;
+      }
+      return await prefetchUrlMetadata(trimmed, {
+        env: runtime.env,
+        python: runtime.python
+      });
+    } catch {
+      return null;
+    }
+  });
+
   ipcMain.handle("room:status", () => roomStatus());
 
   ipcMain.handle("room:enqueue", (_event, input: string, title: string, requestedBy: string) => {
@@ -370,19 +465,190 @@ function registerIpcHandlers(): void {
     writeUserSettings();
     return userSettings;
   });
+
+  // Re-run UVR detection on demand so the user can hit "Re-detect" in
+  // Settings after installing UVR / downloading new models without
+  // restarting the desktop app.
+  ipcMain.handle("audio:detect-uvr", () => detectAndLinkUvr());
 }
 
 function loadUserSettings(): void {
   try {
     if (!existsSync(userSettingsFilePath())) {
-      userSettings = { locale: null, themeMode: "dark", accentColor: "green" };
+      userSettings = { ...DEFAULT_USER_SETTINGS };
       return;
     }
-    const parsed = JSON.parse(readFileSync(userSettingsFilePath(), "utf-8")) as Partial<UserSettings>;
-    userSettings = mergeUserSettings({ locale: null, themeMode: "dark", accentColor: "green" }, parsed);
+    const raw = readFileSync(userSettingsFilePath(), "utf-8");
+    const parsed = JSON.parse(raw) as Partial<UserSettings>;
+    userSettings = mergeUserSettings({ ...DEFAULT_USER_SETTINGS }, parsed);
+    // Persist back if `mergeUserSettings` rejected any field (malformed
+    // hfToken / hfEndpoint, etc.). Otherwise the bad on-disk value stays
+    // forever, and a future code change that doesn't sanitize on load
+    // would re-poison `userSettings`.
+    const cleanedSerialized = JSON.stringify(userSettings, null, 2);
+    if (JSON.stringify(parsed, null, 2) !== cleanedSerialized) {
+      writeUserSettings();
+    }
   } catch {
-    userSettings = { locale: null, themeMode: "dark", accentColor: "green" };
+    userSettings = { ...DEFAULT_USER_SETTINGS };
   }
+}
+
+/**
+ * Detect Ultimate Vocal Remover on the host, materialise a flat shadow
+ * folder of its model weights, and (when the user hasn't picked their
+ * own folder) point `separatorModelDir` at it. Always returns the
+ * detection payload so the renderer can render an "auto-linked from
+ * UVR" badge or surface a one-shot info notification on first launch.
+ *
+ * Safe to call repeatedly (idempotent); used both on app boot and from
+ * the manual "Re-detect UVR" button in Settings.
+ */
+function detectAndLinkUvr(): UvrDetectionPayload {
+  const targetDir = vocalflowManagedSeparatorDir(app.getPath("userData"));
+  // Always prune obvious garbage (partial downloads from a killed
+  // audio-separator run) before resyncing — they would otherwise still
+  // be picked up as "real" model files and trigger PytorchStreamReader
+  // errors at load time. Non-symlink files >= 5 MB are kept; symlinks
+  // are never touched here.
+  try {
+    const purged = cleanupCorruptDownloads(targetDir);
+    if (purged > 0) {
+      console.warn(
+        `[separator] Pruned ${purged} suspected partial download(s) from ${targetDir}`
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `[separator] Failed to prune ${targetDir}: ${error instanceof Error ? error.message : error}`
+    );
+  }
+
+  // Layer 1: a system UVR install (zero-config for users who already
+  // have Ultimate Vocal Remover).
+  const uvrRoot = detectUvrModelsRoot();
+  let linkedDir: string | null = null;
+  let modelCount = 0;
+  let newlyLinked = 0;
+  if (uvrRoot) {
+    try {
+      const result = syncUvrShadowFolder(uvrRoot, targetDir);
+      linkedDir = result.targetDir;
+      modelCount = result.modelCount;
+      newlyLinked = result.newlyLinked;
+    } catch (error) {
+      console.warn(
+        `[separator] Failed to mirror UVR models from ${uvrRoot}: ${error instanceof Error ? error.message : error}`
+      );
+    }
+  }
+
+  // Layer 2: bundled fallback models from `vendor/separator-models/`,
+  // populated by `apps/desktop/scripts/fetch-bundled-models.sh` before
+  // `electron-builder` runs. This is what makes the desktop work
+  // out-of-box for users on networks where huggingface.co is unreachable
+  // AND who haven't installed UVR. When the maintainer hasn't run the
+  // fetch script (typical for `pnpm dev`), the helper returns null and
+  // this layer no-ops — the existing UVR-or-HF flow is preserved.
+  const bundleDir = bundledSeparatorModelsDir({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath
+  });
+  if (bundleDir) {
+    try {
+      const seeded = seedBundledSeparator(bundleDir, targetDir);
+      if (seeded > 0) {
+        console.log(`[separator] Seeded ${seeded} bundled model(s) into ${targetDir}`);
+        newlyLinked += seeded;
+      }
+    } catch (error) {
+      console.warn(
+        `[separator] Failed to seed bundled models from ${bundleDir}: ${error instanceof Error ? error.message : error}`
+      );
+    }
+  }
+
+  // Recount once after both layers ran (UVR sync may have populated
+  // the count, bundled seed may have added more) so the renderer badge
+  // reflects the merged total.
+  if (existsSync(targetDir)) {
+    try {
+      modelCount = readdirSync(targetDir).filter((name) =>
+        /\.(onnx|pth|ckpt)$/i.test(name)
+      ).length;
+      if (!linkedDir && modelCount > 0) {
+        linkedDir = targetDir;
+      }
+    } catch {
+      // Best-effort recount.
+    }
+  }
+
+  let appliedToSettings = false;
+  if (
+    linkedDir &&
+    (userSettings.separatorModelDir === null || userSettings.separatorModelDir === linkedDir)
+  ) {
+    if (userSettings.separatorModelDir !== linkedDir) {
+      userSettings = { ...userSettings, separatorModelDir: linkedDir };
+      writeUserSettings();
+    }
+    appliedToSettings = true;
+  }
+
+  return {
+    uvrRoot,
+    linkedDir,
+    modelCount,
+    newlyLinked,
+    appliedToSettings,
+    currentSeparatorModelDir: userSettings.separatorModelDir,
+    preferredModel: userSettings.separatorModelDir
+      ? pickPreferredSeparatorModel(userSettings.separatorModelDir)
+      : null
+  };
+}
+
+/**
+ * Resolve the writable HuggingFace cache directory used by all child
+ * subprocesses (faster-whisper, whisper-timestamped, audio-separator).
+ * On first call we copy any bundled snapshot from `vendor/whisper-cache/`
+ * into the user-data folder so faster-whisper doesn't try to write into
+ * the read-only DMG bundle on macOS.
+ */
+let cachedHfHomeDir: string | null | undefined;
+function ensureHfHomeDir(): string | null {
+  if (cachedHfHomeDir !== undefined) {
+    return cachedHfHomeDir;
+  }
+  const target = path.join(app.getPath("userData"), "hf-cache");
+  try {
+    mkdirSync(target, { recursive: true });
+  } catch {
+    cachedHfHomeDir = null;
+    return null;
+  }
+
+  const bundle = bundledWhisperHfHomeDir({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath
+  });
+  if (bundle) {
+    try {
+      const result = seedBundledWhisperCache(bundle, target);
+      if (result.copied) {
+        const sizeMb = (dirSizeBytes(target) / 1024 / 1024).toFixed(0);
+        console.log(`[whisper] Seeded bundled cache into ${target} (${sizeMb} MB)`);
+      }
+    } catch (error) {
+      console.warn(
+        `[whisper] Failed to seed bundled cache from ${bundle}: ${error instanceof Error ? error.message : error}`
+      );
+    }
+  }
+
+  cachedHfHomeDir = target;
+  return target;
 }
 
 function writeUserSettings(): void {
@@ -415,6 +681,50 @@ function mergeUserSettings(current: UserSettings, patch: Partial<UserSettings> |
     const accentColor = patch.accentColor;
     next.accentColor = isAccentColor(accentColor) ? accentColor : current.accentColor;
   }
+  if ("hfToken" in patch) {
+    const token = patch.hfToken;
+    if (token === null) {
+      next.hfToken = null;
+    } else if (typeof token === "string") {
+      const trimmed = token.trim();
+      // HuggingFace tokens always start with `hf_` followed by 20+
+      // alphanumerics. Reject anything else: it's a hard requirement of
+      // the HF Hub API, and accepting a malformed value (e.g. a shell
+      // command the user pasted from the "Copy setup command" toast by
+      // mistake — the field is `type=password` so it isn't visible) would
+      // poison every downstream subprocess via `HF_TOKEN` until the user
+      // notices and clears it manually. Silent rejection keeps the field
+      // empty so the user re-paste a real token.
+      if (trimmed.length === 0) {
+        next.hfToken = null;
+      } else if (/^hf_[A-Za-z0-9_]{20,}$/.test(trimmed)) {
+        next.hfToken = trimmed;
+      } else {
+        next.hfToken = null;
+      }
+    }
+  }
+  if ("hfEndpoint" in patch) {
+    const endpoint = patch.hfEndpoint;
+    if (endpoint === null) {
+      next.hfEndpoint = null;
+    } else if (typeof endpoint === "string") {
+      const trimmed = endpoint.trim().replace(/\/+$/, "");
+      // Only accept http(s) URLs; silently drop anything else so a bad
+      // paste can't poison the env var (which would break every model
+      // download until the user manually clears it).
+      next.hfEndpoint = /^https?:\/\//i.test(trimmed) ? trimmed : null;
+    }
+  }
+  if ("separatorModelDir" in patch) {
+    const dir = patch.separatorModelDir;
+    if (dir === null) {
+      next.separatorModelDir = null;
+    } else if (typeof dir === "string") {
+      const trimmed = dir.trim();
+      next.separatorModelDir = trimmed.length > 0 ? trimmed : null;
+    }
+  }
   return next;
 }
 
@@ -441,6 +751,37 @@ function broadcastJobProgress(event: JobProgressStage): void {
 
 // Re-export so D-01 can drive structured stage events from the job runner.
 export { broadcastJobProgress };
+
+function broadcastJobFailed(event: JobFailedEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    try {
+      if (!window.isDestroyed()) {
+        window.webContents.send("job:failed", event);
+      }
+    } catch {
+      // Ignore detached renderer windows.
+    }
+  }
+}
+
+/**
+ * Unified event channel that carries the full {@link JobEvent} union
+ * (queued / stage / log / succeeded / failed). Existing dedicated channels
+ * (`job:progress`, `job:failed`) keep working for backward compatibility,
+ * but new subscribers (notification toaster, status bar, future state
+ * store) should prefer this single subscription.
+ */
+function broadcastJobEvent(event: JobEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    try {
+      if (!window.isDestroyed()) {
+        window.webContents.send("job:event", event);
+      }
+    } catch {
+      // Ignore detached renderer windows.
+    }
+  }
+}
 
 function parseProgressEvent(jobId: string, rawLine: string): JobProgressStage | null {
   const trimmed = rawLine.trim();
@@ -471,12 +812,23 @@ function parseProgressEvent(jobId: string, rawLine: string): JobProgressStage | 
   }
 }
 
+/** Maximum number of stderr lines kept per job for failure classification. */
+const STDERR_TAIL_MAX_LINES = 40;
+
 async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: (log: { jobId: string; stream: "stdout" | "stderr"; chunk: string }) => void): Promise<JobResult> {
   const runtime = await prepareAudioRuntime(options, (chunk) => {
     emitLog({ jobId, stream: "stderr", chunk });
   });
   const preview = buildCommandPreview(options, runtime);
   const startedAtMs = Date.now();
+
+  broadcastJobEvent({
+    kind: "queued",
+    jobId,
+    input: options.input,
+    createdAt: startedAtMs,
+    options
+  });
 
   return new Promise((resolve, reject) => {
     const child = spawn(preview.command, preview.args, {
@@ -488,6 +840,84 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
 
     let output = "";
     let stderrBuffer = "";
+    const stderrTail: string[] = [];
+    const parseState: RawParseState = createParseState();
+
+    const pushStderrLine = (line: string): void => {
+      if (!line) {
+        return;
+      }
+      stderrTail.push(line);
+      if (stderrTail.length > STDERR_TAIL_MAX_LINES) {
+        stderrTail.splice(0, stderrTail.length - STDERR_TAIL_MAX_LINES);
+      }
+    };
+
+    const emitStageFromEnvelope = (event: JobProgressStage): void => {
+      const mappedStage = mapScriptStage(event.name);
+      if (!mappedStage) {
+        return;
+      }
+      if (parseState.currentScriptStage !== event.name) {
+        parseState.currentScriptStage = event.name;
+        parseState.ffmpeg = {};
+      }
+      parseState.currentStage = mappedStage;
+      const progress = event.failed
+        ? -1
+        : event.done
+          ? 1
+          : event.progress >= 0
+            ? Math.min(event.progress, 1)
+            : -1;
+      broadcastJobEvent({
+        kind: "stage",
+        jobId,
+        stage: mappedStage,
+        progress,
+        etaSec: event.etaSec ?? null,
+        message: event.message ?? (event.done ? `${event.name} · done` : event.name),
+        failed: event.failed === true
+      });
+    };
+
+    const emitStageFromRawLine = (rawLine: string): boolean => {
+      const result = parseRawProgressLine(rawLine, parseState);
+      if (result.type === "passthrough") {
+        return false;
+      }
+      if (result.type === "consumed") {
+        return true;
+      }
+      if (shouldEmitRaw(result.data, parseState, Date.now())) {
+        broadcastJobEvent({
+          kind: "stage",
+          jobId,
+          stage: result.data.stage,
+          progress: result.data.progress,
+          etaSec: result.data.etaSec ?? null,
+          message: result.data.message
+        });
+      }
+      return true;
+    };
+
+    const emitFailure = (exitCode: number | null, signal: NodeJS.Signals | null): void => {
+      const tail = stderrTail.join("\n");
+      const classified = classifyError(tail, exitCode, signal);
+      const failedEvent: JobFailedEvent = {
+        kind: "failed",
+        jobId,
+        reason: classified.reason,
+        durationMs: Date.now() - startedAtMs,
+        logsTail: [...stderrTail]
+      };
+      if (classified.hint) {
+        failedEvent.hint = classified.hint;
+      }
+      broadcastJobFailed(failedEvent);
+      broadcastJobEvent(failedEvent);
+    };
 
     child.stdout.on("data", (buffer: Buffer) => {
       const chunk = buffer.toString();
@@ -514,8 +944,15 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
             logCarry = "";
           }
           broadcastJobProgress(event);
+          emitStageFromEnvelope(event);
           continue;
         }
+        if (emitStageFromRawLine(rawLine)) {
+          // Raw progress line consumed; suppress noisy log forwarding so the
+          // renderer's log pane doesn't drown in yt-dlp / ffmpeg lines.
+          continue;
+        }
+        pushStderrLine(rawLine);
         logCarry += `${rawLine}\n`;
       }
       if (logCarry) {
@@ -525,6 +962,8 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
 
     child.on("error", (error) => {
       runningJobs.delete(jobId);
+      pushStderrLine(`spawn error: ${error.message}`);
+      emitFailure(null, null);
       reject(new Error(formatSpawnError(error, preview.command)));
     });
 
@@ -534,18 +973,50 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
         const event = parseProgressEvent(jobId, stderrBuffer);
         if (event) {
           broadcastJobProgress(event);
-        } else {
+          emitStageFromEnvelope(event);
+        } else if (!emitStageFromRawLine(stderrBuffer)) {
           emitLog({ jobId, stream: "stderr", chunk: stderrBuffer });
+          pushStderrLine(stderrBuffer);
         }
         stderrBuffer = "";
       }
       const parsed = parseGeneratedOutput(output);
       const success = exitCode === 0 && signal === null;
+      if (!success) {
+        emitFailure(exitCode, signal);
+      }
       let historyEntry = success ? createSavedHistoryEntry(jobId, options, parsed, startedAtMs) : null;
       const discovered = historyEntry ? null : discoverAssets(options, parsed, startedAtMs);
       const fallbackAssets = discovered?.assets ?? [];
       if (historyEntry) {
         historyEntry = saveHistoryEntry(historyEntry);
+      }
+      if (success && historyEntry) {
+        try {
+          const sourceKey = derivePackageSourceKey(historyEntry);
+          const manifest = buildPackageManifest({
+            packageId: historyEntry.id,
+            sourceKey,
+            options,
+            historyEntry,
+            startedAtMs,
+            completedAtMs: Date.now()
+          });
+          writePackageManifest(historyEntry.outputDir, manifest);
+        } catch (error) {
+          // Manifest write failures must NEVER mask a successful job — the
+          // renderer can still hydrate from history.json. Surface a warning
+          // so the issue is visible without breaking the user-facing flow.
+          const reason = error instanceof Error ? error.message : String(error);
+          emitLog({ jobId, stream: "stderr", chunk: `[manifest] write failed: ${reason}\n` });
+        }
+        broadcastJobEvent({
+          kind: "succeeded",
+          jobId,
+          packageId: historyEntry.id,
+          durationMs: Date.now() - startedAtMs,
+          historyEntry
+        });
       }
       resolve({
         jobId,
@@ -1665,10 +2136,80 @@ function loadSavedHistory(): void {
     }
     const parsed = JSON.parse(readFileSync(historyFilePath(), "utf-8")) as SavedJobHistory[];
     savedHistory = Array.isArray(parsed) ? parsed.filter(isSavedHistoryEntry).slice(0, 100) : [];
+    savedHistory = migrateHistoryWithManifests(savedHistory);
     rebuildKnownReviewFiles(historyWithBundledSamples());
   } catch {
     savedHistory = [];
   }
+}
+
+/**
+ * One-shot read-side migration:
+ *  - For each entry that has a matching `manifest.json` in its `outputDir`,
+ *    lift the higher-fidelity manifest fields onto the entry.
+ *  - For each entry WITHOUT a manifest, write one for the most recent
+ *    `outputDir`-sharing entry so future loads can hydrate.
+ *
+ * Backfill is best-effort: any failure (permission, disk full, mismatched
+ * `packageId` already on disk) is swallowed so a single bad row never breaks
+ * history loading.
+ */
+function migrateHistoryWithManifests(entries: SavedJobHistory[]): SavedJobHistory[] {
+  if (entries.length === 0) {
+    return entries;
+  }
+  // Track the entry that "owns" each outputDir for backfill — the most
+  // recent entry is preferred so its manifest reflects the latest run.
+  const backfillOwners = new Map<string, SavedJobHistory>();
+
+  const hydrated = entries.map((entry) => {
+    const outputDir = entry.outputDir?.trim();
+    if (!outputDir) {
+      return entry;
+    }
+    const manifest = readPackageManifest(outputDir);
+    if (manifest) {
+      // Manifest exists — only lift if the packageId matches; otherwise
+      // the manifest belongs to a sibling job that overwrote it. Either
+      // way no backfill is needed for this entry.
+      return manifest.packageId === entry.id
+        ? hydrateHistoryFromManifest(entry, manifest)
+        : entry;
+    }
+    if (!existsSync(outputDir) || entry.assets.length === 0) {
+      return entry;
+    }
+    const resolvedDir = path.resolve(outputDir);
+    const existingOwner = backfillOwners.get(resolvedDir);
+    if (!existingOwner || Date.parse(entry.createdAt) > Date.parse(existingOwner.createdAt)) {
+      backfillOwners.set(resolvedDir, entry);
+    }
+    return entry;
+  });
+
+  for (const entry of backfillOwners.values()) {
+    try {
+      const sourceKey = derivePackageSourceKey(entry);
+      const manifest = buildPackageManifest({
+        packageId: entry.id,
+        sourceKey,
+        options: {
+          input: entry.input,
+          workflowMode: entry.workflowMode,
+          model: "",
+          language: ""
+        },
+        historyEntry: entry,
+        startedAtMs: Date.parse(entry.createdAt) || Date.now(),
+        completedAtMs: Date.parse(entry.createdAt) || Date.now()
+      });
+      writePackageManifest(entry.outputDir, manifest);
+    } catch {
+      // Backfill is best-effort: writer errors are non-fatal — history
+      // continues to load from `history.json` as before.
+    }
+  }
+  return hydrated;
 }
 
 function saveHistoryEntry(entry: SavedJobHistory): SavedJobHistory {
@@ -1933,6 +2474,38 @@ function historyPackageKey(entry: Pick<SavedJobHistory, "input" | "sourceUrl" | 
   return mediaKey ? `media:${mediaKey}` : `input:${input.toLowerCase()}`;
 }
 
+/**
+ * Build a stable identity for the package manifest. Mirrors
+ * {@link historyPackageKey} for URL/sample/local-file inputs but produces a
+ * structured {@link PackageSourceKey} that records both the canonical key
+ * and the `origin` enum the renderer can branch on for display.
+ */
+function derivePackageSourceKey(entry: Pick<SavedJobHistory, "input" | "sourceUrl">): PackageSourceKey {
+  const rawInput = entry.input?.trim() ?? "";
+  const sourceUrl = entry.sourceUrl ?? sourceUrlForInput(rawInput);
+
+  if (sourceUrl) {
+    const normalized = normalizeSourceUrl(sourceUrl);
+    let origin: PackageSourceKey["origin"] = "url";
+    if (normalized.startsWith("youtube:")) {
+      origin = "youtube";
+    } else if (normalized.startsWith("bilibili:")) {
+      origin = "bilibili";
+    }
+    return { key: `url:${normalized}`, origin, rawInput };
+  }
+
+  if (rawInput.startsWith("sample:")) {
+    return { key: rawInput.toLowerCase(), origin: "sample", rawInput };
+  }
+
+  if (rawInput && !isHttpUrl(rawInput)) {
+    return { key: `file:${path.resolve(rawInput).toLowerCase()}`, origin: "local", rawInput };
+  }
+
+  return { key: `input:${rawInput.toLowerCase()}`, origin: "url", rawInput };
+}
+
 function normalizeSourceUrl(value: string): string {
   try {
     const url = new URL(value);
@@ -2098,7 +2671,7 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
     "/usr/local/bin",
     "/usr/bin"
   ].filter((item): item is string => Boolean(item));
-  const env = withPath(process.env, pathDirs);
+  const env = withHuggingFaceEnv(withPath(process.env, pathDirs));
   const needs = runtimeNeeds(options);
 
   if (!needs.ytDlp && !needs.whisper && !needs.separator) {
@@ -2122,15 +2695,17 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
   }
 
   const venvPythonInvocation = { command: venvPython, argsPrefix: [] };
-  const runtimeEnv = withPath(
-    {
-      ...env,
-      AUDIO_SUBTITLES_PYTHON: venvPython,
-      AUDIO_SUBTITLES_VENV: venvDir,
-      PYTHONNOUSERSITE: "1",
-      PIP_DISABLE_PIP_VERSION_CHECK: "1"
-    },
-    pathDirs
+  const runtimeEnv = withHuggingFaceEnv(
+    withPath(
+      {
+        ...env,
+        AUDIO_SUBTITLES_PYTHON: venvPython,
+        AUDIO_SUBTITLES_VENV: venvDir,
+        PYTHONNOUSERSITE: "1",
+        PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      },
+      pathDirs
+    )
   );
 
   try {
@@ -2508,6 +3083,45 @@ function withPath(baseEnv: NodeJS.ProcessEnv, pathDirs: string[]): NodeJS.Proces
   };
 }
 
+/**
+ * Inject the user's HuggingFace settings into the child env:
+ *
+ * - `HF_TOKEN` + `HUGGING_FACE_HUB_TOKEN` — when set, every downstream
+ *   tool (audio-separator, faster-whisper, whisper-timestamped) downloads
+ *   with authenticated rate limits instead of the anonymous ~10 req/min.
+ * - `HF_ENDPOINT` — when set, all `huggingface_hub` clients route through
+ *   the chosen host (e.g. `https://hf-mirror.com` for mainland China).
+ *
+ * Existing parent-env values are preserved when the user hasn't configured
+ * a setting, so `HF_TOKEN` / `HF_ENDPOINT` exported in the user's shell
+ * still work.
+ */
+function withHuggingFaceEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const next = { ...baseEnv };
+  const token = userSettings.hfToken?.trim();
+  if (token) {
+    next.HF_TOKEN = token;
+    next.HUGGING_FACE_HUB_TOKEN = token;
+  }
+  const endpoint = userSettings.hfEndpoint?.trim().replace(/\/+$/, "");
+  if (endpoint && /^https?:\/\//i.test(endpoint)) {
+    next.HF_ENDPOINT = endpoint;
+  }
+  // Always pin `HF_HOME` to a writable user-data folder. When the
+  // packaged build ships a pre-downloaded faster-whisper snapshot under
+  // `vendor/whisper-cache/`, `ensureHfHomeDir()` copies it in once so
+  // `WhisperModel(<repo>)` finds the model on first run without any HF
+  // network traffic. On `pnpm dev` the bundle is empty and faster-whisper
+  // falls back to its normal HF download path — but it now always writes
+  // into our app-managed cache instead of the user's `~/.cache/huggingface/`,
+  // so re-downloads after model upgrades stay scoped to this app.
+  const hfHome = ensureHfHomeDir();
+  if (hfHome) {
+    next.HF_HOME = hfHome;
+  }
+  return next;
+}
+
 function pythonCheck(python: string, code: string, env: NodeJS.ProcessEnv): Promise<boolean> {
   return new Promise((resolve) => {
     const child = spawn(python, ["-c", code], {
@@ -2651,6 +3265,29 @@ function formatSpawnError(error: Error, command: string): string {
   return error.message;
 }
 
+/**
+ * Choose the local transcription engine for a given Whisper model.
+ *
+ * - `large-v3-turbo` (and other "turbo" / "v3-turbo" variants): always
+ *   `faster_whisper`. The CTranslate2 backend is dramatically faster on
+ *   these models and turbo's word-alignment quality through
+ *   `whisper-timestamped` is no better than faster-whisper's native one.
+ * - Everything else: keep `auto` (prefers `whisper-timestamped` for
+ *   precise word boundaries; falls back to `faster_whisper` if missing).
+ *
+ * Centralized so the renderer never sets `--word-engine` directly.
+ */
+function pickWordEngine(model: string): "auto" | "faster_whisper" {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized) {
+    return "auto";
+  }
+  if (normalized.includes("turbo")) {
+    return "faster_whisper";
+  }
+  return "auto";
+}
+
 function buildAudioSubtitlesArgs(options: JobOptions): string[] {
   const input = normalizeMediaInput(options.input.trim());
   if (!input) {
@@ -2665,9 +3302,15 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
   }
 
   args.push("--subtitle-source", options.subtitleSource);
-  args.push("--model", options.model || "medium");
+  const modelArg = options.model || "medium";
+  args.push("--model", modelArg);
   args.push("--formats", formats.join(","));
-  args.push("--word-engine", "auto");
+  // Model-aware engine choice. faster-whisper (CTranslate2) is 4-12× faster
+  // than whisper-timestamped on large-v3-turbo because it skips the per-word
+  // cross-attention alignment pass + multi-temperature fallback. For older
+  // models, alignment quality matters more, so we keep `auto` (which prefers
+  // whisper-timestamped). See AGENT.md → "Whisper engine selection".
+  args.push("--word-engine", pickWordEngine(modelArg));
 
   if (options.language.trim()) {
     args.push("--language", options.language.trim());
@@ -2687,6 +3330,24 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
   if (options.separate) {
     args.push("--separate");
     args.push("--separator-format", "MP3");
+    const modelDir = userSettings.separatorModelDir?.trim();
+    if (modelDir) {
+      args.push("--separator-model-dir", modelDir);
+      // Audio-separator's built-in default is
+      // `model_bs_roformer_ep_317_sdr_12.9755.ckpt`. When `model_file_dir`
+      // points at a UVR shadow folder that DOES NOT contain that file, the
+      // CLI silently falls back to downloading from HF Hub — which 429s
+      // for anonymous users and times out for users who can't reach
+      // huggingface.co. Picking a model we KNOW is in the folder keeps
+      // the offline path honest. When the folder is empty (fresh install,
+      // no UVR), we fall through with no `--separator-model` so the CLI
+      // applies its own default (and the user gets a one-shot HF download
+      // as before, which is fine when network access is available).
+      const preferred = pickPreferredSeparatorModel(modelDir);
+      if (preferred) {
+        args.push("--separator-model", preferred);
+      }
+    }
   }
   if (shouldSaveAudio(options)) {
     args.push("--save-audio");

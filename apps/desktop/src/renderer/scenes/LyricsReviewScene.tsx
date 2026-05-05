@@ -14,6 +14,7 @@ interface LyricsReviewSceneProps {
   subtitleAssets: GeneratedAsset[];
   reviewTitle: string;
   onBack: () => void;
+  onCueSeek?: (cue: Cue) => void;
   onEnterKaraoke: () => void;
   onOpenFolder: () => void;
   onScriptChange: (content: string) => void;
@@ -28,6 +29,7 @@ export function LyricsReviewScene({
   subtitleAssets,
   reviewTitle,
   onBack,
+  onCueSeek,
   onEnterKaraoke,
   onOpenFolder,
   onScriptChange,
@@ -66,7 +68,7 @@ export function LyricsReviewScene({
             <h2 className="m-0 text-sm font-semibold text-foreground">{t("package:timedLines")}</h2>
             <span className="text-xs font-medium text-faint tabular-nums">{cues.length}</span>
           </header>
-          <div className="grid max-h-[560px] auto-rows-min gap-1 overflow-y-auto [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
+          <div className="grid max-h-[560px] auto-rows-min gap-1 overflow-y-auto">
             {cues.length === 0 ? (
               <p className="m-0 px-2 py-4 text-sm font-medium text-muted-foreground">
                 {t("package:noTimedLines")}
@@ -76,7 +78,9 @@ export function LyricsReviewScene({
                 <button
                   key={`${cue.start}-${index}`}
                   type="button"
-                  className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-foreground hover:bg-muted"
+                  onClick={() => onCueSeek?.(cue)}
+                  aria-label={`${formatClock(cue.start)} ${cue.text}`}
+                  className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]"
                 >
                   <span className="font-mono text-xs font-semibold text-muted-foreground tabular-nums">
                     {formatClock(cue.start)}

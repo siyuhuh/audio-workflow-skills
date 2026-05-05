@@ -478,7 +478,7 @@ export function KaraokeRoomScene({
                   <Icon name="sliders" />
                   {t("room:style")}
                 </summary>
-                <div className="absolute bottom-full right-[calc(100%+10px)] z-10 mb-2 grid w-[min(380px,calc(100vw-32px))] gap-4 rounded-xl border border-ktv-line bg-ktv-surface p-4 shadow-[var(--shadow-overlay)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
+                <div className="absolute bottom-full right-[calc(100%+10px)] z-10 mb-2 grid w-[min(380px,calc(100vw-32px))] gap-4 rounded-xl border border-ktv-line bg-ktv-surface p-4 shadow-[var(--shadow-overlay)]">
                   <header className="flex items-start justify-between gap-3">
                     <div className="grid gap-1">
                       <strong className="text-sm font-semibold text-white">{t("room:stylePanel")}</strong>
@@ -685,7 +685,7 @@ export function KaraokeRoomScene({
                   <Icon name="settings" />
                   {t("room:settings")}
                 </summary>
-                <div className="absolute bottom-full right-0 z-20 mb-2 grid w-[min(380px,calc(100vw-32px))] max-h-[60vh] gap-3 overflow-y-auto rounded-lg border border-ktv-line bg-ktv-surface p-3 shadow-[var(--shadow-overlay)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
+                <div className="absolute bottom-full right-0 z-20 mb-2 grid w-[min(380px,calc(100vw-32px))] max-h-[60vh] gap-3 overflow-y-auto rounded-lg border border-ktv-line bg-ktv-surface p-3 shadow-[var(--shadow-overlay)]">
                   <MicrophoneMonitorPanel monitor={microphoneMonitor} />
 
                   <label className="grid gap-1.5">
@@ -758,7 +758,7 @@ export function KaraokeRoomScene({
                     </p>
                   ) : null}
 
-                  <div className="grid auto-rows-min gap-1 max-h-[280px] overflow-y-auto [scrollbar-color:gray_transparent] [scrollbar-width:thin]">
+                  <div className="grid auto-rows-min gap-1 max-h-[280px] overflow-y-auto">
                     {cues.map((cue, index) => (
                       <motion.button
                         key={`${cue.start}-${index}`}

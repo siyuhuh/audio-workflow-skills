@@ -66,6 +66,7 @@ Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, an
 
 - **Studio:** dark by default with near-black canvas, dark cards, and green action states. Light mode keeps soft surfaces for explicit preference only.
 - **Stage:** darker token surface with green lyric progress. It can feel more expressive than Studio, but controls must stay readable.
+- **Desktop chrome:** The app owns its top chrome visually. On macOS, use hidden inset window chrome so the white native title bar does not sit above the dark Studio surface.
 - **Max width:** 1200px for Studio body; 1280px for Stage lyric line.
 - **Spacing:** 4px rhythm via `--spacing: 0.25rem`.
 - **Density:** Keep workflow controls compact, but allow more breathing room than the Linear pass.
@@ -78,6 +79,7 @@ Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, an
 - **Inputs:** `--card` or dark `--card`, 1px `--input`, focus ring from `--ring`.
 - **Status chips:** Use status colors only for state. Do not decorate random labels as success/warn/error.
 - **Stage dock:** Dark card token, small border, pill radius, no oversized glass blur.
+- **Scrollbars:** Use transparent tracks and thin theme-aware thumbs. Keep the thumb subtle in dark mode and slightly stronger in light mode, mapped through renderer scrollbar tokens rather than hard-coded gray.
 
 ## Stage Lyrics
 
@@ -112,5 +114,7 @@ Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, an
 | 2026-04-29 | Adopted supplied Tailwind v4 OKLCH style tokens | User preferred the provided pastel token set with Poppins, subtle shadows, soft surfaces, and more expressive color.                                           |
 | 2026-04-29 | Switched to dark-first green accent             | User clarified the current accent felt pink and wanted the green from the dark dashboard reference, with a darker default background and Dark Mode by default. |
 | 2026-04-30 | Added green-family accent variants              | Settings now allows controlled green/teal accent switching while preserving the product's green-led brand direction.                                           |
+| 2026-05-03 | Standardized transparent thin scrollbars        | Scrollbars should feel native and unobtrusive, with transparent tracks and theme-aware thumb contrast in both light and dark modes.                             |
+| 2026-05-03 | Hid native macOS title bar for Studio chrome    | The native white title bar clashed with the dark brand surface; the app should visually own the top chrome while preserving macOS traffic lights.               |
 
 

@@ -22,5 +22,44 @@
   "language": {
     "title": "语言",
     "description": "在英文和中文之间切换桌面界面。CLI 输出仍保持英文。"
+  },
+  "hf": {
+    "title": "HuggingFace Token",
+    "description": "可选。用来加速模型下载(audio-separator、faster-whisper),并避免桌面端首次下载模型时被 HF Hub 限速(429)。Token 仅本地保存,以 HF_TOKEN 环境变量注入 CLI 子进程。",
+    "fieldLabel": "Token",
+    "placeholder": "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "currentToken": "当前:{{preview}}",
+    "notSet": "未设置 Token —— 匿名下载会被限速。",
+    "save": "保存",
+    "clear": "清除",
+    "helpLink": "从 huggingface.co 申请 Token"
+  },
+  "endpoint": {
+    "title": "HuggingFace 镜像",
+    "description": "可选。把所有 HuggingFace 模型下载请求路由到指定镜像站。如果你所在的网络访问不了 huggingface.co,推荐使用 https://hf-mirror.com。",
+    "fieldLabel": "镜像 URL",
+    "placeholder": "https://hf-mirror.com",
+    "current": "正在使用:{{endpoint}}",
+    "notSet": "使用默认 huggingface.co。",
+    "save": "保存",
+    "clear": "重置",
+    "useChinaMirror": "使用国内镜像",
+    "helpLink": "了解 hf-mirror.com"
+  },
+  "separator": {
+    "title": "人声分离模型目录",
+    "description": "可选。复用本地已下载的分离模型(.onnx / .pth / .ckpt),无需重新从 HuggingFace 拉取。如果检测到 Ultimate Vocal Remover,会自动链接它的模型;你也可以手动指向任意目录。",
+    "fieldLabel": "目录路径",
+    "placeholder": "/path/to/separator/models",
+    "current": "正在使用:{{dir}}",
+    "notSet": "使用 audio-separator 默认缓存(首次使用时会从 HuggingFace 下载)。",
+    "browse": "浏览…",
+    "save": "保存",
+    "clear": "重置",
+    "redetectUvr": "重新检测 UVR",
+    "redetecting": "检测中…",
+    "autoBadge": "已自动链接 UVR({{count}})",
+    "autoBody": "已链接你 Ultimate Vocal Remover 安装中的 {{count}} 个模型文件。桌面端会把 {{model}} 传给 audio-separator,保证整次分离离线运行。",
+    "helpLink": "了解 Ultimate Vocal Remover"
   }
 }

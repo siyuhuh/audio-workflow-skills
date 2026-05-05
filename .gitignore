@@ -27,3 +27,5 @@ build/
 !apps/desktop/src/renderer/i18n/locales/**/*.json
 *.txt
 cookies.txt
+apps/desktop/vendor/separator-models/
+apps/desktop/vendor/whisper-cache/

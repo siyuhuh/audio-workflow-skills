@@ -54,7 +54,7 @@ export function ScriptReview({
           defaultValue: "This package does not have an editable lyrics file yet."
         })}
         spellCheck={false}
-        className="min-h-[280px] w-full resize-y rounded-md border border-border bg-card px-3 py-2 font-mono text-sm leading-relaxed text-foreground focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)] [scrollbar-color:gray_transparent] [scrollbar-width:thin]"
+        className="min-h-[280px] w-full resize-y rounded-md border border-border bg-card px-3 py-2 font-mono text-sm leading-relaxed text-foreground focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
       />
     </div>
   );

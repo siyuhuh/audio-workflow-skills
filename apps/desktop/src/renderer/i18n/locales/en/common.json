@@ -67,5 +67,8 @@
     "noPlatformSubtitles": "No platform subtitles were found. Enable local fallback or choose local transcription.",
     "cookies": "This video may need browser cookies or sign-in. Add browser cookies in Desktop options and try again.",
     "unsupportedMedia": "This input is not a supported media file. Use an audio/video file, folder, or supported URL."
+  },
+  "notifications": {
+    "dismiss": "Dismiss"
   }
 }

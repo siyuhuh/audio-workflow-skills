@@ -16,13 +16,30 @@ import type {
   RoomStatus,
   SavedJobHistory,
   ThemeMode,
+  UrlMetadataPreview,
   UserSettings,
+  UvrDetectionResult,
   WorkflowMode,
   YoutubeSearchResult
 } from "../shared/types";
-import type { JobProgressStage } from "../shared/types";
+import type { JobFailedEvent, JobProgressStage } from "../shared/types";
+import type { JobErrorReason } from "../shared/job-events";
 import { hydrateLocaleFromHost, setAppLocale } from "./i18n";
 import { motionDuration, motionEase } from "./lib/motion";
+import {
+  clientHistoryPackageKey,
+  derivePackageStats,
+  isPreviewVideoPath,
+  isSampleHistoryEntry,
+  isVideoPath,
+  mediaFamilyKeyFromName,
+  normalizeSourceUrlForKey,
+  packageVideoPathForReview,
+  reviewDisplayTitle,
+  reviewMediaFamilyKey,
+  shortInputLabel,
+  sourceUrlForKey
+} from "./lib/packageStats";
 import type { Translator } from "./lib/types";
 import {
   type Cue,
@@ -34,10 +51,16 @@ import {
   wordProgressForTime
 } from "./lib/lyrics";
 import { StageChain, clampProgress, type StageProgress } from "./components/StageChain";
+import { LiveJobStatus } from "./components/LiveJobStatus";
+import { HeaderJobStatusPill } from "./components/HeaderJobStatusPill";
+import { UrlPreviewCard, type UrlPreviewLoadState } from "./components/UrlPreviewCard";
+import { useActiveJobStream } from "./lib/jobStream";
 import { FloatingBottomNav, type AppNavTarget } from "./components/FloatingBottomNav";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import { NotificationToaster } from "./components/NotificationToaster";
+import { useNotifications, type NotificationAction } from "./lib/notifications";
 import { RoomRemoteDrawer } from "./components/RoomRemoteDrawer";
-import { SettingsPanel } from "./components/SettingsPanel";
+import { SettingsPanel, HF_TOKEN_FIELD_ID, SEPARATOR_MODEL_DIR_FIELD_ID } from "./components/SettingsPanel";
 import { PackageBadges } from "./components/PackageBadges";
 import { FeaturedPackageCard } from "./components/FeaturedPackageCard";
 import { ProcessedResourceCard } from "./components/ProcessedResourceCard";
@@ -59,10 +82,6 @@ import { Field } from "./components/ui/Field";
 import { Checkbox } from "./components/ui/Checkbox";
 import { SegmentedControl } from "./components/ui/SegmentedControl";
 import { Icon } from "./components/ui/Icon";
-
-function isSampleHistoryEntry(entry: SavedJobHistory): boolean {
-  return entry.input.startsWith("sample:") || entry.id.startsWith("sample:");
-}
 
 interface ProcessedResourceCardEntryProps {
   entry: SavedJobHistory;
@@ -186,11 +205,6 @@ interface PlaybackController {
   onSeeked: (event: SyntheticEvent<HTMLMediaElement>) => void;
 }
 
-interface ResourcePackage {
-  entry: SavedJobHistory;
-  duplicateIds: string[];
-}
-
 const allFormats: OutputFormat[] = ["lrc", "srt", "vtt", "txt", "json", "ass"];
 const hasNativeAudioWorkflow = Boolean(window.audioWorkflow);
 const httpAudioWorkflow = createHttpAudioWorkflowApi();
@@ -219,7 +233,7 @@ const defaultOptions: JobOptions = {
   separate: true,
   saveAudio: false,
   keepPlatformSubs: false,
-  model: "medium",
+  model: "large-v3-turbo",
   language: "",
   subLangs: "",
   browser: "",
@@ -231,6 +245,52 @@ function isAccentColor(value: unknown): value is AccentColor {
   return value === "green" || value === "lime" || value === "mint" || value === "teal";
 }
 
+function reasonToCamelCase(reason: JobErrorReason): string {
+  return reason.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function setupCommandForReason(reason: JobErrorReason): string {
+  switch (reason) {
+    case "model_missing":
+      return "pip install --upgrade faster-whisper";
+    case "separator_missing":
+      return "pip install --upgrade 'audio-separator[cpu]'";
+    case "ffmpeg_missing":
+      return typeof navigator !== "undefined" && /Mac/i.test(navigator.platform)
+        ? "brew install ffmpeg"
+        : "Install ffmpeg from https://ffmpeg.org/download.html";
+    case "ytdlp_missing":
+      return "pip install --upgrade yt-dlp";
+    default:
+      return "";
+  }
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to fallback
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 function createHttpAudioWorkflowApi(): AudioWorkflowApi {
   const baseUrl = "http://127.0.0.1:5175";
   const readFallbackSettings = (): UserSettings => {
@@ -239,10 +299,26 @@ function createHttpAudioWorkflowApi(): AudioWorkflowApi {
       return {
         locale: parsed.locale === "en" || parsed.locale === "zh" ? parsed.locale : null,
         themeMode: parsed.themeMode === "light" || parsed.themeMode === "dark" || parsed.themeMode === "system" ? parsed.themeMode : "dark",
-        accentColor: isAccentColor(parsed.accentColor) ? parsed.accentColor : "green"
+        accentColor: isAccentColor(parsed.accentColor) ? parsed.accentColor : "green",
+        hfToken: typeof parsed.hfToken === "string" && parsed.hfToken.trim() ? parsed.hfToken.trim() : null,
+        hfEndpoint:
+          typeof parsed.hfEndpoint === "string" && parsed.hfEndpoint.trim()
+            ? parsed.hfEndpoint.trim().replace(/\/+$/, "")
+            : null,
+        separatorModelDir:
+          typeof parsed.separatorModelDir === "string" && parsed.separatorModelDir.trim()
+            ? parsed.separatorModelDir.trim()
+            : null
       };
     } catch {
-      return { locale: null, themeMode: "dark", accentColor: "green" };
+      return {
+        locale: null,
+        themeMode: "dark",
+        accentColor: "green",
+        hfToken: null,
+        hfEndpoint: null,
+        separatorModelDir: null
+      };
     }
   };
 
@@ -332,11 +408,16 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 export default function App() {
   const { t, i18n } = useTranslation();
+  const liveJob = useActiveJobStream();
   const currentLocale = (i18n.resolvedLanguage ?? i18n.language ?? "en") as AppLocale;
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const [accentColor, setAccentColor] = useState<AccentColor>("green");
   const [systemPrefersDark, setSystemPrefersDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [hfToken, setHfToken] = useState<string | null>(null);
+  const [hfEndpoint, setHfEndpoint] = useState<string | null>(null);
+  const [separatorModelDir, setSeparatorModelDir] = useState<string | null>(null);
+  const [uvrDetection, setUvrDetection] = useState<UvrDetectionResult | null>(null);
   const [options, setOptions] = useState<JobOptions>(defaultOptions);
   const [preview, setPreview] = useState<CommandPreview | null>(null);
   const [jobs, setJobs] = useState<JobRecord[]>([]);
@@ -370,9 +451,22 @@ export default function App() {
   const [roomQrDataUrl, setRoomQrDataUrl] = useState("");
   const [progressStages, setProgressStages] = useState<Map<string, StageProgress>>(() => new Map());
   const [roomDrawerOpen, setRoomDrawerOpen] = useState(false);
+  const [urlPreview, setUrlPreview] = useState<UrlMetadataPreview | null>(null);
+  const [urlPreviewState, setUrlPreviewState] = useState<UrlPreviewLoadState>("idle");
+  const previewRequestIdRef = useRef(0);
   const captureInputRef = useRef<HTMLInputElement | null>(null);
   const handledEndedCountRef = useRef(0);
   const autoplayPackageIdRef = useRef<string | null>(null);
+
+  const { push: pushNotification } = useNotifications();
+  const tRef = useRef(t);
+  tRef.current = t;
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const progressStagesRef = useRef(progressStages);
+  progressStagesRef.current = progressStages;
+  const failedEventJobIdsRef = useRef<Set<string>>(new Set());
+  const runJobRef = useRef<((overrides?: Partial<JobOptions>) => Promise<JobResult | null>) | null>(null);
 
   const activeJob = useMemo(
     () => (activeJobId ? jobs.find((job) => job.id === activeJobId) ?? null : selectedHistoryId ? null : jobs[0] ?? null),
@@ -410,23 +504,13 @@ export default function App() {
   const isRunning = Boolean(runningJob);
   const autoSavesAudio = shouldAutoSaveAudio(options);
   const activeReviewTitle = activeReview ? reviewDisplayTitle(activeReview) : "";
-  const resourcePackages = useMemo(() => groupResourcePackages(history.filter((entry) => entry.workflowMode === "karaoke")), [history]);
-  const karaokePackages = useMemo(() => resourcePackages.map((resource) => resource.entry), [resourcePackages]);
-  const processedResources = useMemo(() => resourcePackages.slice(0, 6), [resourcePackages]);
-  const userPackages = useMemo(
-    () => processedResources.filter((resource) => !isSampleHistoryEntry(resource.entry)),
-    [processedResources]
+  const stats = useMemo(() => derivePackageStats(history), [history]);
+  const karaokePackages = useMemo(
+    () => Array.from(stats.byKey.values()).map((group) => group.entry),
+    [stats]
   );
-  const samplePackages = useMemo(
-    () => processedResources.filter((resource) => isSampleHistoryEntry(resource.entry)),
-    [processedResources]
-  );
-  const featuredVariant: "continue" | "sample" = userPackages[0] ? "continue" : "sample";
-  const featuredPackage = userPackages[0] ?? samplePackages[0] ?? null;
-  const shelfPackages = useMemo(
-    () => processedResources.filter((resource) => resource !== featuredPackage),
-    [processedResources, featuredPackage]
-  );
+  const featuredVariant: "continue" | "sample" =
+    stats.featured && !isSampleHistoryEntry(stats.featured.entry) ? "continue" : "sample";
   const cachedPackageForInput = useMemo(() => {
     const sourceUrl = sourceUrlForKey(options.input);
     if (!sourceUrl) {
@@ -476,6 +560,24 @@ export default function App() {
         }
         setThemeMode(settings?.themeMode ?? "dark");
         setAccentColor(settings?.accentColor ?? "green");
+        setHfToken(settings?.hfToken ?? null);
+        setHfEndpoint(settings?.hfEndpoint ?? null);
+        setSeparatorModelDir(settings?.separatorModelDir ?? null);
+      })
+      .catch(() => undefined);
+    // Run UVR detection on first render so we can show the auto-link
+    // badge in Settings without forcing the user to hit "Re-detect"
+    // manually. Detection is cheap (filesystem-only) and idempotent.
+    audioWorkflow
+      .detectUvr?.()
+      .then((payload) => {
+        if (ignore || !payload) {
+          return;
+        }
+        setUvrDetection(payload);
+        if (payload.appliedToSettings && payload.currentSeparatorModelDir) {
+          setSeparatorModelDir(payload.currentSeparatorModelDir);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -524,6 +626,62 @@ export default function App() {
       await audioWorkflow.setSettings?.({ accentColor: nextAccentColor });
     } catch {
       // Accent still updates for this session.
+    }
+  }, []);
+
+  const handleHfTokenChange = useCallback(async (nextToken: string | null) => {
+    setHfToken(nextToken);
+    try {
+      await audioWorkflow.setSettings?.({ hfToken: nextToken });
+    } catch {
+      // Token still updates for this session.
+    }
+  }, []);
+
+  const handleHfEndpointChange = useCallback(async (nextEndpoint: string | null) => {
+    setHfEndpoint(nextEndpoint);
+    try {
+      await audioWorkflow.setSettings?.({ hfEndpoint: nextEndpoint });
+    } catch {
+      // Endpoint still updates for this session.
+    }
+  }, []);
+
+  const handleSeparatorModelDirChange = useCallback(async (nextDir: string | null) => {
+    setSeparatorModelDir(nextDir);
+    try {
+      await audioWorkflow.setSettings?.({ separatorModelDir: nextDir });
+    } catch {
+      // Dir still updates for this session.
+    }
+  }, []);
+
+  const handlePickFolder = useCallback(async (): Promise<string | null> => {
+    if (!audioWorkflow.selectFolder) {
+      return null;
+    }
+    try {
+      return await audioWorkflow.selectFolder();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const handleRedetectUvr = useCallback(async (): Promise<UvrDetectionResult | null> => {
+    if (!audioWorkflow.detectUvr) {
+      return null;
+    }
+    try {
+      const payload = await audioWorkflow.detectUvr();
+      if (payload) {
+        setUvrDetection(payload);
+        if (payload.appliedToSettings && payload.currentSeparatorModelDir) {
+          setSeparatorModelDir(payload.currentSeparatorModelDir);
+        }
+      }
+      return payload;
+    } catch {
+      return null;
     }
   }, []);
 
@@ -614,6 +772,206 @@ export default function App() {
     };
   }, []);
 
+  const openSettingsToField = useCallback((fieldId: string) => {
+    setSettingsOpen(true);
+    // Wait for the settings drawer animation (motion-duration ~ 220ms) before
+    // attempting to scroll/focus, otherwise the input is still hidden by the
+    // initial transform and `scrollIntoView` does nothing.
+    window.setTimeout(() => {
+      const target = document.getElementById(fieldId);
+      if (!target) {
+        return;
+      }
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      try {
+        target.focus({ preventScroll: true });
+      } catch {
+        target.focus();
+      }
+    }, 280);
+  }, []);
+  const openSettingsToHfToken = useCallback(
+    () => openSettingsToField(HF_TOKEN_FIELD_ID),
+    [openSettingsToField]
+  );
+  const openSettingsToSeparatorModelDir = useCallback(
+    () => openSettingsToField(SEPARATOR_MODEL_DIR_FIELD_ID),
+    [openSettingsToField]
+  );
+
+  useEffect(() => {
+    const stop = audioWorkflow.onJobFailed?.((event: JobFailedEvent) => {
+      // User-initiated cancellations are not failures from the user's POV.
+      if (event.reason === "canceled") {
+        return;
+      }
+      failedEventJobIdsRef.current.add(event.jobId);
+      window.setTimeout(() => failedEventJobIdsRef.current.delete(event.jobId), 2000);
+
+      const reasonKey = reasonToCamelCase(event.reason);
+      const tNow = tRef.current;
+      const title = tNow(`capture:error.${reasonKey}.title`);
+      const body = tNow(`capture:error.${reasonKey}.body`);
+      const actions: NotificationAction[] = [];
+      for (const action of event.hint?.actions ?? []) {
+        actions.push({
+          id: action.id,
+          label: tNow(action.labelKey),
+          onClick: () => {
+            const tHandler = tRef.current;
+            switch (action.id) {
+              case "openAdvancedCookies":
+                setAdvancedOpen(true);
+                break;
+              case "enableLocalFallback":
+                setOptions((current) => ({ ...current, subtitleSource: "local", localFallback: true }));
+                runJobRef.current?.({ subtitleSource: "local", localFallback: true });
+                break;
+              case "disableSeparation":
+                // One-shot recovery: re-run THIS job without separation, but
+                // leave the checkbox checked so the next paste defaults back
+                // to "split vocals" (which is what users want — the disable
+                // toast is for when separation flaked once, not a permanent
+                // preference change).
+                runJobRef.current?.({ separate: false });
+                break;
+              case "retry":
+                runJobRef.current?.();
+                break;
+              case "waitAndRetry":
+                // informational — the toast itself is the acknowledgement
+                break;
+              case "copySetupCommand": {
+                const cmd = setupCommandForReason(event.reason);
+                void copyToClipboard(cmd).then((ok) => {
+                  if (ok) {
+                    pushNotification({
+                      level: "info",
+                      title: tHandler("capture:error.copySuccess.command"),
+                      ttlMs: 3000
+                    });
+                  }
+                });
+                break;
+              }
+              case "openOutputFolder": {
+                const target = optionsRef.current.outputDir || "";
+                if (target) {
+                  void audioWorkflow.openPath(target);
+                }
+                break;
+              }
+              case "copyLog": {
+                void copyToClipboard(logsRef.current).then((ok) => {
+                  if (ok) {
+                    pushNotification({
+                      level: "info",
+                      title: tHandler("capture:error.copySuccess.log"),
+                      ttlMs: 3000
+                    });
+                  }
+                });
+                break;
+              }
+              case "openHfTokenSettings":
+                openSettingsToHfToken();
+                break;
+              case "openSeparatorModelDirSettings":
+                openSettingsToSeparatorModelDir();
+                break;
+            }
+          }
+        });
+      }
+      pushNotification({
+        id: `job-failed-${event.jobId}`,
+        level: "error",
+        title,
+        body,
+        actions,
+        jobId: event.jobId
+      });
+    });
+    return () => {
+      if (stop) {
+        stop();
+      }
+    };
+  }, [pushNotification]);
+
+  const warnedStageKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!liveJob || liveJob.failedStages.length === 0) {
+      return;
+    }
+    const tNow = tRef.current;
+    for (const stage of liveJob.failedStages) {
+      const key = `${liveJob.jobId}:${stage}`;
+      if (warnedStageKeysRef.current.has(key)) {
+        continue;
+      }
+      warnedStageKeysRef.current.add(key);
+      // Today only `separation` has an actionable mid-flight recovery; other
+      // stage failures (when the CLI keeps going) reach the user via the
+      // success/warning toast at job end. Extend this switch when more
+      // non-fatal stages land.
+      if (stage !== "separation") {
+        continue;
+      }
+      const actions: NotificationAction[] = [
+        {
+          id: "disableSeparation",
+          label: tNow("capture:error.action.disableSeparation"),
+          onClick: () => {
+            // One-shot retry without separation. Don't mutate `options` so
+            // the checkbox stays in its user-chosen state for the next run.
+            runJobRef.current?.({ separate: false });
+          }
+        },
+        {
+          id: "copySetupCommand",
+          label: tNow("capture:error.action.copySetupCommand"),
+          onClick: () => {
+            const cmd = setupCommandForReason("separator_missing");
+            void copyToClipboard(cmd).then((ok) => {
+              if (ok) {
+                pushNotification({
+                  level: "info",
+                  title: tRef.current("capture:error.copySuccess.command"),
+                  ttlMs: 3000
+                });
+              }
+            });
+          }
+        },
+        {
+          id: "copyLog",
+          label: tNow("capture:error.action.copyLog"),
+          onClick: () => {
+            void copyToClipboard(logsRef.current).then((ok) => {
+              if (ok) {
+                pushNotification({
+                  level: "info",
+                  title: tRef.current("capture:error.copySuccess.log"),
+                  ttlMs: 3000
+                });
+              }
+            });
+          }
+        }
+      ];
+      pushNotification({
+        id: `stage-warn-${liveJob.jobId}-${stage}`,
+        level: "warning",
+        title: tNow("capture:warn.separationSkipped.title"),
+        body: tNow("capture:warn.separationSkipped.body"),
+        actions,
+        jobId: liveJob.jobId
+      });
+    }
+  }, [liveJob, pushNotification]);
+
   useEffect(() => {
     let ignore = false;
 
@@ -680,7 +1038,7 @@ export default function App() {
       .then((content) => {
         if (!ignore) {
           setScriptText(content);
-          setScriptStatus("Loaded");
+          setScriptStatus(t("capture:script.status.loaded"));
         }
       })
       .catch((error: Error) => {
@@ -721,6 +1079,46 @@ export default function App() {
       ignore = true;
     };
   }, [selectedSubtitlePath, wordTimingSubtitlePath]);
+
+  useEffect(() => {
+    const trimmed = options.input.trim();
+    if (!/^https?:\/\//i.test(trimmed)) {
+      setUrlPreview(null);
+      setUrlPreviewState("idle");
+      return;
+    }
+    if (!audioWorkflow.prefetchUrlMetadata) {
+      return;
+    }
+    const requestId = ++previewRequestIdRef.current;
+    setUrlPreviewState("loading");
+    const handle = window.setTimeout(() => {
+      audioWorkflow
+        .prefetchUrlMetadata?.(trimmed)
+        .then((value) => {
+          if (requestId !== previewRequestIdRef.current) {
+            return;
+          }
+          if (value) {
+            setUrlPreview(value);
+            setUrlPreviewState("loaded");
+          } else {
+            setUrlPreview(null);
+            setUrlPreviewState("error");
+          }
+        })
+        .catch(() => {
+          if (requestId !== previewRequestIdRef.current) {
+            return;
+          }
+          setUrlPreview(null);
+          setUrlPreviewState("error");
+        });
+    }, 350);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [options.input]);
 
   function updateOptions(update: Partial<JobOptions>) {
     setOptions((current) => ({ ...current, ...update }));
@@ -870,7 +1268,23 @@ export default function App() {
       startedAt: new Date().toLocaleTimeString()
     };
 
-    setJobs((current) => [nextJob, ...current]);
+    // Activity column shows ONE card per distinct input. Retrying the
+    // same URL/file replaces its prior `complete | failed | canceled`
+    // card instead of appending — otherwise a flaky bilibili import that
+    // takes 4 retries to succeed creates 4 stacked cards saying the same
+    // title, which is exactly what the user complained about. We keep
+    // genuinely-running jobs for *other* inputs (the IPC layer only
+    // allows one in flight today, but we don't hardcode that here).
+    const nextInputKey = runOptions.input.trim();
+    setJobs((current) => [
+      nextJob,
+      ...current.filter((job) => {
+        if (job.status === "running") {
+          return job.input.trim() !== nextInputKey;
+        }
+        return job.input.trim() !== nextInputKey;
+      })
+    ]);
     setActiveJobId(jobId);
     setSelectedHistoryId(null);
     setWorkspaceMode("add");
@@ -911,6 +1325,56 @@ export default function App() {
             ? t("common:status.canceled")
             : localizedFailure ?? t("common:status.failedWithCode", { code: result.exitCode ?? "?" })
       );
+
+      if (nextStatus === "complete" && result.historyEntry) {
+        // Surface a success toast — and warn when an enhancement stage was
+        // silently skipped (e.g. vocal separation falling back to original
+        // source) so the user understands why their package lacks stems.
+        const skippedStages: string[] = [];
+        for (const [name, stage] of progressStagesRef.current.entries()) {
+          if (stage.failed) {
+            skippedStages.push(t(`capture:stages.${name}`, { defaultValue: name }));
+          }
+        }
+        const successTitle = t("capture:notify.successTitle", {
+          title: reviewDisplayTitle(result.historyEntry)
+        });
+        const successBody =
+          skippedStages.length > 0
+            ? `${t("capture:notify.successBody")} · ${t("capture:notify.skippedSuffix", {
+                stages: skippedStages.join(", "),
+                defaultValue: `Skipped: ${skippedStages.join(", ")}`
+              })}`
+            : t("capture:notify.successBody");
+        const actions: NotificationAction[] = [];
+        const historyEntryId = result.historyEntry.id;
+        actions.push({
+          id: "view",
+          label: t("capture:notify.viewAction"),
+          onClick: () => {
+            setSelectedHistoryId(historyEntryId);
+            setWorkspaceMode("home");
+          }
+        });
+        if (result.historyEntry.workflowMode === "karaoke") {
+          actions.push({
+            id: "enterKaraoke",
+            label: t("capture:notify.enterKaraokeAction"),
+            onClick: () => {
+              setSelectedHistoryId(historyEntryId);
+              setAppScene("karaoke-room");
+            }
+          });
+        }
+        pushNotification({
+          id: `job-succeeded-${jobId}`,
+          level: skippedStages.length > 0 ? "warning" : "success",
+          title: successTitle,
+          body: successBody,
+          actions,
+          jobId
+        });
+      }
       return result;
     } catch (error) {
       setJobs((current) =>
@@ -925,9 +1389,44 @@ export default function App() {
       );
       const rawMessage = error instanceof Error ? error.message : "";
       setStatusMessage(localizeCliError(rawMessage, t) ?? rawMessage ?? t("common:status.failed"));
+
+      // De-dupe against the IPC-driven failure toast: wait for the `job:failed`
+      // event to land (~150 ms in practice; cap the wait at 500 ms), and only
+      // push a generic fallback toast when the IPC path didn't already.
+      window.setTimeout(() => {
+        if (failedEventJobIdsRef.current.has(jobId)) {
+          return;
+        }
+        const tNow = tRef.current;
+        pushNotification({
+          id: `job-failed-fallback-${jobId}`,
+          level: "error",
+          title: tNow("capture:error.unknown.title"),
+          body: rawMessage || tNow("capture:error.unknown.body"),
+          actions: [
+            {
+              id: "copyLog",
+              label: tNow("capture:error.action.copyLog"),
+              onClick: () => {
+                void copyToClipboard(logsRef.current).then((ok) => {
+                  if (ok) {
+                    pushNotification({
+                      level: "info",
+                      title: tNow("capture:error.copySuccess.log"),
+                      ttlMs: 3000
+                    });
+                  }
+                });
+              }
+            }
+          ],
+          jobId
+        });
+      }, 500);
       return null;
     }
   }
+  runJobRef.current = runJob;
 
   async function processRoomQueueItem(item: RoomQueueItem, enterAfterComplete = false): Promise<JobResult | null> {
     if (isRunning || item.status !== "queued") {
@@ -1010,10 +1509,10 @@ export default function App() {
     if (!selectedSubtitlePath) {
       return false;
     }
-    setScriptStatus("Saving");
+    setScriptStatus(t("capture:script.status.saving"));
     try {
       await audioWorkflow.writeTextFile(selectedSubtitlePath, scriptText);
-      setScriptStatus("Saved");
+      setScriptStatus(t("capture:script.status.saved"));
       return true;
     } catch (error) {
       setScriptStatus(error instanceof Error ? error.message : "Save failed");
@@ -1170,12 +1669,14 @@ export default function App() {
           subtitleAssets={subtitleAssets}
           reviewTitle={reviewDisplayTitle(activeReview)}
           onBack={() => setAppScene("workspace")}
+          onCueSeek={(cue) => playbackController.seek(cue.start, true)}
           onEnterKaraoke={saveAndEnterKaraoke}
           onOpenFolder={() => activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)}
           onScriptChange={setScriptText}
           onSave={saveScript}
         />
         {floatingNav}
+        <NotificationToaster />
       </div>
     );
   }
@@ -1238,6 +1739,7 @@ export default function App() {
           isRunning={isRunning}
         />
         {floatingNav}
+        <NotificationToaster />
       </div>
     );
   }
@@ -1267,6 +1769,17 @@ export default function App() {
             </span>
             <span className="brandLogoMeta">{t("common:home.established")}</span>
           </div>
+
+          <HeaderJobStatusPill
+            job={liveJob}
+            t={t}
+            onActivate={() => {
+              const target = document.getElementById("captureStatus");
+              if (target) {
+                target.scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+            }}
+          />
 
           <div className="brandHeaderActions">
             <button
@@ -1355,6 +1868,7 @@ export default function App() {
                 {t("common:actions.stop")}
               </Button>
             </div>
+            <UrlPreviewCard state={urlPreviewState} preview={urlPreview} t={t} />
             {cachedPackageForInput ? (
               <>
                 <p className="m-0 text-sm font-semibold text-accent-strong">
@@ -1525,30 +2039,34 @@ export default function App() {
           </div>
         </section>
 
-        <StageChain stages={progressStages} isRunning={isRunning} t={t} />
+        <section id="captureStatus" aria-label={t("capture:jobStream.headerLabel")} className="grid gap-3 scroll-mt-32">
+          <LiveJobStatus job={liveJob} t={t} />
+
+          <StageChain stages={progressStages} isRunning={isRunning} t={t} />
+        </section>
 
         {workspaceMode === "home" ? (
           <section className="selectionGallery grid gap-4" aria-label={t("library:shelfHeader")}>
-            {featuredPackage ? (
+            {stats.featured ? (
               <FeaturedPackageEntry
-                entry={featuredPackage.entry}
+                entry={stats.featured.entry}
                 variant={featuredVariant}
-                onEnter={() => enterKaraokeFromHistory(featuredPackage.entry.id)}
-                onOpen={() => selectHistoryEntry(featuredPackage.entry.id)}
-                onDelete={() => removeHistoryEntries(featuredPackage.duplicateIds)}
+                onEnter={() => enterKaraokeFromHistory(stats.featured!.entry.id)}
+                onOpen={() => selectHistoryEntry(stats.featured!.entry.id)}
+                onDelete={() => removeHistoryEntries(stats.featured!.duplicateIds)}
               />
             ) : null}
 
-            {shelfPackages.length > 0 ? (
+            {stats.shelfList.length > 0 ? (
               <section className="grid gap-3 rounded-lg border border-border bg-card/72 p-4 shadow-sm backdrop-blur-md">
                 <div className="flex items-center justify-between gap-3">
                   <Eyebrow className="m-0">{t("library:shelfHeader")}</Eyebrow>
                   <span className="text-xs font-medium text-faint tabular-nums">
-                    {shelfPackages.length}
+                    {stats.shelfList.length}
                   </span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {shelfPackages.map(({ entry, duplicateIds }) => (
+                  {stats.shelfList.map(({ entry, duplicateIds }) => (
                     <ProcessedResourceCardEntry
                       key={entry.id}
                       entry={entry}
@@ -1561,7 +2079,7 @@ export default function App() {
               </section>
             ) : null}
 
-            {!featuredPackage && shelfPackages.length === 0 ? (
+            {!stats.featured && stats.shelfList.length === 0 ? (
               <section
                 aria-label={t("library:emptyTitle")}
                 className="grid gap-3 rounded-lg border border-dashed border-border bg-elevated p-8 text-center"
@@ -1602,9 +2120,18 @@ export default function App() {
         themeMode={themeMode}
         accentColor={accentColor}
         locale={currentLocale}
+        hfToken={hfToken}
+        hfEndpoint={hfEndpoint}
+        separatorModelDir={separatorModelDir}
+        uvrDetection={uvrDetection}
         onThemeModeChange={handleThemeModeChange}
         onAccentColorChange={handleAccentColorChange}
         onLocaleChange={handleLanguageChange}
+        onHfTokenChange={handleHfTokenChange}
+        onHfEndpointChange={handleHfEndpointChange}
+        onSeparatorModelDirChange={handleSeparatorModelDirChange}
+        onPickFolder={handlePickFolder}
+        onRedetectUvr={handleRedetectUvr}
         t={t}
       />
 
@@ -1751,19 +2278,19 @@ export default function App() {
                 transition={{ duration: motionDuration.drawer, ease: motionEase }}
               >
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Field label="Subtitle source">
+                  <Field label={t("capture:advanced.fields.subtitleSource")}>
                     <SegmentedControl
                       value={options.subtitleSource}
                       options={[
-                        ["auto", "Auto"],
-                        ["platform", "Platform"],
-                        ["local", "Local"]
+                        ["auto", t("capture:advanced.options.auto")],
+                        ["platform", t("capture:advanced.options.platform")],
+                        ["local", t("capture:advanced.options.local")]
                       ]}
                       onChange={(value) => updateOptions({ subtitleSource: value })}
                     />
                   </Field>
 
-                  <Field label="Whisper model">
+                  <Field label={t("capture:advanced.fields.whisperModel")}>
                     <select
                       value={options.model}
                       onChange={(event) => updateOptions({ model: event.target.value })}
@@ -1776,29 +2303,29 @@ export default function App() {
                     </select>
                   </Field>
 
-                  <Field label="Platform subtitle languages">
+                  <Field label={t("capture:advanced.fields.platformLanguages")}>
                     <input
                       value={options.subLangs}
                       onChange={(event) => updateOptions({ subLangs: event.target.value })}
-                      placeholder="Auto, zh.*,en.*,ja.*"
+                      placeholder={t("capture:advanced.placeholders.subLangs")}
                       className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
                     />
                   </Field>
 
-                  <Field label="Browser cookies">
+                  <Field label={t("capture:advanced.fields.browserCookies")}>
                     <input
                       value={options.browser}
                       onChange={(event) => updateOptions({ browser: event.target.value })}
-                      placeholder="chrome or safari"
+                      placeholder={t("capture:advanced.placeholders.browser")}
                       className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
                     />
                   </Field>
 
-                  <Field label="cookies.txt">
+                  <Field label={t("capture:advanced.fields.cookiesFile")}>
                     <input
                       value={options.cookies}
                       onChange={(event) => updateOptions({ cookies: event.target.value })}
-                      placeholder="/path/to/cookies.txt"
+                      placeholder={t("capture:advanced.placeholders.cookies")}
                       className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
                     />
                   </Field>
@@ -1806,22 +2333,22 @@ export default function App() {
 
                 <div className="grid gap-2 md:grid-cols-2">
                   <Checkbox
-                    label="Vocal split"
+                    label={t("capture:advanced.fields.vocalSplit")}
                     checked={options.separate}
                     disabled={options.workflowMode !== "karaoke"}
                     onChange={(checked) => updateOptions({ separate: checked })}
                   />
-                  <Checkbox label="Local fallback" checked={options.localFallback} onChange={(checked) => updateOptions({ localFallback: checked })} />
-                  <Checkbox label="Keep raw VTT" checked={options.keepPlatformSubs} onChange={(checked) => updateOptions({ keepPlatformSubs: checked })} />
+                  <Checkbox label={t("capture:advanced.fields.localFallback")} checked={options.localFallback} onChange={(checked) => updateOptions({ localFallback: checked })} />
+                  <Checkbox label={t("capture:advanced.fields.keepRawVtt")} checked={options.keepPlatformSubs} onChange={(checked) => updateOptions({ keepPlatformSubs: checked })} />
                   <Checkbox
-                    label={autoSavesAudio ? "Playable audio auto" : "Keep extracted audio"}
+                    label={autoSavesAudio ? t("capture:advanced.fields.playableAudioAuto") : t("capture:advanced.fields.keepExtractedAudio")}
                     checked={options.saveAudio || autoSavesAudio}
                     disabled={autoSavesAudio}
                     onChange={(checked) => updateOptions({ saveAudio: checked })}
                   />
                 </div>
 
-                <div className="flex flex-wrap gap-2" aria-label="Output formats">
+                <div className="flex flex-wrap gap-2" aria-label={t("capture:advanced.fields.outputFormats")}>
                   {allFormats.map((format) => (
                     <Button
                       key={format}
@@ -1835,17 +2362,17 @@ export default function App() {
                 </div>
 
                 <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                  <Field label="Output folder">
+                  <Field label={t("capture:advanced.fields.outputFolder")}>
                     <input
                       id="output"
                       value={options.outputDir}
                       onChange={(event) => updateOptions({ outputDir: event.target.value })}
-                      placeholder="Default output folder"
+                      placeholder={t("capture:advanced.placeholders.outputDir")}
                       className="min-h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-faint focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
                     />
                   </Field>
                   <Button onClick={chooseOutputDir}>
-                    Choose
+                    {t("capture:advanced.fields.choose")}
                   </Button>
                 </div>
 
@@ -1936,6 +2463,7 @@ export default function App() {
         </section>
       ) : null}
       {floatingNav}
+      <NotificationToaster />
     </motion.main>
   );
 }
@@ -2555,20 +3083,6 @@ function localizeCliError(rawText: string, t: Translator): string | null {
   return null;
 }
 
-function shortInputLabel(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return "Untitled";
-  }
-  try {
-    const url = new URL(trimmed);
-    return url.hostname.replace(/^www\./, "") + url.pathname;
-  } catch {
-    const normalized = trimmed.replace(/\\/g, "/");
-    return normalized.split("/").filter(Boolean).at(-1) ?? trimmed;
-  }
-}
-
 function searchResultThumbnail(row: YoutubeSearchResult): string | undefined {
   if (row.thumbnailUrl) {
     return row.thumbnailUrl;
@@ -2622,141 +3136,6 @@ function findSubtitleByExtension(subtitleAssets: GeneratedAsset[], extension: st
   return subtitleAssets.find((asset) => asset.exists && asset.extension.toLowerCase() === extension)?.path ?? null;
 }
 
-function packageVideoPathForReview(entry: SavedJobHistory | null): string | null {
-  if (!entry) {
-    return null;
-  }
-
-  return (
-    entry.playbackBundle.videoPreviewPath ??
-    (entry.playbackBundle.localVideoPath && isVideoPath(entry.playbackBundle.localVideoPath) ? entry.playbackBundle.localVideoPath : null) ??
-    entry.assets.find((asset) => asset.exists && asset.role === "preview" && isVideoPath(asset.path))?.path ??
-    entry.assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && asset.role === "original" && isVideoPath(asset.path))?.path ??
-    entry.assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && asset.role !== "preview" && isVideoPath(asset.path))?.path ??
-    null
-  );
-}
-
-function reviewDisplayTitle(entry: SavedJobHistory): string {
-  if (entry.title?.trim()) {
-    return entry.title.trim();
-  }
-
-  const assetTitle = titleFromAssets(entry.assets);
-  if (assetTitle) {
-    return assetTitle;
-  }
-
-  const mediaPath =
-    entry.playbackBundle.localAudioPath ??
-    entry.playbackBundle.localVideoPath ??
-    entry.primaryMedia ??
-    entry.assets.find((asset) => asset.type === "media" || asset.type === "stem")?.path ??
-    "";
-  const mediaTitle = titleFromPath(mediaPath);
-  if (mediaTitle) {
-    return mediaTitle;
-  }
-
-  const sourceLabel = sourceHostLabel(entry.sourceUrl || entry.input);
-  return sourceLabel ?? shortInputLabel(entry.input);
-}
-
-function groupResourcePackages(entries: SavedJobHistory[]): ResourcePackage[] {
-  const groups = new Map<string, SavedJobHistory[]>();
-  for (const entry of entries) {
-    const key = resourcePackageKey(entry);
-    groups.set(key, [...(groups.get(key) ?? []), entry]);
-  }
-
-  return [...groups.values()]
-    .map((group) => ({
-      entry: mergeClientHistoryEntries(group),
-      duplicateIds: group.map((entry) => entry.id)
-    }))
-    .sort(compareResourcePackages);
-}
-
-function resourcePackageKey(entry: SavedJobHistory): string {
-  const sourceUrl = entry.sourceUrl || sourceUrlForKey(entry.input);
-  if (sourceUrl) {
-    return `url:${normalizeSourceUrlForKey(sourceUrl)}`;
-  }
-
-  const input = entry.input.trim();
-  if (input.startsWith("sample:")) {
-    return input.toLowerCase();
-  }
-
-  const mediaKey = reviewMediaFamilyKey(entry);
-  if (mediaKey) {
-    return `media:${mediaKey}`;
-  }
-
-  const titleKey = mediaFamilyKeyFromName(reviewDisplayTitle(entry));
-  return titleKey ? `title:${titleKey}` : clientHistoryPackageKey(entry);
-}
-
-function mergeClientHistoryEntries(entries: SavedJobHistory[]): SavedJobHistory {
-  const best = entries.reduce((current, entry) => (resourceEntryScore(entry) > resourceEntryScore(current) ? entry : current));
-  const assets = uniqueClientAssets(entries.flatMap((entry) => entry.assets));
-  const generatedFiles = uniqueStrings(entries.flatMap((entry) => entry.generatedFiles));
-  const bestPlaybackBundle = entries.map((entry) => entry.playbackBundle).sort((left, right) => playbackBundleScore(right) - playbackBundleScore(left))[0] ?? best.playbackBundle;
-
-  return {
-    ...best,
-    assets,
-    generatedFiles,
-    title: best.title ?? entries.find((entry) => entry.title)?.title,
-    sourceUrl: best.sourceUrl ?? entries.find((entry) => entry.sourceUrl)?.sourceUrl ?? null,
-    primarySubtitle: best.primarySubtitle ?? assets.find((asset) => asset.exists && asset.type === "subtitle")?.path ?? null,
-    primaryMedia: best.primaryMedia ?? assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && !isPreviewVideoPath(asset.path))?.path ?? null,
-    playbackBundle: bestPlaybackBundle
-  };
-}
-
-function uniqueClientAssets(assets: GeneratedAsset[]): GeneratedAsset[] {
-  const byPath = new Map<string, GeneratedAsset>();
-  for (const asset of assets) {
-    const key = asset.path.replace(/\\/g, "/").toLowerCase();
-    byPath.set(key, { ...byPath.get(key), ...asset });
-  }
-  return [...byPath.values()];
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function resourceEntryScore(entry: SavedJobHistory): number {
-  const hasPlayableLyrics = entry.playbackBundle.controllable && Boolean(entry.primarySubtitle);
-  const hasVideo = Boolean(packageVideoPathForReview(entry));
-  const hasStems = entry.assets.some((asset) => asset.exists && (asset.role === "backing" || asset.role === "vocal"));
-  return Number(hasPlayableLyrics) * 100 + Number(entry.playbackBundle.controllable) * 60 + Number(entry.primarySubtitle) * 20 + Number(hasStems) * 10 + Number(hasVideo) * 5 + Date.parse(entry.createdAt) / 1000000000000;
-}
-
-function playbackBundleScore(bundle: PlaybackBundle): number {
-  return Number(Boolean(bundle.localAudioPath)) * 100 + Number(Boolean(bundle.videoPreviewPath)) * 20 + Number(Boolean(bundle.localVideoPath)) * 50 + Number(bundle.controllable) * 10;
-}
-
-function compareResourcePackages(left: ResourcePackage, right: ResourcePackage): number {
-  const yesterdayDelta = Number(isYesterdayPackage(right.entry)) - Number(isYesterdayPackage(left.entry));
-  if (yesterdayDelta !== 0) {
-    return yesterdayDelta;
-  }
-
-  const sampleDelta = Number(right.entry.input.startsWith("sample:")) - Number(left.entry.input.startsWith("sample:"));
-  if (sampleDelta !== 0) {
-    return sampleDelta;
-  }
-
-  return Date.parse(right.entry.createdAt) - Date.parse(left.entry.createdAt);
-}
-
-function isYesterdayPackage(entry: SavedJobHistory): boolean {
-  return entry.input.toLowerCase() === "sample:yesterday" || mediaFamilyKeyFromName(reviewDisplayTitle(entry)) === "yesterday";
-}
-
 function upsertHistoryEntry(current: SavedJobHistory[], entry: SavedJobHistory): SavedJobHistory[] {
   const entryKey = clientHistoryPackageKey(entry);
   return [
@@ -2773,122 +3152,6 @@ function ensureKaraokeFormats(formats: OutputFormat[]): OutputFormat[] {
     }
   }
   return nextFormats;
-}
-
-function clientHistoryPackageKey(entry: SavedJobHistory): string {
-  const sourceUrl = entry.sourceUrl || sourceUrlForKey(entry.input);
-  if (sourceUrl) {
-    return `url:${normalizeSourceUrlForKey(sourceUrl)}`;
-  }
-
-  const input = entry.input.trim();
-  if (input.startsWith("sample:")) {
-    return input.toLowerCase();
-  }
-  if (input && !sourceUrlForKey(input)) {
-    return `file:${input.replace(/\\/g, "/").toLowerCase()}`;
-  }
-
-  const mediaCandidate =
-    entry.playbackBundle.localAudioPath ??
-    entry.playbackBundle.localVideoPath ??
-    entry.primaryMedia ??
-    entry.primarySubtitle ??
-    entry.assets.find((asset) => asset.exists && asset.role === "original")?.path ??
-    entry.assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem"))?.path ??
-    "";
-  const mediaKey = mediaCandidate ? mediaFamilyKeyFromName(mediaCandidate) : "";
-  return mediaKey ? `media:${mediaKey}` : `input:${input.toLowerCase()}`;
-}
-
-function sourceUrlForKey(input: string): string | null {
-  try {
-    const url = new URL(input.trim());
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-function normalizeSourceUrlForKey(value: string): string {
-  try {
-    const url = new URL(value);
-    const hostname = url.hostname.replace(/^www\./, "").toLowerCase();
-    if (hostname === "youtu.be") {
-      return `youtube:${url.pathname.split("/").filter(Boolean)[0] ?? ""}`;
-    }
-    if (hostname.endsWith("youtube.com")) {
-      const videoId =
-        url.searchParams.get("v") ??
-        url.pathname.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/)?.[1] ??
-        "";
-      return videoId ? `youtube:${videoId}` : `${hostname}${url.pathname}`;
-    }
-    if (hostname.endsWith("bilibili.com") || hostname === "b23.tv") {
-      const biliId = url.pathname.match(/\/video\/([^/?#]+)/)?.[1] ?? url.pathname.split("/").filter(Boolean)[0] ?? "";
-      return biliId ? `bilibili:${biliId.toLowerCase()}` : `${hostname}${url.pathname}`;
-    }
-    return `${hostname}${url.pathname.replace(/\/$/, "")}`;
-  } catch {
-    return value.trim().toLowerCase();
-  }
-}
-
-function titleFromAssets(assets: GeneratedAsset[]): string | null {
-  const rankedAssets = [
-    assets.find((asset) => asset.role === "original" && asset.exists),
-    assets.find((asset) => asset.type === "media" && asset.role !== "preview" && asset.exists),
-    assets.find((asset) => asset.type === "stem" && asset.role === "backing" && asset.exists),
-    assets.find((asset) => asset.type === "stem" && asset.exists),
-    assets.find((asset) => asset.type === "subtitle" && asset.role !== "transcribe" && asset.exists),
-    assets.find((asset) => asset.type === "subtitle" && asset.exists)
-  ].filter((asset): asset is GeneratedAsset => Boolean(asset));
-
-  for (const asset of rankedAssets) {
-    const title = cleanMediaTitle(asset.name);
-    if (title) {
-      return title;
-    }
-  }
-
-  return null;
-}
-
-function titleFromPath(filePath: string): string | null {
-  if (!filePath) {
-    return null;
-  }
-  const filename = filePath.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? filePath;
-  return cleanMediaTitle(filename);
-}
-
-function cleanMediaTitle(name: string): string | null {
-  const withoutExtension = name.replace(/\.[a-z0-9]{2,5}$/i, "");
-  const withoutModelSuffix = withoutExtension.replace(/[_\s-]+model[_-].*$/i, "");
-  const withoutRoleSuffix = withoutModelSuffix
-    .replace(/[_\s-]*\((?:instrumental|vocals?|voice|acapella|no vocals)[^)]*\)\s*$/i, "")
-    .replace(/[_\s-]+(?:instrumental|vocals?|voice|acapella|preview|transcribe|subtitle|audio|video)$/i, "");
-  const withoutPlatformId = withoutRoleSuffix.replace(/\s*\[[^\]]{6,}\]\s*$/i, "");
-  const normalized = withoutPlatformId.replace(/_/g, " ").replace(/\s+/g, " ").trim();
-  return normalized || null;
-}
-
-function sourceHostLabel(input: string): string | null {
-  if (!input.trim()) {
-    return null;
-  }
-  try {
-    const hostname = new URL(input).hostname.replace(/^www\./, "");
-    if (/youtu\.be|youtube\.com/i.test(hostname)) {
-      return "YouTube";
-    }
-    if (/bilibili\.com|b23\.tv/i.test(hostname)) {
-      return "Bilibili";
-    }
-    return hostname;
-  } catch {
-    return null;
-  }
 }
 
 function playbackSummary(bundle: PlaybackBundle): string {
@@ -3134,36 +3397,6 @@ function scopeSubtitleAssetsToReview(activeReview: SavedJobHistory | null, asset
   return scopedAssets.length > 0 ? scopedAssets : subtitleAssets;
 }
 
-function reviewMediaFamilyKey(entry: SavedJobHistory): string {
-  const candidates = [
-    entry.playbackBundle.localAudioPath,
-    entry.primaryMedia,
-    entry.primarySubtitle,
-    entry.assets.find((asset) => asset.exists && asset.role === "original")?.name,
-    entry.assets.find((asset) => asset.exists && asset.type === "media" && asset.role !== "preview")?.name
-  ];
-
-  for (const candidate of candidates) {
-    const key = candidate ? mediaFamilyKeyFromName(candidate) : "";
-    if (key) {
-      return key;
-    }
-  }
-
-  return "";
-}
-
-function mediaFamilyKeyFromName(nameOrPath: string): string {
-  const filename = nameOrPath.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? nameOrPath;
-  const title = cleanMediaTitle(filename);
-  return title
-    ? title
-        .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
-        .trim()
-    : "";
-}
-
 function keysReferToSameMedia(left: string, right: string): boolean {
   if (!left || !right) {
     return false;
@@ -3173,14 +3406,6 @@ function keysReferToSameMedia(left: string, right: string): boolean {
 
 function isAudioPath(filePath: string): boolean {
   return /\.(wav|waw|mp3|m4a|flac|aac|ogg|opus|aiff|aif)$/i.test(filePath);
-}
-
-function isVideoPath(filePath: string): boolean {
-  return /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(filePath);
-}
-
-function isPreviewVideoPath(filePath: string): boolean {
-  return isVideoPath(filePath) && /\.preview\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(filePath);
 }
 
 function isHttpInput(value: string): boolean {

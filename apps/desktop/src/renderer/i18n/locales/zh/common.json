@@ -67,5 +67,8 @@
     "noPlatformSubtitles": "没有找到平台字幕。请开启本地 fallback，或改用本地转写。",
     "cookies": "这个视频可能需要浏览器 cookies 或登录。请在桌面选项中添加浏览器 cookies 后重试。",
     "unsupportedMedia": "这个输入不是支持的媒体文件。请使用音频、视频、文件夹或受支持的链接。"
+  },
+  "notifications": {
+    "dismiss": "关闭"
   }
 }

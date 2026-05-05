@@ -22,5 +22,44 @@
   "language": {
     "title": "Language",
     "description": "Switch the desktop UI between English and Chinese. CLI output remains English."
+  },
+  "hf": {
+    "title": "HuggingFace token",
+    "description": "Optional. Speeds up model downloads (audio-separator, faster-whisper) and avoids 429 rate limits when the desktop pulls models for the first time. Stored locally; injected as HF_TOKEN env var into CLI subprocesses.",
+    "fieldLabel": "Token",
+    "placeholder": "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "currentToken": "Current: {{preview}}",
+    "notSet": "No token set — anonymous downloads are rate-limited.",
+    "save": "Save",
+    "clear": "Clear",
+    "helpLink": "Get a token from huggingface.co"
+  },
+  "endpoint": {
+    "title": "HuggingFace mirror",
+    "description": "Optional. Routes every HuggingFace download through a mirror host. Use https://hf-mirror.com if huggingface.co is unreachable on your network.",
+    "fieldLabel": "Endpoint URL",
+    "placeholder": "https://hf-mirror.com",
+    "current": "Routing through: {{endpoint}}",
+    "notSet": "Using default huggingface.co.",
+    "save": "Save",
+    "clear": "Reset",
+    "useChinaMirror": "Use China mirror",
+    "helpLink": "About hf-mirror.com"
+  },
+  "separator": {
+    "title": "Vocal separator models folder",
+    "description": "Optional. Reuse pre-downloaded vocal separator models (.onnx / .pth / .ckpt) instead of fetching from HuggingFace. Auto-linked from Ultimate Vocal Remover when installed; you can also point this at any folder.",
+    "fieldLabel": "Folder path",
+    "placeholder": "/path/to/separator/models",
+    "current": "Using: {{dir}}",
+    "notSet": "Using audio-separator's default cache (downloads from HuggingFace on first use).",
+    "browse": "Browse…",
+    "save": "Save",
+    "clear": "Reset",
+    "redetectUvr": "Re-detect UVR",
+    "redetecting": "Detecting…",
+    "autoBadge": "Auto-linked from UVR ({{count}})",
+    "autoBody": "Linked {{count}} model file(s) from your Ultimate Vocal Remover install. The desktop will pass {{model}} to audio-separator so the run stays offline.",
+    "helpLink": "About Ultimate Vocal Remover"
   }
 }

@@ -11,10 +11,23 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 from urllib.parse import urlparse
+
+
+# Force line-buffered text I/O so the desktop main process sees progress lines
+# (yt-dlp --newline, ffmpeg -progress pipe:2, our own emit_progress envelopes,
+# faster-whisper per-segment events) the moment they are produced rather than
+# waiting for a full block buffer to flush. Belt-and-suspenders for older
+# Pythons and for environments where stdout/stderr are not a TTY.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
 
 
 AUDIO_EXTS = {
@@ -101,7 +114,19 @@ def main() -> int:
     emit_progress("prepare", progress=1.0, message=f"Output: {output_dir}", done=True)
 
     formats = parse_formats(args.formats)
-    if is_url(args.input) and args.subtitle_source != "local" and not args.separate:
+    is_url_input = is_url(args.input)
+    # Kick off the whisper model load in a background daemon thread so the
+    # ~5-20 s load overlaps with download + separation + convert. The
+    # `transcribe()` call later joins the thread before running.
+    # If the captions branch returns early without transcribing, the daemon
+    # thread is killed on process exit — wasted RAM is bounded by the
+    # selection rules in `should_preload_whisper`.
+    preload_thread = (
+        _start_whisper_preload(args)
+        if should_preload_whisper(args, is_url_input)
+        else None
+    )
+    if is_url_input and args.subtitle_source != "local" and not args.separate:
         emit_progress("download", progress=0.0, message="Fetching platform subtitles")
         platform_result = download_url_subtitles(args.input, output_dir, args)
         if platform_result is not None:
@@ -146,8 +171,34 @@ def main() -> int:
     emit_progress("download", progress=1.0, message="Media ready", done=True)
     if args.separate:
         emit_progress("separate", progress=0.0, message="Separating vocals")
-        source = separate_source(source, output_dir, args)
-        emit_progress("separate", progress=1.0, done=True)
+        try:
+            source = separate_source(source, output_dir, args)
+            emit_progress("separate", progress=1.0, done=True)
+        except subprocess.CalledProcessError as exc:
+            # Vocal separation is an enhancement, not a hard requirement.
+            # Common runtime failures here: audio-separator's first-run model
+            # download (HF Hub flaky for some networks), ONNX runtime version
+            # mismatch, or model file corruption. Falling back to the original
+            # source still yields usable lyrics + karaoke-ready outputs; the
+            # only thing the user loses is isolated vocal/instrumental stems.
+            warning = (
+                f"Vocal separation failed (audio-separator exit {exc.returncode}); "
+                "continuing with original source so subtitles can still be produced."
+            )
+            print(warning, file=sys.stderr)
+            emit_progress(
+                "separate",
+                progress=1.0,
+                failed=True,
+                done=True,
+                message="Separation skipped",
+            )
+        except SystemExit:
+            # Missing-binary / no-output paths re-raise so the desktop app's
+            # error classifier can surface a localized "install audio-separator"
+            # hint instead of silently degrading the output.
+            emit_progress("separate", progress=1.0, failed=True, done=True)
+            raise
     base_name = safe_stem(source)
     emit_progress("convert", progress=0.0, message="Converting to 16 kHz mono")
     audio_path, cleanup = prepare_audio(source, output_dir, base_name, args.save_audio)
@@ -155,7 +206,7 @@ def main() -> int:
     emit_progress("convert", progress=1.0, done=True)
     try:
         emit_progress("transcribe", progress=0.0, message="Running speech-to-text")
-        cues, metadata = transcribe(audio_path, args)
+        cues, metadata = transcribe(audio_path, args, preload_thread=preload_thread)
         emit_progress("transcribe", progress=1.0, done=True)
     except SystemExit:
         emit_progress("transcribe", progress=1.0, failed=True, done=True)
@@ -210,6 +261,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--separator-preset", help="audio-separator ensemble preset, e.g. vocal_balanced.")
     parser.add_argument("--separator-output-dir", help="Directory for separated stems. Defaults to output-dir/stems.")
     parser.add_argument("--separator-format", default="WAV", help="Stem output format for audio-separator.")
+    parser.add_argument(
+        "--separator-model-dir",
+        help=(
+            "Folder where audio-separator should look for / cache model files. "
+            "Useful for reusing an existing Ultimate Vocal Remover (UVR) model "
+            "pool, or for users on networks where huggingface.co is unreachable."
+        ),
+    )
     parser.add_argument("--browser", help="Use yt-dlp cookies from browser, e.g. chrome or safari.")
     parser.add_argument("--cookies", help="Use a Netscape-format cookies.txt file with yt-dlp.")
     parser.add_argument(
@@ -229,6 +288,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-audio", action="store_true", help="Save extracted 16 kHz mono WAV next to outputs.")
     parser.add_argument("--save-video-preview", action="store_true", help="Save a low-resolution local video preview for in-app karaoke playback.")
     parser.add_argument("--vad-filter", action="store_true", help="Enable VAD filtering for the selected local word engine.")
+    parser.add_argument(
+        "--no-preload-whisper",
+        action="store_true",
+        help="Disable overlapping whisper model load with download/separation. Use on low-RAM systems.",
+    )
     return parser.parse_args()
 
 
@@ -268,19 +332,45 @@ def choose_stem(candidates: list[Path], stem: str) -> Path:
 def stem_score(path: Path, stem: str) -> int:
     name = path.stem.lower()
     score = 0
+
+    # audio-separator's output naming is reliable: it always wraps the stem
+    # type in parens, e.g. `<base>_(Vocals)_<modelName>.mp3` /
+    # `<base>_(Instrumental)_<modelName>.mp3`. Match these parenthetical
+    # markers FIRST, with decisive weight, so the model name itself
+    # (often "MDX-NET-Inst_HQ_3", "BS-Roformer", "Voc_FT", etc.) doesn't
+    # poison the heuristic via a naive substring match. This keeps the
+    # picker correct across every UVR / audio-separator model preset.
+    has_paren_vocals = "(vocals)" in name or "(vocal)" in name
+    has_paren_instrumental = "(instrumental)" in name or "(inst)" in name
+
+    if stem in {"auto", "vocals"}:
+        if has_paren_vocals:
+            score += 200
+        elif has_paren_instrumental:
+            score -= 200
+    elif stem == "instrumental":
+        if has_paren_instrumental:
+            score += 200
+        elif has_paren_vocals:
+            score -= 200
+
+    # Weaker substring fallbacks for non-paren naming conventions
+    # (legacy demucs outputs, manual exports, "<song> vocals.wav"). Lower
+    # weight than the paren rules above so they can't override a clean
+    # paren match.
     vocal_markers = ["vocals", "vocal", "voice", "voices", "acapella", "a capella", "karaoke-vocal"]
-    instrumental_markers = ["instrumental", "inst", "no_vocals", "no-vocals", "accompaniment", "karaoke"]
+    instrumental_markers = ["no_vocals", "no-vocals", "accompaniment", "karaoke", "instrumental", "inst"]
 
     if stem in {"auto", "vocals"}:
         if any(marker in name for marker in vocal_markers):
-            score += 100
+            score += 30
         if any(marker in name for marker in instrumental_markers):
-            score -= 80
+            score -= 25
     elif stem == "instrumental":
         if any(marker in name for marker in instrumental_markers):
-            score += 100
+            score += 30
         if any(marker in name for marker in vocal_markers):
-            score -= 80
+            score -= 25
     else:
         score += 10
 
@@ -318,6 +408,66 @@ def is_bilibili_url(value: str) -> bool:
     return host == "b23.tv" or host.endswith(".bilibili.com") or host == "bilibili.com"
 
 
+def _tee_stderr_to_real_stderr(proc: "subprocess.Popen[str]") -> tuple[list[str], threading.Thread]:
+    """Forward ``proc.stderr`` to the real ``sys.stderr`` line-by-line.
+
+    Each line is written to ``sys.stderr`` as soon as it arrives so the desktop
+    main process sees yt-dlp / ffmpeg progress live. Each line is also appended
+    to the returned buffer so the caller can recover the last error line for
+    failure messages after the process exits. The reader runs in a daemon
+    thread; the caller should ``thread.join()`` after ``proc.wait()`` so the
+    final lines are captured before the buffer is consumed.
+    """
+    buffer: list[str] = []
+
+    def _drain() -> None:
+        if proc.stderr is None:
+            return
+        for line in proc.stderr:
+            buffer.append(line)
+            try:
+                sys.stderr.write(line)
+                sys.stderr.flush()
+            except Exception:
+                # Never let a tee failure crash a real job.
+                pass
+
+    thread = threading.Thread(target=_drain, daemon=True)
+    thread.start()
+    return buffer, thread
+
+
+def _run_with_live_stderr(cmd: list[str], *, check: bool = True) -> "subprocess.CompletedProcess[str]":
+    """Run ``cmd`` capturing stdout/stderr while teeing stderr to real stderr.
+
+    Behaves like ``subprocess.run(cmd, check=check, text=True, stdout=PIPE,
+    stderr=PIPE)`` but writes each stderr line through to ``sys.stderr`` as it
+    arrives. Captured stderr is still available on the returned
+    ``CompletedProcess`` (and on ``CalledProcessError.stderr`` when ``check``
+    raises) so callers can keep producing the same failure messages they did
+    before — the desktop just additionally sees the live progress stream.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    stderr_buffer, tee_thread = _tee_stderr_to_real_stderr(proc)
+    stdout_text = proc.stdout.read() if proc.stdout is not None else ""
+    if proc.stdout is not None:
+        proc.stdout.close()
+    returncode = proc.wait()
+    tee_thread.join()
+    if proc.stderr is not None:
+        proc.stderr.close()
+    stderr_text = "".join(stderr_buffer)
+    if check and returncode != 0:
+        raise subprocess.CalledProcessError(returncode, cmd, stdout_text, stderr_text)
+    return subprocess.CompletedProcess(cmd, returncode, stdout_text, stderr_text)
+
+
 def download_url_audio(url: str, output_dir: Path, args: argparse.Namespace) -> tuple[Path, Callable[[], None]]:
     require_binary("yt-dlp")
     if args.save_audio:
@@ -336,6 +486,7 @@ def download_url_audio(url: str, output_dir: Path, args: argparse.Namespace) -> 
         "--audio-quality",
         "0",
         "--no-playlist",
+        "--newline",
         "-P",
         str(download_dir),
         "-o",
@@ -377,6 +528,7 @@ def download_url_video_preview(url: str, output_dir: Path, args: argparse.Namesp
     cmd = [
         "yt-dlp",
         "--no-playlist",
+        "--newline",
         "-f",
         "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720][ext=mp4]/b[height<=720]/best[height<=720]",
         "--merge-output-format",
@@ -394,7 +546,7 @@ def download_url_video_preview(url: str, output_dir: Path, args: argparse.Namesp
     if args.cookies:
         cmd[1:1] = ["--cookies", args.cookies]
 
-    result = subprocess.run(cmd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = _run_with_live_stderr(cmd, check=True)
     paths = [Path(line.strip()) for line in result.stdout.splitlines() if line.strip()]
     for path in reversed(paths):
         if path.exists() and path.suffix.lower() in VIDEO_EXTS:
@@ -427,6 +579,7 @@ def download_url_subtitles(url: str, output_dir: Path, args: argparse.Namespace)
         "yt-dlp",
         "--skip-download",
         "--no-playlist",
+        "--newline",
         "--sub-format",
         "vtt",
         "--sub-langs",
@@ -447,7 +600,7 @@ def download_url_subtitles(url: str, output_dir: Path, args: argparse.Namespace)
         cmd[1:1] = ["--cookies", args.cookies]
 
     try:
-        subprocess.run(cmd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        _run_with_live_stderr(cmd, check=True)
         candidates = [path for path in subtitle_dir.glob("*.vtt") if "live_chat" not in path.name]
         if not candidates:
             return None
@@ -485,13 +638,13 @@ def download_url_subtitles(url: str, output_dir: Path, args: argparse.Namespace)
 
 
 def fetch_url_info(url: str, args: argparse.Namespace) -> dict:
-    cmd = ["yt-dlp", "--skip-download", "--no-playlist", "--dump-single-json", url]
+    cmd = ["yt-dlp", "--skip-download", "--no-playlist", "--newline", "--dump-single-json", url]
     if args.browser:
         cmd[1:1] = ["--cookies-from-browser", args.browser]
     if args.cookies:
         cmd[1:1] = ["--cookies", args.cookies]
     try:
-        result = subprocess.run(cmd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = _run_with_live_stderr(cmd, check=True)
     except subprocess.CalledProcessError as exc:
         message = last_error_line(exc.stderr or exc.stdout or str(exc))
         raise SystemExit(f"yt-dlp failed while reading URL metadata: {message}") from exc
@@ -711,6 +864,13 @@ def separate_source(source: Path, output_dir: Path, args: argparse.Namespace) ->
         cmd.extend(["--model_filename", args.separator_model])
     if args.separator_preset:
         cmd.extend(["--ensemble_preset", args.separator_preset])
+    if args.separator_model_dir:
+        # Reuse a pre-existing UVR / manually-downloaded model pool instead
+        # of pulling from huggingface.co. Critical for offline / firewalled
+        # environments where the default HF download would hang or fail.
+        model_dir = Path(args.separator_model_dir).expanduser()
+        model_dir.mkdir(parents=True, exist_ok=True)
+        cmd.extend(["--model_file_dir", str(model_dir)])
     subprocess.run(cmd, check=True)
     after = [path for path in stems_dir.rglob("*") if path.is_file() and path.resolve() not in before]
     candidates = [path for path in after if path.suffix.lower() in MEDIA_EXTS]
@@ -762,8 +922,11 @@ def convert_audio(source: Path, target: Path) -> None:
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
-        "error",
+        "warning",
         "-y",
+        "-progress",
+        "pipe:2",
+        "-nostats",
         "-i",
         str(source),
         "-vn",
@@ -778,10 +941,142 @@ def convert_audio(source: Path, target: Path) -> None:
     subprocess.run(cmd, check=True)
 
 
-def transcribe(audio_path: Path, args: argparse.Namespace) -> tuple[list[Cue], dict]:
+@dataclass
+class PreloadedWhisper:
+    """Whisper model + bookkeeping handed off from the preload thread.
+
+    `engine` lets `transcribe()` skip the load step in the engine that
+    matches; if the runtime engine selection diverges (e.g. preloaded
+    whisper_timestamped but `--word-engine faster_whisper`), the model is
+    discarded and a fresh load runs on demand.
+    """
+
+    engine: str
+    model: object
+
+
+def should_preload_whisper(args: argparse.Namespace, is_url_input: bool) -> bool:
+    """Decide whether to overlap model load with download/separation.
+
+    The cost of a wasted preload is ~600 MB RAM (int8 large-v3-turbo) and
+    a few seconds of CPU; the win is 5-20 s removed from the user-visible
+    transcribe stage. We only preload when transcription is *almost
+    certain* to run so we don't burn that on captions-success URL flows.
+    """
+    if getattr(args, "no_preload_whisper", False):
+        return False
+    if not is_url_input:
+        return True
+    if args.subtitle_source == "local" or args.force_local:
+        return True
+    if args.separate:
+        return True
+    if args.local_fallback:
+        return True
+    return False
+
+
+def _load_faster_whisper_model(args: argparse.Namespace) -> PreloadedWhisper:
+    from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+
+    device = "cpu" if args.device == "auto" else args.device
+    compute_type = "int8" if args.compute_type == "auto" and device == "cpu" else args.compute_type
+    if compute_type == "auto":
+        compute_type = "float16" if device == "cuda" else "int8"
+    model = WhisperModel(args.model, device=device, compute_type=compute_type)
+    return PreloadedWhisper(engine="faster_whisper", model=model)
+
+
+def _load_whisper_timestamped_model(args: argparse.Namespace) -> PreloadedWhisper:
+    import whisper_timestamped as whisper  # type: ignore[import-not-found]
+
+    device = "cpu" if args.device == "auto" else args.device
+    model = whisper.load_model(args.model, device=device)
+    return PreloadedWhisper(engine="whisper_timestamped", model=model)
+
+
+def preload_whisper_for_args(args: argparse.Namespace) -> PreloadedWhisper:
+    """Mirror the engine-selection logic of `transcribe()` for preload.
+
+    Falls back to faster_whisper when the preferred engine fails so the
+    preload never hard-fails the job: any failure here just makes the
+    runtime path do its own load.
+    """
+    if args.word_engine == "faster_whisper":
+        return _load_faster_whisper_model(args)
+    if args.no_word_timestamps:
+        return _load_faster_whisper_model(args)
+    try:
+        return _load_whisper_timestamped_model(args)
+    except ImportError:
+        if args.word_engine == "whisper_timestamped":
+            raise
+        return _load_faster_whisper_model(args)
+    except Exception:
+        if args.word_engine == "whisper_timestamped":
+            raise
+        return _load_faster_whisper_model(args)
+
+
+def _start_whisper_preload(args: argparse.Namespace) -> threading.Thread | None:
+    """Launch a daemon thread that loads the whisper model in the background.
+
+    Returns the running thread (with `_preloaded` / `_preload_error`
+    attributes set on completion), or None when preload is disabled.
+    Joining the thread is the caller's responsibility — `transcribe()`
+    does this before kicking off the actual model run.
+    """
+    state: dict[str, object] = {}
+
+    def runner() -> None:
+        try:
+            state["preloaded"] = preload_whisper_for_args(args)
+        except BaseException as exc:  # noqa: BLE001 - propagate via thread state
+            state["error"] = exc
+
+    thread = threading.Thread(target=runner, name="whisper-preload", daemon=True)
+    thread.state = state  # type: ignore[attr-defined]
+    thread.start()
+    return thread
+
+
+def _consume_preload(
+    thread: threading.Thread | None,
+) -> tuple[PreloadedWhisper | None, BaseException | None]:
+    """Block until the preload thread completes; return its result."""
+    if thread is None:
+        return None, None
+    thread.join()
+    state: dict[str, object] = getattr(thread, "state", {})
+    return (
+        state.get("preloaded"),  # type: ignore[return-value]
+        state.get("error"),  # type: ignore[return-value]
+    )
+
+
+def transcribe(
+    audio_path: Path,
+    args: argparse.Namespace,
+    preload_thread: threading.Thread | None = None,
+) -> tuple[list[Cue], dict]:
+    preloaded, preload_error = _consume_preload(preload_thread)
+    if preload_error is not None:
+        # Preload failures are non-fatal: log once so the user can correlate
+        # the slower runtime load below, then continue with the original
+        # engine-selection logic from scratch.
+        print(
+            f"whisper preload failed; loading model on demand instead: {preload_error}",
+            file=sys.stderr,
+        )
+        preloaded = None
+
     if args.word_engine in {"auto", "whisper_timestamped"} and not args.no_word_timestamps:
         try:
-            return transcribe_with_whisper_timestamped(audio_path, args)
+            return transcribe_with_whisper_timestamped(
+                audio_path,
+                args,
+                preloaded=preloaded if preloaded and preloaded.engine == "whisper_timestamped" else None,
+            )
         except ImportError as exc:
             if args.word_engine == "whisper_timestamped":
                 setup_script = SKILL_DIR / "scripts/setup_faster_whisper.sh"
@@ -796,14 +1091,37 @@ def transcribe(audio_path: Path, args: argparse.Namespace) -> tuple[list[Cue], d
                 raise
             print("whisper-timestamped failed; falling back to faster-whisper.", file=sys.stderr)
 
-    return transcribe_with_faster_whisper(audio_path, args)
+    return transcribe_with_faster_whisper(
+        audio_path,
+        args,
+        preloaded=preloaded if preloaded and preloaded.engine == "faster_whisper" else None,
+    )
 
 
-def transcribe_with_whisper_timestamped(audio_path: Path, args: argparse.Namespace) -> tuple[list[Cue], dict]:
+def transcribe_with_whisper_timestamped(
+    audio_path: Path,
+    args: argparse.Namespace,
+    preloaded: PreloadedWhisper | None = None,
+) -> tuple[list[Cue], dict]:
     import whisper_timestamped as whisper
 
     device = "cpu" if args.device == "auto" else args.device
-    model = whisper.load_model(args.model, device=device)
+    if preloaded is not None and preloaded.engine == "whisper_timestamped":
+        model = preloaded.model
+        emit_progress(
+            "transcribe",
+            progress=0.05,
+            message=f"Reusing preloaded whisper-timestamped model: {args.model}",
+        )
+    else:
+        emit_progress("transcribe", progress=0.0, message=f"Loading whisper-timestamped model: {args.model}")
+        model = whisper.load_model(args.model, device=device)
+    # TODO(progress): whisper-timestamped's whisper.transcribe(...) returns a
+    # complete result dict instead of an incremental segment iterator, so we
+    # cannot emit per-segment progress here. If a future version yields segments
+    # incrementally, mirror the throttled per-segment loop in
+    # transcribe_with_faster_whisper. Until then we only emit start/end so the
+    # desktop has a structured fallback when the underlying tool stays silent.
     result = whisper.transcribe(
         model,
         str(audio_path),
@@ -814,6 +1132,7 @@ def transcribe_with_whisper_timestamped(audio_path: Path, args: argparse.Namespa
         temperature=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
         vad=args.vad_filter,
     )
+    emit_progress("transcribe", progress=1.0, message="done")
     cues = cues_from_timestamped_segments(result.get("segments", []), args)
     metadata = {
         "model": args.model,
@@ -829,24 +1148,37 @@ def transcribe_with_whisper_timestamped(audio_path: Path, args: argparse.Namespa
     return cues, metadata
 
 
-def transcribe_with_faster_whisper(audio_path: Path, args: argparse.Namespace) -> tuple[list[Cue], dict]:
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError as exc:
-        setup_script = SKILL_DIR / "scripts/setup_faster_whisper.sh"
-        raise SystemExit(
-            "Missing Python package: faster-whisper\n"
-            f"Install it with: {setup_script}\n"
-            "Then rerun the same audio-subtitles command."
-        ) from exc
-
+def transcribe_with_faster_whisper(
+    audio_path: Path,
+    args: argparse.Namespace,
+    preloaded: PreloadedWhisper | None = None,
+) -> tuple[list[Cue], dict]:
     device = "cpu" if args.device == "auto" else args.device
     compute_type = "int8" if args.compute_type == "auto" and device == "cpu" else args.compute_type
     if compute_type == "auto":
         compute_type = "float16" if device == "cuda" else "int8"
 
-    model = WhisperModel(args.model, device=device, compute_type=compute_type)
-    segments, info = model.transcribe(
+    if preloaded is not None and preloaded.engine == "faster_whisper":
+        model = preloaded.model
+        emit_progress(
+            "transcribe",
+            progress=0.05,
+            message=f"Reusing preloaded faster-whisper model: {args.model}",
+        )
+    else:
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            setup_script = SKILL_DIR / "scripts/setup_faster_whisper.sh"
+            raise SystemExit(
+                "Missing Python package: faster-whisper\n"
+                f"Install it with: {setup_script}\n"
+                "Then rerun the same audio-subtitles command."
+            ) from exc
+
+        emit_progress("transcribe", progress=0.0, message=f"Loading faster-whisper model: {args.model}")
+        model = WhisperModel(args.model, device=device, compute_type=compute_type)
+    segments_iter, info = model.transcribe(
         str(audio_path),
         language=args.language,
         task=args.task,
@@ -855,7 +1187,22 @@ def transcribe_with_faster_whisper(audio_path: Path, args: argparse.Namespace) -
         word_timestamps=not args.no_word_timestamps,
         condition_on_previous_text=False,
     )
-    segment_list = list(segments)
+    total_duration = float(getattr(info, "duration", 0.0) or 0.0)
+    segment_list: list = []
+    last_emit_at = 0.0
+    for seg in segments_iter:
+        segment_list.append(seg)
+        current = float(getattr(seg, "end", 0.0) or 0.0)
+        now = time.monotonic()
+        # Throttle to <= 2 emits/sec so very fast files do not flood stderr.
+        if total_duration and (now - last_emit_at >= 0.5):
+            emit_progress(
+                "transcribe",
+                progress=min(0.99, current / total_duration),
+                message=f"{current:.0f}s / {total_duration:.0f}s",
+            )
+            last_emit_at = now
+    emit_progress("transcribe", progress=1.0, message="done")
     cues = cues_from_segments(segment_list, args)
     metadata = {
         "model": args.model,
