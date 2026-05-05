@@ -56,7 +56,7 @@ else
   # The separator weights are hosted under github + a HF mirror; pull
   # from HF Hub via huggingface_hub so the script Just Works for users
   # who already have a token set in their shell.
-  "$PYTHON_BIN" - <<PY
+  SEP_DIR="$SEP_DIR" SEPARATOR_MODEL="$SEPARATOR_MODEL" "$PYTHON_BIN" - <<PY
 from huggingface_hub import hf_hub_download
 import os
 import shutil
@@ -84,7 +84,7 @@ if [[ -d "$WHISPER_LOCAL" ]]; then
   echo "[whisper] $WHISPER_REPO snapshot already present — skipping"
 else
   echo "[whisper] Fetching $WHISPER_REPO snapshot from HuggingFace…"
-  "$PYTHON_BIN" - <<PY
+  WHISPER_REPO="$WHISPER_REPO" WHISPER_DIR="$WHISPER_DIR" "$PYTHON_BIN" - <<PY
 from huggingface_hub import snapshot_download
 import os
 
