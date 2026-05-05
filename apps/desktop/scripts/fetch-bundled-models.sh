@@ -87,6 +87,7 @@ else
   WHISPER_REPO="$WHISPER_REPO" WHISPER_DIR="$WHISPER_DIR" "$PYTHON_BIN" - <<PY
 from huggingface_hub import snapshot_download
 import os
+import shutil
 
 repo = os.environ["WHISPER_REPO"]
 target = os.environ["WHISPER_DIR"]
@@ -94,6 +95,20 @@ target = os.environ["WHISPER_DIR"]
 # blobs/) inside `cache_dir`, which is exactly what faster-whisper looks
 # for when `HF_HOME` is set to the parent folder.
 snapshot_download(repo_id=repo, cache_dir=os.path.join(target, "hub"))
+
+# Electron-builder's Windows 7zip step chokes on symlink entries from the
+# HF snapshot cache (it reports "The directory name is invalid"). Materialise
+# those links as regular files so packaging works on both macOS and Windows.
+hub_root = os.path.join(target, "hub")
+for root, _dirs, files in os.walk(hub_root):
+    for name in files:
+        full = os.path.join(root, name)
+        if not os.path.islink(full):
+            continue
+        resolved = os.path.realpath(full)
+        os.remove(full)
+        shutil.copy2(resolved, full)
+
 print(f"[whisper] Wrote snapshot under {target}/hub/")
 PY
 fi
