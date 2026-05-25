@@ -1,6 +1,5 @@
-import { Canvas, useFrame } from "@react-three/fiber";
-import { useReducedMotion } from "motion/react";
-import { useMemo, useRef } from "react";
+import { Canvas } from "@react-three/fiber";
+import { useMemo } from "react";
 import * as THREE from "three";
 
 const vertexShader = `
@@ -82,11 +81,7 @@ void main() {
 }
 `;
 
-interface TopologyPlaneProps {
-  speed: number;
-}
-
-function TopologyPlane({ speed }: TopologyPlaneProps) {
+function TopologyPlane() {
   const planeWidth = 90;
   const planeHeight = 40;
   const material = useMemo(
@@ -109,10 +104,6 @@ function TopologyPlane({ speed }: TopologyPlaneProps) {
     []
   );
 
-  useFrame((_, delta) => {
-    material.uniforms.uTime.value += delta * (speed / 0.05);
-  });
-
   return (
     <mesh position={[1.2, 0.4, -15]} renderOrder={-1} material={material}>
       <planeGeometry args={[planeWidth, planeHeight]} />
@@ -121,16 +112,15 @@ function TopologyPlane({ speed }: TopologyPlaneProps) {
 }
 
 export function TopologyBackgroundCanvas() {
-  const shouldReduceMotion = useReducedMotion();
-
   return (
     <div className="topologyBackgroundCanvas" aria-hidden="true">
       <Canvas
         camera={{ position: [0, 0, 31], fov: 45 }}
-        dpr={[1, 1.5]}
-        gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
+        dpr={1}
+        frameloop="demand"
+        gl={{ alpha: true, antialias: false, powerPreference: "low-power" }}
       >
-        <TopologyPlane speed={shouldReduceMotion ? 0.005 : 0.05} />
+        <TopologyPlane />
       </Canvas>
     </div>
   );

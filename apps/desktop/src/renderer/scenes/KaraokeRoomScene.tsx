@@ -164,7 +164,7 @@ export function KaraokeRoomScene({
   );
   const progressValue = progressMax > 0 ? Math.min(playbackController.currentTime, progressMax) : 0;
   const hasPlayableMedia = Boolean(playbackController.canControl);
-  const hasStems = Boolean(trackAssets.backing && trackAssets.vocal);
+  const hasBacking = Boolean(trackAssets.backing);
   const trackRoleLabel =
     trackRole === "backing"
       ? t("room:trackLabels.backingTrack")
@@ -576,7 +576,7 @@ export function KaraokeRoomScene({
                 </div>
               </details>
 
-              {!hasStems ? (
+              {!hasBacking ? (
                 <button
                   type="button"
                   onClick={onSplitVocals}
@@ -714,41 +714,6 @@ export function KaraokeRoomScene({
                       {selectedSubtitleName}
                     </strong>
                   </div>
-
-                  {trackAssets.vocal ? (
-                    <div className="flex items-center justify-between gap-3 rounded-md border border-ktv-line bg-ktv-surface-strong px-3 py-2.5">
-                      <div className="grid min-w-0 gap-0.5">
-                        <span className="text-xs font-medium text-ktv-text-muted">
-                          {t("room:optionalStem")}
-                        </span>
-                        <strong className="text-sm font-medium text-white">
-                          {t("room:vocalOnly")}
-                        </strong>
-                      </div>
-                      <button
-                        type="button"
-                        data-selected={trackRole === "vocal"}
-                        onClick={() =>
-                          onTrackRoleChange(
-                            trackRole === "vocal"
-                              ? trackAssets.backing
-                                ? "backing"
-                                : "original"
-                              : "vocal"
-                          )
-                        }
-                        className={cn(
-                          "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold whitespace-nowrap",
-                          trackRole === "vocal"
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-ktv-line bg-transparent text-white/80 hover:border-white/30"
-                        )}
-                      >
-                        <Icon name={trackRole === "vocal" ? "restart" : "mic"} />
-                        {trackRole === "vocal" ? t("room:returnTrack") : t("room:useTrack")}
-                      </button>
-                    </div>
-                  ) : null}
 
                   {!playbackController.mediaUrl ? (
                     <p className="m-0 text-xs font-medium text-ktv-text-muted">

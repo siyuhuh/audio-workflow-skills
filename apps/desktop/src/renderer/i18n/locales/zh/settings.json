@@ -47,8 +47,8 @@
     "helpLink": "了解 hf-mirror.com"
   },
   "separator": {
-    "title": "人声分离模型目录",
-    "description": "可选。复用本地已下载的分离模型(.onnx / .pth / .ckpt),无需重新从 HuggingFace 拉取。如果检测到 Ultimate Vocal Remover,会自动链接它的模型;你也可以手动指向任意目录。",
+    "title": "伴奏生成模型目录",
+    "description": "可选。复用本地已下载的 audio-separator 模型(.onnx / .pth / .ckpt),无需重新从 HuggingFace 拉取。如果检测到 Ultimate Vocal Remover,会自动链接它的模型;你也可以手动指向任意目录。",
     "fieldLabel": "目录路径",
     "placeholder": "/path/to/separator/models",
     "current": "正在使用:{{dir}}",
@@ -59,7 +59,7 @@
     "redetectUvr": "重新检测 UVR",
     "redetecting": "检测中…",
     "autoBadge": "已自动链接 UVR({{count}})",
-    "autoBody": "已链接你 Ultimate Vocal Remover 安装中的 {{count}} 个模型文件。桌面端会把 {{model}} 传给 audio-separator,保证整次分离离线运行。",
+    "autoBody": "已链接你 Ultimate Vocal Remover 安装中的 {{count}} 个模型文件。桌面端会把 {{model}} 传给 audio-separator,保证伴奏生成离线运行。",
     "helpLink": "了解 Ultimate Vocal Remover"
   }
 }

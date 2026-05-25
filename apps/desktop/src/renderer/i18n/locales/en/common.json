@@ -34,7 +34,7 @@
   },
   "home": {
     "title": "Your private karaoke studio, ready from any link.",
-    "subtitle": "Paste a song, drop a file, or search the web. VocalFlow turns it into synced lyrics, stems, playback, and export-ready subtitles in one local package.",
+    "subtitle": "Paste a song, drop a file, or search the web. VocalFlow turns it into a local package with original audio, backing track, and synced lyrics.",
     "captureHint": "Drop a song into the studio",
     "kicker": "Karaoke studio for creators",
     "addKicker": "Add a new song",
@@ -63,7 +63,7 @@
     "ffmpeg": "ffmpeg is missing or unavailable. Install ffmpeg or reinstall VocalFlow.",
     "whisper": "Local transcription is not ready. Prepare the Whisper runtime before running this job.",
     "whisperTimestamped": "Word-level alignment is not installed; install whisper-timestamped or use the faster fallback.",
-    "separator": "Vocal split is not ready. Install audio-separator or disable Vocal split for this run.",
+    "separator": "Backing creation is not ready. Install audio-separator or disable backing creation for this run.",
     "noPlatformSubtitles": "No platform subtitles were found. Enable local fallback or choose local transcription.",
     "cookies": "This video may need browser cookies or sign-in. Add browser cookies in Desktop options and try again.",
     "unsupportedMedia": "This input is not a supported media file. Use an audio/video file, folder, or supported URL."

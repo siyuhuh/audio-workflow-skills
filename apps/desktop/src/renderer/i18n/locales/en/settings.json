@@ -47,8 +47,8 @@
     "helpLink": "About hf-mirror.com"
   },
   "separator": {
-    "title": "Vocal separator models folder",
-    "description": "Optional. Reuse pre-downloaded vocal separator models (.onnx / .pth / .ckpt) instead of fetching from HuggingFace. Auto-linked from Ultimate Vocal Remover when installed; you can also point this at any folder.",
+    "title": "Backing creation models folder",
+    "description": "Optional. Reuse pre-downloaded audio-separator models (.onnx / .pth / .ckpt) instead of fetching from HuggingFace. Auto-linked from Ultimate Vocal Remover when installed; you can also point this at any folder.",
     "fieldLabel": "Folder path",
     "placeholder": "/path/to/separator/models",
     "current": "Using: {{dir}}",

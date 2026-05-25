@@ -17,7 +17,7 @@
       "platformLanguages": "Platform subtitle languages",
       "browserCookies": "Browser cookies",
       "cookiesFile": "cookies.txt",
-      "vocalSplit": "Vocal split",
+      "vocalSplit": "Create backing",
       "localFallback": "Local fallback",
       "keepRawVtt": "Keep raw VTT",
       "playableAudioAuto": "Playable audio auto",
@@ -64,8 +64,8 @@
     "bilibili": "Bilibili",
     "placeholder": "Artist, song title, or keywords",
     "appendKaraoke": "Backing version",
-    "splitVocalsDefault": "Split vocals",
-    "karaokeSplitWarning": "Karaoke uploads often remove the lead vocal. If you also split vocals, stem separation and subtitle generation may fail. Turn off karaoke bias when you need vocals.",
+    "splitVocalsDefault": "Create backing",
+    "karaokeSplitWarning": "Karaoke uploads often already remove the lead vocal. Creating backing again may not improve the result; turn off backing bias when you need the original vocal for transcription.",
     "useThisLink": "Use this link",
     "openInBrowser": "Open in browser",
     "noResults": "No videos matched. Try different keywords.",
@@ -129,7 +129,7 @@
     },
     "separatorMissing": {
       "title": "Separator missing",
-      "body": "Disable vocal separation to continue, or run the setup command to install it."
+      "body": "Disable backing creation to continue, or run the setup command to install it."
     },
     "ffmpegMissing": {
       "title": "ffmpeg missing",
@@ -156,7 +156,7 @@
       "enableLocalFallback": "Use local transcription",
       "waitAndRetry": "Got it",
       "copySetupCommand": "Copy setup command",
-      "disableSeparation": "Disable separation",
+      "disableSeparation": "Disable backing creation",
       "retry": "Retry",
       "openOutputFolder": "Open output folder",
       "copyLog": "Copy log",
@@ -171,8 +171,8 @@
   },
   "warn": {
     "separationSkipped": {
-      "title": "Vocal separation skipped",
-      "body": "Continuing with the original audio so subtitles can still be produced. Disable separation in Advanced, install the separator, or copy the log to investigate."
+      "title": "Backing creation skipped",
+      "body": "Continuing with the original audio so subtitles can still be produced. Disable backing creation in Advanced, install the separator, or copy the log to investigate."
     }
   },
   "notify": {
@@ -188,7 +188,7 @@
       "metadata": "Reading metadata",
       "captions": "Fetching captions",
       "audio": "Audio",
-      "separation": "Separating vocals",
+      "separation": "Creating backing",
       "transcribe": "Transcribing",
       "writeOutputs": "Writing outputs",
       "manifest": "Saving package"

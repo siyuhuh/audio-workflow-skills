@@ -296,7 +296,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   for (const child of runningJobs.values()) {
-    child.kill("SIGTERM");
+    terminateChildProcess(child);
   }
   runningJobs.clear();
   webApiServer?.close();
@@ -816,23 +816,25 @@ function parseProgressEvent(jobId: string, rawLine: string): JobProgressStage | 
 const STDERR_TAIL_MAX_LINES = 40;
 
 async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: (log: { jobId: string; stream: "stdout" | "stderr"; chunk: string }) => void): Promise<JobResult> {
-  const runtime = await prepareAudioRuntime(options, (chunk) => {
+  const jobOptions = withDefaultDesktopOutputDir(options, jobId);
+  const runtime = await prepareAudioRuntime(jobOptions, (chunk) => {
     emitLog({ jobId, stream: "stderr", chunk });
   });
-  const preview = buildCommandPreview(options, runtime);
+  const preview = buildCommandPreview(jobOptions, runtime);
   const startedAtMs = Date.now();
 
   broadcastJobEvent({
     kind: "queued",
     jobId,
-    input: options.input,
+    input: jobOptions.input,
     createdAt: startedAtMs,
-    options
+    options: jobOptions
   });
 
   return new Promise((resolve, reject) => {
     const child = spawn(preview.command, preview.args, {
       env: runtime.env,
+      detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"]
     });
 
@@ -980,13 +982,14 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
         }
         stderrBuffer = "";
       }
-      const parsed = parseGeneratedOutput(output);
       const success = exitCode === 0 && signal === null;
+      const rawParsed = parseGeneratedOutput(output);
+      const parsed = success ? simplifyKaraokeOutput(jobOptions, rawParsed, startedAtMs) : rawParsed;
       if (!success) {
         emitFailure(exitCode, signal);
       }
-      let historyEntry = success ? createSavedHistoryEntry(jobId, options, parsed, startedAtMs) : null;
-      const discovered = historyEntry ? null : discoverAssets(options, parsed, startedAtMs);
+      let historyEntry = success ? createSavedHistoryEntry(jobId, jobOptions, parsed, startedAtMs) : null;
+      const discovered = historyEntry ? null : discoverAssets(jobOptions, parsed, startedAtMs);
       const fallbackAssets = discovered?.assets ?? [];
       if (historyEntry) {
         historyEntry = saveHistoryEntry(historyEntry);
@@ -997,7 +1000,7 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
           const manifest = buildPackageManifest({
             packageId: historyEntry.id,
             sourceKey,
-            options,
+            options: jobOptions,
             historyEntry,
             startedAtMs,
             completedAtMs: Date.now()
@@ -1025,10 +1028,10 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
         outputDir: parsed.outputDir,
         generatedFiles: parsed.generatedFiles,
         assets: historyEntry?.assets ?? fallbackAssets,
-        sourceUrl: historyEntry?.sourceUrl ?? sourceUrlForInput(options.input),
+        sourceUrl: historyEntry?.sourceUrl ?? sourceUrlForInput(jobOptions.input),
         primarySubtitle: historyEntry?.primarySubtitle ?? null,
         primaryMedia: historyEntry?.primaryMedia ?? null,
-        playbackBundle: historyEntry?.playbackBundle ?? buildPlaybackBundle(options, fallbackAssets),
+        playbackBundle: historyEntry?.playbackBundle ?? buildPlaybackBundle(jobOptions, fallbackAssets),
         historyEntry
       });
     });
@@ -1040,9 +1043,28 @@ function cancelRunningJob(jobId: string): boolean {
   if (!child) {
     return false;
   }
-  child.kill("SIGTERM");
+  terminateChildProcess(child);
   runningJobs.delete(jobId);
   return true;
+}
+
+function terminateChildProcess(child: ChildProcessByStdio<null, Readable, Readable>): void {
+  if (!child.pid) {
+    child.kill("SIGTERM");
+    return;
+  }
+
+  if (process.platform === "win32") {
+    const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    killer.on("error", () => child.kill("SIGTERM"));
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    child.kill("SIGTERM");
+  }
 }
 
 function startWebApiServer(): void {
@@ -1870,7 +1892,7 @@ function mediaTokenFromUrl(value: string): string | null {
 }
 
 function discoverAssets(
-  options: Pick<JobOptions, "input">,
+  options: Pick<JobOptions, "input" | "workflowMode">,
   parsed: Pick<JobResult, "outputDir" | "generatedFiles">,
   changedAfterMs?: number
 ): Pick<SavedJobHistory, "generatedFiles" | "assets"> {
@@ -1879,9 +1901,10 @@ function discoverAssets(
     addSafeExistingFile(outputFiles, file);
   }
 
-  // Prefer the CLI's explicit file list. Scanning a shared output directory can
-  // pull in another song's recently-written audio/video and corrupt the package.
-  if (outputFiles.size === 0 && parsed.outputDir && existsSync(parsed.outputDir)) {
+  // Package-scoped karaoke jobs should include the copied original audio even
+  // when the CLI omits it from the final file list. Shared output dirs still
+  // rely on the explicit list to avoid cross-song pollution.
+  if ((outputFiles.size === 0 || options.workflowMode === "karaoke") && parsed.outputDir && existsSync(parsed.outputDir)) {
     for (const file of listReviewFiles(parsed.outputDir, changedAfterMs)) {
       addSafeExistingFile(outputFiles, file);
     }
@@ -1895,12 +1918,83 @@ function discoverAssets(
 
   const assets = [...assetFiles]
     .sort((a, b) => a.localeCompare(b))
-    .map((file) => classifyAsset(file));
+    .map((file) => classifyAsset(file))
+    .filter((asset) => options.workflowMode !== "karaoke" || !isKaraokeHiddenAsset(asset));
 
   return {
-    generatedFiles: [...outputFiles].sort((a, b) => a.localeCompare(b)),
+    generatedFiles: [...outputFiles]
+      .filter((file) => {
+        const asset = classifyAsset(file);
+        return options.workflowMode !== "karaoke" || !isKaraokeHiddenAsset(asset);
+      })
+      .sort((a, b) => a.localeCompare(b)),
     assets
   };
+}
+
+function simplifyKaraokeOutput(
+  options: JobOptions,
+  parsed: Pick<JobResult, "outputDir" | "generatedFiles">,
+  changedAfterMs?: number
+): Pick<JobResult, "outputDir" | "generatedFiles"> {
+  if (options.workflowMode !== "karaoke" || !parsed.outputDir || !existsSync(parsed.outputDir)) {
+    return parsed;
+  }
+
+  const candidates = uniquePaths([
+    ...parsed.generatedFiles,
+    ...listReviewFiles(parsed.outputDir, changedAfterMs)
+  ]);
+  const assets = candidates
+    .map((file) => classifyAsset(file))
+    .filter((asset) => asset.exists);
+  const keep = new Set<string>();
+  const keepPath = (filePath: string | null | undefined): void => {
+    if (filePath) {
+      keep.add(path.resolve(filePath));
+    }
+  };
+  const keepAsset = (asset: GeneratedAsset | null | undefined): void => keepPath(asset?.path);
+
+  keepAsset(selectKaraokeOriginalAsset(assets));
+  keepAsset(assets.find((asset) => asset.role === "backing" && isAudioInput(asset.path)));
+  keepPath(selectByExtension(assets, "subtitle", [".lrc"]));
+
+  for (const asset of assets) {
+    const resolved = path.resolve(asset.path);
+    if (keep.has(resolved) || !isInsideDirectory(parsed.outputDir, resolved)) {
+      continue;
+    }
+    try {
+      rmSync(resolved, { force: true });
+    } catch (error) {
+      console.warn(`[package] Failed to remove extra karaoke output ${resolved}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  return {
+    outputDir: parsed.outputDir,
+    generatedFiles: candidates
+      .filter((file) => keep.has(path.resolve(file)) && existsSync(file))
+      .sort((a, b) => a.localeCompare(b))
+  };
+}
+
+function selectKaraokeOriginalAsset(assets: GeneratedAsset[]): GeneratedAsset | null {
+  return (
+    assets.find((asset) => asset.exists && asset.role === "original" && isAudioInput(asset.path)) ??
+    assets.find((asset) => asset.exists && asset.role === "original" && (asset.type === "media" || asset.type === "stem")) ??
+    null
+  );
+}
+
+function isKaraokeHiddenAsset(asset: GeneratedAsset): boolean {
+  return asset.role === "vocal" || asset.role === "transcribe" || asset.role === "preview";
+}
+
+function isInsideDirectory(directory: string, targetPath: string): boolean {
+  const relative = path.relative(path.resolve(directory), path.resolve(targetPath));
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 function listReviewFiles(directory: string, changedAfterMs?: number): string[] {
@@ -2016,17 +2110,12 @@ function selectPrimaryMedia(options: Pick<JobOptions, "input" | "workflowMode">,
     }
   }
 
-  const transcribeAudio = assets.find((asset) => asset.exists && asset.role === "transcribe");
-  if (transcribeAudio) {
-    return transcribeAudio.path;
-  }
-
-  const playableAudio = assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && isAudioInput(asset.path));
+  const playableAudio = assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && isAudioInput(asset.path) && asset.role !== "transcribe" && asset.role !== "vocal");
   if (playableAudio) {
     return playableAudio.path;
   }
 
-  return assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && !isPreviewVideo(asset.path))?.path ?? null;
+  return assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && !isPreviewVideo(asset.path) && asset.role !== "transcribe" && asset.role !== "vocal")?.path ?? null;
 }
 
 function selectByExtension(assets: GeneratedAsset[], type: GeneratedAsset["type"], extensions: string[]): string | null {
@@ -2078,7 +2167,7 @@ function selectPlaybackPreview(primaryMediaPath: string | null, assets: Generate
 }
 
 function selectPlaybackAudio(context: Pick<JobOptions, "workflowMode">, assets: GeneratedAsset[]): string | null {
-  const playableAudio = assets.filter((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && isAudioInput(asset.path));
+  const playableAudio = assets.filter((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && isAudioInput(asset.path) && asset.role !== "transcribe" && asset.role !== "vocal");
   if (context.workflowMode === "karaoke") {
     const backing = playableAudio.find((asset) => asset.role === "backing");
     if (backing) {
@@ -2087,8 +2176,6 @@ function selectPlaybackAudio(context: Pick<JobOptions, "workflowMode">, assets: 
   }
   return (
     playableAudio.find((asset) => asset.role === "original")?.path ??
-    playableAudio.find((asset) => asset.role === "transcribe")?.path ??
-    playableAudio.find((asset) => asset.role === "vocal")?.path ??
     playableAudio[0]?.path ??
     null
   );
@@ -2292,10 +2379,16 @@ function refreshHistoryEntry(entry: SavedJobHistory): SavedJobHistory {
       exists: existsSync(asset.path)
     };
   });
-  const assets = pruneHistoryAssets(entry, refreshedAssets);
+  const assets = pruneHistoryAssets(entry, refreshedAssets)
+    .filter((asset) => entry.workflowMode !== "karaoke" || !isKaraokeHiddenAsset(asset));
+  const generatedFiles = entry.generatedFiles.filter((file) => {
+    const asset = classifyAsset(file);
+    return entry.workflowMode !== "karaoke" || !isKaraokeHiddenAsset(asset);
+  });
   const sourceUrl = entry.sourceUrl ?? sourceUrlForInput(entry.input);
   return {
     ...entry,
+    generatedFiles,
     assets,
     sourceUrl,
     primarySubtitle: selectPrimarySubtitle(assets),
@@ -3033,14 +3126,68 @@ function runtimeNeeds(options: JobOptions): RuntimeNeeds {
   const input = normalizeMediaInput(options.input.trim());
   const urlInput = isHttpUrl(input);
   const bilibiliInput = isBilibiliUrl(input);
+  const separatedStemInput = isLikelySeparatedStemInput(input);
   const needsLocalTranscription =
     !urlInput || options.subtitleSource === "local" || options.localFallback || bilibiliInput || options.separate;
 
   return {
     ytDlp: urlInput,
     whisper: needsLocalTranscription,
-    separator: options.separate
+    separator: options.separate && !separatedStemInput
   };
+}
+
+function withDefaultDesktopOutputDir(options: JobOptions, jobId: string): JobOptions {
+  if (options.outputDir.trim()) {
+    return options;
+  }
+  return {
+    ...options,
+    outputDir: path.join(defaultDesktopOutputRoot(), packageOutputFolderName(options.input, jobId))
+  };
+}
+
+function defaultDesktopOutputRoot(): string {
+  return path.join(homedir(), "Downloads", "VocalFlow Studio");
+}
+
+function packageOutputFolderName(input: string, jobId: string): string {
+  const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const label = sanitizeOutputFolderLabel(outputLabelFromInput(input));
+  return `${label}-${timestamp}-${jobId.slice(0, 8)}`;
+}
+
+function outputLabelFromInput(input: string): string {
+  const trimmed = normalizeMediaInput(input.trim());
+  if (!trimmed) {
+    return "package";
+  }
+
+  if (isHttpUrl(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const host = url.hostname.replace(/^www\./, "").split(".")[0] || "url";
+      const id =
+        url.searchParams.get("v") ??
+        url.pathname.split("/").filter(Boolean).at(-1) ??
+        "package";
+      return `${host}-${id}`;
+    } catch {
+      return "url-package";
+    }
+  }
+
+  return path.basename(trimmed, path.extname(trimmed));
+}
+
+function sanitizeOutputFolderLabel(value: string): string {
+  const cleaned = value
+    .replace(/[<>:"/\\|?*\u0000-\u001F]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 72)
+    .replace(/\s/g, "-");
+  return cleaned || "package";
 }
 
 function normalizeMediaInput(input: string): string {
@@ -3055,6 +3202,18 @@ function normalizeMediaInput(input: string): string {
     return `https://www.bilibili.com/video/${value}`;
   }
   return value;
+}
+
+function isLikelySeparatedStemInput(input: string): boolean {
+  if (!input || isHttpUrl(input)) {
+    return false;
+  }
+  const ext = path.extname(input).toLowerCase();
+  if (!mediaExtensions.has(ext)) {
+    return false;
+  }
+  const basename = path.basename(input, ext);
+  return /(^|[_\s([.-])(vocals?|voice|acapella|instrumental|inst|no[_\s-]?vocals?|backing|karaoke)([_\s)\].-]|$)/i.test(basename);
 }
 
 function runtimeVenvDir(): string {
@@ -3277,15 +3436,8 @@ function formatSpawnError(error: Error, command: string): string {
  *
  * Centralized so the renderer never sets `--word-engine` directly.
  */
-function pickWordEngine(model: string): "auto" | "faster_whisper" {
-  const normalized = model.trim().toLowerCase();
-  if (!normalized) {
-    return "auto";
-  }
-  if (normalized.includes("turbo")) {
-    return "faster_whisper";
-  }
-  return "auto";
+function pickWordEngine(_model: string): "faster_whisper" {
+  return "faster_whisper";
 }
 
 function buildAudioSubtitlesArgs(options: JobOptions): string[] {
@@ -3294,7 +3446,7 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
     throw new Error("Input is required.");
   }
 
-  const formats = normalizeFormats(options.formats);
+  const formats: OutputFormat[] = options.workflowMode === "karaoke" ? ["lrc"] : normalizeFormats(options.formats);
   const args: string[] = [];
 
   if (options.outputDir.trim()) {
@@ -3305,11 +3457,8 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
   const modelArg = options.model || "medium";
   args.push("--model", modelArg);
   args.push("--formats", formats.join(","));
-  // Model-aware engine choice. faster-whisper (CTranslate2) is 4-12× faster
-  // than whisper-timestamped on large-v3-turbo because it skips the per-word
-  // cross-attention alignment pass + multi-temperature fallback. For older
-  // models, alignment quality matters more, so we keep `auto` (which prefers
-  // whisper-timestamped). See AGENT.md → "Whisper engine selection".
+  // Desktop jobs should prioritize responsiveness. faster-whisper avoids the
+  // slow whisper-timestamped alignment path while still producing word timing.
   args.push("--word-engine", pickWordEngine(modelArg));
 
   if (options.language.trim()) {
@@ -3374,11 +3523,8 @@ function shouldSaveAudio(options: JobOptions): boolean {
   return isHttpUrl(input) || isVideoInput(input);
 }
 
-function shouldSaveVideoPreview(options: JobOptions): boolean {
-  if (options.workflowMode !== "karaoke") {
-    return false;
-  }
-  return isHttpUrl(options.input.trim());
+function shouldSaveVideoPreview(_options: JobOptions): boolean {
+  return false;
 }
 
 function isPreviewVideo(filePath: string): boolean {

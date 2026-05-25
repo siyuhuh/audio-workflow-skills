@@ -87,13 +87,13 @@ function createFallbackTexture(title: string): THREE.CanvasTexture {
   return texture;
 }
 
-function useAlbumTexture(coverUrl: string | null, title: string) {
+function useAlbumTexture(coverUrl: string | null, title: string, active: boolean) {
   const fallbackTexture = useMemo(() => createFallbackTexture(title), [title]);
   const [texture, setTexture] = useState<THREE.Texture>(fallbackTexture);
 
   useEffect(() => {
     setTexture(fallbackTexture);
-    if (!coverUrl) {
+    if (!coverUrl || !active) {
       return undefined;
     }
 
@@ -117,7 +117,7 @@ function useAlbumTexture(coverUrl: string | null, title: string) {
       video.load();
       videoTexture.dispose();
     };
-  }, [coverUrl, fallbackTexture]);
+  }, [coverUrl, fallbackTexture, active]);
 
   useEffect(() => () => fallbackTexture.dispose(), [fallbackTexture]);
 
@@ -171,6 +171,21 @@ function HoloPlane({ active, texture }: HoloPlaneProps) {
     material.uniforms.uTexture.value = texture;
   }, [material, texture]);
 
+  useEffect(() => {
+    if (active) {
+      return;
+    }
+    activeValueRef.current = 0;
+    material.uniforms.uTime.value = 0;
+    material.uniforms.uActive.value = 0;
+    if (groupRef.current) {
+      groupRef.current.rotation.x = -0.035;
+      groupRef.current.rotation.y = 0.04;
+      groupRef.current.rotation.z = 0;
+      groupRef.current.position.z = 0;
+    }
+  }, [active, material]);
+
   useFrame((_, delta) => {
     activeValueRef.current = THREE.MathUtils.damp(activeValueRef.current, active ? 1 : 0, 5.5, delta);
     material.uniforms.uTime.value += delta;
@@ -204,7 +219,7 @@ function HoloPlane({ active, texture }: HoloPlaneProps) {
 export function AlbumHoloCard({ title, coverUrl, active: controlledActive, className }: AlbumHoloCardProps) {
   const [hovered, setHovered] = useState(false);
   const active = controlledActive ?? hovered;
-  const texture = useAlbumTexture(coverUrl, title);
+  const texture = useAlbumTexture(coverUrl, title, active);
 
   return (
     <div
@@ -216,8 +231,9 @@ export function AlbumHoloCard({ title, coverUrl, active: controlledActive, class
     >
       <Canvas
         camera={{ position: [0, 0, 5.2], fov: 44 }}
-        dpr={[1, 1.5]}
-        gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
+        dpr={1}
+        frameloop={active ? "always" : "demand"}
+        gl={{ alpha: true, antialias: false, powerPreference: "low-power" }}
       >
         <ambientLight intensity={1.2} />
         <directionalLight position={[3, 4, 4]} intensity={1.6} />

@@ -61,8 +61,7 @@ export function KaraokeReview({
   const previousCue = activeCueIndex > 0 ? cues[activeCueIndex - 1] : null;
   const nextCue = activeCueIndex >= 0 ? cues[activeCueIndex + 1] : cues[0] ?? null;
   const hasBacking = playableAssets.some((asset) => asset.role === "backing");
-  const hasVocal = playableAssets.some((asset) => asset.role === "vocal");
-  const stemReady = hasBacking && hasVocal;
+  const stemReady = hasBacking;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">

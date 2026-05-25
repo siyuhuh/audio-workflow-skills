@@ -1,8 +1,8 @@
 {
   "current": "当前歌曲包",
   "openPackage": "打开歌曲包",
-  "splitVocals": "分离人声",
-  "splitRunning": "分离中…",
+  "splitVocals": "生成伴奏",
+  "splitRunning": "生成伴奏中…",
   "enterKaraoke": "进入演唱",
   "openOriginal": "打开原视频",
   "openFolder": "打开文件夹",
@@ -20,18 +20,18 @@
   "noLocalMedia": "当前 review 没有可用的本地媒体。",
   "playToFollow": "播放媒体后可跟随当前歌词。",
   "split": {
-    "ready": "人声分离已就绪",
-    "missing": "这个歌曲包还没有分离分轨",
-    "readyHint": "可在演唱房间切换原曲和伴奏；仅人声放在房间选项里。",
-    "missingHint": "运行卡拉 OK 任务前开启人声分离。"
+    "ready": "伴奏已就绪",
+    "missing": "这个歌曲包还没有伴奏",
+    "readyHint": "可在演唱房间切换原曲和伴奏，歌词会共用同一份。",
+    "missingHint": "运行卡拉 OK 任务前开启生成伴奏。"
   },
   "badges": {
     "localPlayback": "本地播放",
     "playbackMissing": "缺少播放资源",
-    "backingStem": "伴奏分轨",
-    "vocalStem": "人声分轨",
+    "backingStem": "伴奏",
+    "vocalStem": "人声",
     "videoPreview": "视频预览",
-    "stems": "分轨",
+    "stems": "伴奏",
     "original": "原曲",
     "lyrics": "歌词",
     "noLyrics": "无歌词",

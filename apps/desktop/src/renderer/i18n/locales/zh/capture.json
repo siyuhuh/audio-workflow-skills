@@ -17,7 +17,7 @@
       "platformLanguages": "平台字幕语言",
       "browserCookies": "浏览器 cookies",
       "cookiesFile": "cookies.txt",
-      "vocalSplit": "人声分离",
+      "vocalSplit": "生成伴奏",
       "localFallback": "本地回退",
       "keepRawVtt": "保留原始 VTT",
       "playableAudioAuto": "自动保留可播放音频",
@@ -64,8 +64,8 @@
     "bilibili": "Bilibili",
     "placeholder": "歌手、歌名或关键词",
     "appendKaraoke": "偏向伴奏版",
-    "splitVocalsDefault": "分离人声",
-    "karaokeSplitWarning": "卡拉 OK 版本通常已经去掉主唱。如果同时分离人声，分轨和字幕生成可能失败；需要人声时建议关闭“偏向卡拉 OK 版本”。",
+    "splitVocalsDefault": "生成伴奏",
+    "karaokeSplitWarning": "卡拉 OK 版本通常已经去掉主唱。如果再生成伴奏，可能得不到更好的结果；需要原唱转写时建议关闭“偏向伴奏版”。",
     "useThisLink": "使用此链接",
     "openInBrowser": "在浏览器打开",
     "noResults": "没有匹配的视频，试试换个关键词。",
@@ -128,8 +128,8 @@
       "body": "运行安装命令准备好本地模型。"
     },
     "separatorMissing": {
-      "title": "缺少分轨工具",
-      "body": "可以暂时关闭人声分离继续，或运行安装命令补全。"
+      "title": "缺少伴奏生成工具",
+      "body": "可以暂时关闭伴奏生成继续，或运行安装命令补全。"
     },
     "ffmpegMissing": {
       "title": "缺少 ffmpeg",
@@ -156,7 +156,7 @@
       "enableLocalFallback": "改用本地转写",
       "waitAndRetry": "知道了",
       "copySetupCommand": "复制安装命令",
-      "disableSeparation": "关闭人声分离",
+      "disableSeparation": "关闭伴奏生成",
       "retry": "重试",
       "openOutputFolder": "打开输出文件夹",
       "copyLog": "复制日志",
@@ -171,8 +171,8 @@
   },
   "warn": {
     "separationSkipped": {
-      "title": "人声分离已跳过",
-      "body": "已用原始音频继续生成字幕。可以在「高级」里关闭分离、安装 audio-separator，或复制日志排查原因。"
+      "title": "伴奏生成已跳过",
+      "body": "已用原始音频继续生成字幕。可以在「高级」里关闭伴奏生成、安装 audio-separator，或复制日志排查原因。"
     }
   },
   "notify": {
@@ -188,7 +188,7 @@
       "metadata": "读取元信息",
       "captions": "下载字幕",
       "audio": "音频",
-      "separation": "分离人声",
+      "separation": "生成伴奏",
       "transcribe": "转写中",
       "writeOutputs": "导出文件",
       "manifest": "保存包"

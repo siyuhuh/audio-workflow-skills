@@ -34,7 +34,7 @@
   },
   "home": {
     "title": "把任意链接变成你的私人练唱房。",
-    "subtitle": "贴入歌曲、拖入文件，或直接搜索全网。VocalFlow 会把同步歌词、人声分离、播放和可导出的字幕打包成本地歌曲包。",
+    "subtitle": "贴入歌曲、拖入文件，或直接搜索全网。VocalFlow 会把原曲、伴奏和同步歌词打包成本地歌曲包。",
     "captureHint": "把一首歌放进工作室",
     "kicker": "为创作者准备的卡拉 OK 工作室",
     "addKicker": "添加新歌曲",
@@ -63,7 +63,7 @@
     "ffmpeg": "缺少或无法使用 ffmpeg。请安装 ffmpeg，或重新安装 VocalFlow。",
     "whisper": "本地转写环境尚未准备好。请先准备 Whisper 运行环境。",
     "whisperTimestamped": "尚未安装逐字对齐依赖；可安装 whisper-timestamped，或使用更快的 fallback。",
-    "separator": "人声分离环境尚未准备好。请安装 audio-separator，或本次关闭人声分离。",
+    "separator": "伴奏生成环境尚未准备好。请安装 audio-separator，或本次关闭伴奏生成。",
     "noPlatformSubtitles": "没有找到平台字幕。请开启本地 fallback，或改用本地转写。",
     "cookies": "这个视频可能需要浏览器 cookies 或登录。请在桌面选项中添加浏览器 cookies 后重试。",
     "unsupportedMedia": "这个输入不是支持的媒体文件。请使用音频、视频、文件夹或受支持的链接。"

@@ -9,7 +9,7 @@ import type {
 /**
  * Stable identity for a song package. Allows dedup across:
  *  - the same YouTube/Bilibili URL imported twice
- *  - a "split vocals" rerun on the existing package
+ *  - a backing-track rerun on the existing package
  *  - the same local file dropped twice
  *
  * The `key` is the canonical id used for grouping. `origin` and `rawInput`

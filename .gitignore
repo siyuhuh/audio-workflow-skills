@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .venv/
 node_modules/
+.build/
+.swiftpm/
 dist/
 build/
 !apps/desktop/build/

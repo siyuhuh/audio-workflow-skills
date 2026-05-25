@@ -1,8 +1,8 @@
 {
   "current": "Current package",
   "openPackage": "Open package",
-  "splitVocals": "Split vocals",
-  "splitRunning": "Splitting…",
+  "splitVocals": "Create backing",
+  "splitRunning": "Creating backing…",
   "enterKaraoke": "Enter Karaoke",
   "openOriginal": "Open original",
   "openFolder": "Open folder",
@@ -20,18 +20,18 @@
   "noLocalMedia": "No local media available for this review.",
   "playToFollow": "Play media to follow the lyric line.",
   "split": {
-    "ready": "Vocal split ready",
-    "missing": "No separated stems in this package",
-    "readyHint": "Use Karaoke Room to switch Original and Backing; Vocal only is tucked into Room options.",
-    "missingHint": "Turn on Vocal split before running a Karaoke job."
+    "ready": "Backing track ready",
+    "missing": "No backing track in this package",
+    "readyHint": "Use Karaoke Room to switch Original and Backing; both share the same lyrics.",
+    "missingHint": "Turn on backing creation before running a Karaoke job."
   },
   "badges": {
     "localPlayback": "Local playback",
     "playbackMissing": "Playback missing",
-    "backingStem": "Backing stem",
+    "backingStem": "Backing",
     "vocalStem": "Vocal stem",
     "videoPreview": "Video preview",
-    "stems": "Stems",
+    "stems": "Backing",
     "original": "Original",
     "lyrics": "Lyrics",
     "noLyrics": "No lyrics",

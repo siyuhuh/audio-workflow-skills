@@ -331,7 +331,7 @@ function uniqueStrings(values: string[]): string[] {
 function resourceEntryScore(entry: SavedJobHistory): number {
   const hasPlayableLyrics = entry.playbackBundle.controllable && Boolean(entry.primarySubtitle);
   const hasVideo = Boolean(packageVideoPathForReview(entry));
-  const hasStems = entry.assets.some((asset) => asset.exists && (asset.role === "backing" || asset.role === "vocal"));
+  const hasStems = entry.assets.some((asset) => asset.exists && asset.role === "backing");
   return Number(hasPlayableLyrics) * 100 + Number(entry.playbackBundle.controllable) * 60 + Number(entry.primarySubtitle) * 20 + Number(hasStems) * 10 + Number(hasVideo) * 5 + Date.parse(entry.createdAt) / 1000000000000;
 }
 

@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 
 
 # Force line-buffered text I/O so the desktop main process sees progress lines
-# (yt-dlp --newline, ffmpeg -progress pipe:2, our own emit_progress envelopes,
+# (yt-dlp --newline, ffmpeg -progress pipe:1, our own emit_progress envelopes,
 # faster-whisper per-segment events) the moment they are produced rather than
 # waiting for a full block buffer to flush. Belt-and-suspenders for older
 # Pythons and for environments where stdout/stderr are not a TTY.
@@ -170,35 +170,46 @@ def main() -> int:
     cleanups.append(source_cleanup)
     emit_progress("download", progress=1.0, message="Media ready", done=True)
     if args.separate:
-        emit_progress("separate", progress=0.0, message="Separating vocals")
-        try:
-            source = separate_source(source, output_dir, args)
-            emit_progress("separate", progress=1.0, done=True)
-        except subprocess.CalledProcessError as exc:
-            # Vocal separation is an enhancement, not a hard requirement.
-            # Common runtime failures here: audio-separator's first-run model
-            # download (HF Hub flaky for some networks), ONNX runtime version
-            # mismatch, or model file corruption. Falling back to the original
-            # source still yields usable lyrics + karaoke-ready outputs; the
-            # only thing the user loses is isolated vocal/instrumental stems.
-            warning = (
-                f"Vocal separation failed (audio-separator exit {exc.returncode}); "
-                "continuing with original source so subtitles can still be produced."
-            )
-            print(warning, file=sys.stderr)
-            emit_progress(
-                "separate",
-                progress=1.0,
-                failed=True,
-                done=True,
-                message="Separation skipped",
-            )
-        except SystemExit:
-            # Missing-binary / no-output paths re-raise so the desktop app's
-            # error classifier can surface a localized "install audio-separator"
-            # hint instead of silently degrading the output.
-            emit_progress("separate", progress=1.0, failed=True, done=True)
-            raise
+        stem_kind = separated_stem_kind(source)
+        if stem_kind is not None:
+            replacement = choose_vocal_sibling(source) if stem_kind == "instrumental" else None
+            if replacement is not None:
+                source = replacement
+                message = "Input was an instrumental stem; using sibling vocal stem"
+            else:
+                message = "Input is already a separated stem; skipping separation"
+            print(message, file=sys.stderr)
+            emit_progress("separate", progress=1.0, done=True, message=message)
+        else:
+            emit_progress("separate", progress=0.0, message="Separating vocals")
+            try:
+                source = separate_source(source, output_dir, args)
+                emit_progress("separate", progress=1.0, done=True)
+            except subprocess.CalledProcessError as exc:
+                # Vocal separation is an enhancement, not a hard requirement.
+                # Common runtime failures here: audio-separator's first-run model
+                # download (HF Hub flaky for some networks), ONNX runtime version
+                # mismatch, or model file corruption. Falling back to the original
+                # source still yields usable lyrics + karaoke-ready outputs; the
+                # only thing the user loses is isolated vocal/instrumental stems.
+                warning = (
+                    f"Vocal separation failed (audio-separator exit {exc.returncode}); "
+                    "continuing with original source so subtitles can still be produced."
+                )
+                print(warning, file=sys.stderr)
+                emit_progress(
+                    "separate",
+                    progress=1.0,
+                    failed=True,
+                    done=True,
+                    message="Separation skipped",
+                )
+            except SystemExit:
+                # Missing-binary / no-output paths re-raise so the desktop app's
+                # error classifier can surface a localized "install audio-separator"
+                # hint instead of silently degrading the output.
+                emit_progress("separate", progress=1.0, failed=True, done=True)
+                raise
     base_name = safe_stem(source)
     emit_progress("convert", progress=0.0, message="Converting to 16 kHz mono")
     audio_path, cleanup = prepare_audio(source, output_dir, base_name, args.save_audio)
@@ -327,6 +338,29 @@ def choose_stem(candidates: list[Path], stem: str) -> Path:
     if stem in {"vocals", "instrumental"} and best_score < 50:
         raise SystemExit(f"No likely {stem} stem found. Pass the exact file instead.")
     return best_path
+
+
+def separated_stem_kind(path: Path) -> str | None:
+    vocal_score = stem_score(path, "vocals")
+    instrumental_score = stem_score(path, "instrumental")
+    if vocal_score >= 50 and vocal_score > instrumental_score:
+        return "vocals"
+    if instrumental_score >= 50 and instrumental_score > vocal_score:
+        return "instrumental"
+    return None
+
+
+def choose_vocal_sibling(path: Path) -> Path | None:
+    candidates = [p for p in path.parent.iterdir() if p.is_file() and p.suffix.lower() in MEDIA_EXTS]
+    if not candidates:
+        return None
+
+    try:
+        vocal = choose_stem(candidates, "vocals")
+    except SystemExit:
+        return None
+
+    return vocal if vocal.resolve() != path.resolve() else None
 
 
 def stem_score(path: Path, stem: str) -> int:
@@ -871,8 +905,17 @@ def separate_source(source: Path, output_dir: Path, args: argparse.Namespace) ->
         model_dir = Path(args.separator_model_dir).expanduser()
         model_dir.mkdir(parents=True, exist_ok=True)
         cmd.extend(["--model_file_dir", str(model_dir)])
+    started_at = time.time()
     subprocess.run(cmd, check=True)
-    after = [path for path in stems_dir.rglob("*") if path.is_file() and path.resolve() not in before]
+    after = [
+        path
+        for path in stems_dir.rglob("*")
+        if path.is_file()
+        and (
+            path.resolve() not in before
+            or path.stat().st_mtime >= started_at - 2
+        )
+    ]
     candidates = [path for path in after if path.suffix.lower() in MEDIA_EXTS]
     if not candidates:
         candidates = [path for path in stems_dir.rglob("*") if path.is_file() and path.suffix.lower() in MEDIA_EXTS]
@@ -917,15 +960,39 @@ def prepare_audio(source: Path, output_dir: Path, base_name: str, save_audio: bo
     return audio_path, temp_dir.cleanup
 
 
+def probe_duration_seconds(source: Path) -> float | None:
+    if shutil.which("ffprobe") is None:
+        return None
+
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(source),
+    ]
+    try:
+        result = subprocess.run(cmd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        duration = float(result.stdout.strip())
+        return duration if duration > 0 else None
+    except Exception:
+        return None
+
+
 def convert_audio(source: Path, target: Path) -> None:
+    duration = probe_duration_seconds(source)
     cmd = [
         "ffmpeg",
+        "-nostdin",
         "-hide_banner",
         "-loglevel",
         "warning",
         "-y",
         "-progress",
-        "pipe:2",
+        "pipe:1",
         "-nostats",
         "-i",
         str(source),
@@ -938,7 +1005,52 @@ def convert_audio(source: Path, target: Path) -> None:
         "pcm_s16le",
         str(target),
     ]
-    subprocess.run(cmd, check=True)
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    stderr_buffer, tee_thread = _tee_stderr_to_real_stderr(proc)
+    stdout_lines: list[str] = []
+    last_emit_at = 0.0
+
+    try:
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                stdout_lines.append(line)
+                key, _, value = line.strip().partition("=")
+                if key not in {"out_time_ms", "out_time_us"}:
+                    continue
+
+                try:
+                    current = float(value) / 1_000_000.0
+                except ValueError:
+                    continue
+
+                now = time.monotonic()
+                if duration and now - last_emit_at >= 0.5:
+                    emit_progress(
+                        "convert",
+                        progress=min(0.99, current / duration),
+                        message=f"{current:.0f}s / {duration:.0f}s",
+                    )
+                    last_emit_at = now
+    finally:
+        if proc.stdout is not None:
+            proc.stdout.close()
+
+    returncode = proc.wait()
+    tee_thread.join()
+    if proc.stderr is not None:
+        proc.stderr.close()
+
+    stderr_text = "".join(stderr_buffer)
+    stdout_text = "".join(stdout_lines)
+    if returncode != 0:
+        raise subprocess.CalledProcessError(returncode, cmd, stdout_text, stderr_text)
 
 
 @dataclass

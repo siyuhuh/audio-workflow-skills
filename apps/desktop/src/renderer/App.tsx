@@ -95,7 +95,7 @@ function ProcessedResourceCardEntry({ entry, onEnter, onReview, onDelete }: Proc
   const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
   const isSample = isSampleHistoryEntry(entry);
   const hasStems = entry.assets.some(
-    (asset) => asset.exists && (asset.role === "backing" || asset.role === "vocal")
+    (asset) => asset.exists && asset.role === "backing"
   );
   const hasLyrics = Boolean(entry.primarySubtitle);
   const coverPath =
@@ -233,12 +233,12 @@ const defaultOptions: JobOptions = {
   separate: true,
   saveAudio: false,
   keepPlatformSubs: false,
-  model: "large-v3-turbo",
+  model: "small",
   language: "",
   subLangs: "",
   browser: "",
   cookies: "",
-  formats: ["lrc", "json", "ass"]
+  formats: ["lrc"]
 };
 
 function isAccentColor(value: unknown): value is AccentColor {
@@ -830,7 +830,7 @@ export default function App() {
               case "disableSeparation":
                 // One-shot recovery: re-run THIS job without separation, but
                 // leave the checkbox checked so the next paste defaults back
-                // to "split vocals" (which is what users want — the disable
+                // to "create backing" (the normal karaoke default). The disable
                 // toast is for when separation flaked once, not a permanent
                 // preference change).
                 runJobRef.current?.({ separate: false });
@@ -1001,7 +1001,7 @@ export default function App() {
 
   useEffect(() => {
     const nextSubtitle = selectReviewSubtitlePath(activeReview, subtitleAssets);
-    const nextRole: TrackRole = trackAssets.backing ? "backing" : trackAssets.original ? "original" : trackAssets.vocal ? "vocal" : "custom";
+    const nextRole: TrackRole = trackAssets.backing ? "backing" : trackAssets.original ? "original" : "custom";
     const nextMedia =
       nextRole === "custom"
         ? playbackBundle?.localAudioPath ?? playbackBundle?.localVideoPath ?? activeReview?.primaryMedia ?? playbackAssets[0]?.path ?? ""
@@ -1130,7 +1130,7 @@ export default function App() {
       localFallback: workflowMode === "karaoke",
       separate: workflowMode === "karaoke",
       saveAudio: false,
-      formats: workflowMode === "karaoke" ? ["lrc", "json", "ass"] : ["srt"]
+      formats: workflowMode === "karaoke" ? ["lrc"] : ["srt"]
     });
   }
 
@@ -1255,12 +1255,12 @@ export default function App() {
   }
 
   async function runJob(overrides: Partial<JobOptions> = {}): Promise<JobResult | null> {
-    const runOptions = { ...options, ...overrides };
+    const jobId = crypto.randomUUID();
+    const runOptions = withPackageOutputDir({ ...options, ...overrides }, jobId, overrides);
     if (!runOptions.input.trim() || isRunning) {
       return null;
     }
 
-    const jobId = crypto.randomUUID();
     const nextJob: JobRecord = {
       id: jobId,
       input: runOptions.input,
@@ -1328,8 +1328,8 @@ export default function App() {
 
       if (nextStatus === "complete" && result.historyEntry) {
         // Surface a success toast — and warn when an enhancement stage was
-        // silently skipped (e.g. vocal separation falling back to original
-        // source) so the user understands why their package lacks stems.
+        // silently skipped (e.g. backing creation falling back to original
+        // source) so the user understands why their package lacks backing.
         const skippedStages: string[] = [];
         for (const [name, stage] of progressStagesRef.current.entries()) {
           if (stage.failed) {
@@ -1439,7 +1439,7 @@ export default function App() {
         input: item.input,
         workflowMode: "karaoke",
         localFallback: true,
-        formats: ["lrc", "json", "ass"]
+        formats: ["lrc"]
       });
       const complete = Boolean(result && statusFromResult(result) === "complete");
       setRoomStatus(
@@ -1618,20 +1618,15 @@ export default function App() {
     if (!activeReview || isRunning) {
       return;
     }
-    const reusableAudio =
-      activeReview.assets.find((asset) => asset.exists && asset.role === "original" && isAudioPath(asset.path))?.path ??
-      activeReview.playbackBundle.localAudioPath ??
-      activeReview.primaryMedia ??
-      activeReview.assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && isAudioPath(asset.path))?.path ??
-      activeReview.input;
+    const splitSource = splitSourceForReview(activeReview);
     void runJob({
-      input: reusableAudio,
+      input: splitSource.input,
       workflowMode: "karaoke",
-      separate: true,
+      separate: splitSource.separate,
       localFallback: true,
       saveAudio: true,
       outputDir: activeReview.outputDir,
-      formats: ensureKaraokeFormats(options.formats)
+      formats: ensureKaraokeFormats()
     });
   }
 
@@ -2166,7 +2161,7 @@ export default function App() {
                       </Button>
                       <Button
                         onClick={splitActiveReview}
-                        disabled={isRunning || Boolean(trackAssets.backing && trackAssets.vocal)}
+                        disabled={isRunning || Boolean(trackAssets.backing)}
                       >
                         {t("package:splitVocals")}
                       </Button>
@@ -2348,18 +2343,26 @@ export default function App() {
                   />
                 </div>
 
-                <div className="flex flex-wrap gap-2" aria-label={t("capture:advanced.fields.outputFormats")}>
-                  {allFormats.map((format) => (
-                    <Button
-                      key={format}
-                      size="sm"
-                      selected={options.formats.includes(format)}
-                      onClick={() => toggleFormat(format)}
-                    >
-                      {format.toUpperCase()}
+                {options.workflowMode === "subtitle" ? (
+                  <div className="flex flex-wrap gap-2" aria-label={t("capture:advanced.fields.outputFormats")}>
+                    {allFormats.map((format) => (
+                      <Button
+                        key={format}
+                        size="sm"
+                        selected={options.formats.includes(format)}
+                        onClick={() => toggleFormat(format)}
+                      >
+                        {format.toUpperCase()}
+                      </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2" aria-label={t("capture:advanced.fields.outputFormats")}>
+                    <Button size="sm" selected disabled>
+                      LRC
                     </Button>
-                  ))}
-                </div>
+                  </div>
+                )}
 
                 <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                   <Field label={t("capture:advanced.fields.outputFolder")}>
@@ -3144,14 +3147,8 @@ function upsertHistoryEntry(current: SavedJobHistory[], entry: SavedJobHistory):
   ];
 }
 
-function ensureKaraokeFormats(formats: OutputFormat[]): OutputFormat[] {
-  const nextFormats = [...formats];
-  for (const format of ["lrc", "json", "ass"] as OutputFormat[]) {
-    if (!nextFormats.includes(format)) {
-      nextFormats.push(format);
-    }
-  }
-  return nextFormats;
+function ensureKaraokeFormats(): OutputFormat[] {
+  return ["lrc"];
 }
 
 function playbackSummary(bundle: PlaybackBundle): string {
@@ -3349,10 +3346,9 @@ function findActiveCue(cues: Cue[], time: number): number {
 }
 
 function buildTrackAssets(assets: GeneratedAsset[]): TrackAssets {
-  const mediaAssets = assets.filter((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && !isPreviewVideoPath(asset.path));
+  const mediaAssets = assets.filter((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && !isPreviewVideoPath(asset.path) && asset.role !== "transcribe" && asset.role !== "vocal");
   const audioAssets = mediaAssets.filter((asset) => isAudioPath(asset.path));
   const backing = audioAssets.find((asset) => asset.role === "backing") ?? audioAssets.find((asset) => /instrumental|no[_-]?vocals?|accompaniment|karaoke/i.test(asset.name)) ?? null;
-  const vocal = audioAssets.find((asset) => asset.role === "vocal") ?? audioAssets.find((asset) => /(^|[^a-z])(vocals?|voice|acapella)([^a-z]|$)/i.test(asset.name)) ?? null;
   const original =
     audioAssets.find((asset) => asset.role === "original") ??
     audioAssets.find((asset) => asset.type === "media" && !/\.transcribe\.(wav|mp3|m4a|flac)$/i.test(asset.name)) ??
@@ -3363,12 +3359,12 @@ function buildTrackAssets(assets: GeneratedAsset[]): TrackAssets {
   return {
     original,
     backing,
-    vocal
+    vocal: null
   };
 }
 
 function scopePlayableAssetsToReview(activeReview: SavedJobHistory | null, assets: GeneratedAsset[]): GeneratedAsset[] {
-  const playableAssets = assets.filter((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && !isPreviewVideoPath(asset.path));
+  const playableAssets = assets.filter((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && !isPreviewVideoPath(asset.path) && asset.role !== "transcribe" && asset.role !== "vocal");
   if (!activeReview) {
     return playableAssets;
   }
@@ -3408,6 +3404,107 @@ function isAudioPath(filePath: string): boolean {
   return /\.(wav|waw|mp3|m4a|flac|aac|ogg|opus|aiff|aif)$/i.test(filePath);
 }
 
+function isLikelySeparatedStemPath(filePath: string): boolean {
+  const basename = filePath.split(/[\\/]/).pop() ?? filePath;
+  return /(^|[_\s([.-])(vocals?|voice|acapella|instrumental|inst|no[_\s-]?vocals?|backing|karaoke)([_\s)\].-]|$)/i.test(basename);
+}
+
+function withPackageOutputDir(runOptions: JobOptions, jobId: string, overrides: Partial<JobOptions>): JobOptions {
+  if (Object.prototype.hasOwnProperty.call(overrides, "outputDir")) {
+    return runOptions;
+  }
+
+  const outputRoot = runOptions.outputDir.trim();
+  if (!outputRoot) {
+    return runOptions;
+  }
+
+  return {
+    ...runOptions,
+    outputDir: `${trimTrailingPathSeparator(outputRoot)}/${packageOutputFolderName(runOptions.input, jobId)}`
+  };
+}
+
+function trimTrailingPathSeparator(value: string): string {
+  return value.replace(/[\\/]+$/, "");
+}
+
+function packageOutputFolderName(input: string, jobId: string): string {
+  const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const label = sanitizeOutputFolderLabel(outputLabelFromInput(input));
+  return `${label}-${timestamp}-${jobId.slice(0, 8)}`;
+}
+
+function outputLabelFromInput(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "package";
+  }
+
+  if (isHttpInput(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const host = url.hostname.replace(/^www\./, "").split(".")[0] || "url";
+      const id =
+        url.searchParams.get("v") ??
+        url.pathname.split("/").filter(Boolean).at(-1) ??
+        "package";
+      return `${host}-${id}`;
+    } catch {
+      return "url-package";
+    }
+  }
+
+  const basename = trimmed.split(/[\\/]/).pop() ?? trimmed;
+  return basename.replace(/\.[^.]+$/, "");
+}
+
+function sanitizeOutputFolderLabel(value: string): string {
+  const cleaned = value
+    .replace(/[<>:"/\\|?*\u0000-\u001F]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 72)
+    .replace(/\s/g, "-");
+  return cleaned || "package";
+}
+
+function isSeparatedStemAsset(asset: GeneratedAsset | undefined): boolean {
+  return Boolean(asset && (asset.role === "backing" || asset.role === "vocal" || isLikelySeparatedStemPath(asset.path)));
+}
+
+function splitSourceForReview(activeReview: SavedJobHistory): { input: string; separate: boolean } {
+  const originalAsset = activeReview.assets.find((asset) => asset.exists && asset.role === "original" && isAudioPath(asset.path));
+  if (originalAsset) {
+    return { input: originalAsset.path, separate: true };
+  }
+
+  if (activeReview.sourceUrl) {
+    return { input: activeReview.sourceUrl, separate: true };
+  }
+
+  if (isHttpInput(activeReview.input)) {
+    return { input: activeReview.input, separate: true };
+  }
+
+  if (activeReview.input && isAudioPath(activeReview.input) && !isLikelySeparatedStemPath(activeReview.input)) {
+    return { input: activeReview.input, separate: true };
+  }
+
+  const reusableMedia = activeReview.assets.find(
+    (asset) => asset.exists && asset.type === "media" && isAudioPath(asset.path) && !isSeparatedStemAsset(asset)
+  );
+  if (reusableMedia) {
+    return { input: reusableMedia.path, separate: true };
+  }
+
+  const fallbackStem = activeReview.assets.find(
+    (asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && isAudioPath(asset.path)
+  );
+  const fallbackInput = fallbackStem?.path ?? activeReview.input;
+  return { input: fallbackInput, separate: !isSeparatedStemAsset(fallbackStem) && !isLikelySeparatedStemPath(fallbackInput) };
+}
+
 function isHttpInput(value: string): boolean {
   try {
     const url = new URL(value);
@@ -3423,4 +3520,3 @@ function shouldAutoSaveAudio(options: JobOptions): boolean {
   }
   return isHttpInput(options.input.trim()) || isVideoPath(options.input.trim());
 }
-

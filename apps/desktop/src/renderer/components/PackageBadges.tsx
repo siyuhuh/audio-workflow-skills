@@ -5,7 +5,6 @@ interface PackageBadgesProps {
   playbackBundle: PlaybackBundle;
   trackAssets: {
     backing: unknown;
-    vocal: unknown;
   };
 }
 
@@ -16,7 +15,6 @@ export function PackageBadges({ playbackBundle, trackAssets }: PackageBadgesProp
       ? t("package:badges.localPlayback")
       : t("package:badges.playbackMissing"),
     trackAssets.backing ? t("package:badges.backingStem") : null,
-    trackAssets.vocal ? t("package:badges.vocalStem") : null,
     playbackBundle.videoPreviewPath ? t("package:badges.videoPreview") : null
   ].filter((badge): badge is string => Boolean(badge));
 
