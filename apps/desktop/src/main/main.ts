@@ -3496,6 +3496,14 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
       if (preferred) {
         args.push("--separator-model", preferred);
       }
+    } else {
+      // No UVR install and no bundled models. Without these flags
+      // audio-separator falls back to its (slow on CPU) roformer default and
+      // caches the download under /tmp, which is wiped on reboot — so users
+      // re-download the model on every run. Pin the fast MDX-Net model and a
+      // persistent cache dir instead; the CLI creates the dir itself.
+      args.push("--separator-model-dir", path.join(app.getPath("userData"), "separator-models", "cache"));
+      args.push("--separator-model", "UVR-MDX-NET-Inst_HQ_3.onnx");
     }
   }
   if (shouldSaveAudio(options)) {

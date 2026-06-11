@@ -98,10 +98,44 @@ final class KaraokePlayerService: ObservableObject {
         if let preferredItem = playlist.first {
             loadItem(preferredItem)
             status = "Loaded generated package."
-            return
+        } else {
+            loadPackageFolder(package.folderURL)
         }
 
-        loadPackageFolder(package.folderURL)
+        // Default to streaming the online MV when the package came from a URL
+        // and no local video file exists in the package.
+        if package.playback.videoURL == nil, case .url(let pageURL) = package.source {
+            resolveOnlineVideo(pageURL: pageURL, title: package.title, lyricURL: package.playback.lyricURL)
+        }
+    }
+
+    private func resolveOnlineVideo(pageURL: String, title: String, lyricURL: URL?) {
+        status = "Resolving online MV stream..."
+        let anchorItemID = selectedItemID
+
+        Task { [weak self] in
+            do {
+                let streamURL = try await OnlineStreamResolver.resolveStreamURL(for: pageURL)
+                guard let self else { return }
+                // Don't yank playback away if the user switched tracks meanwhile.
+                guard self.selectedItemID == anchorItemID else { return }
+
+                let item = PlaylistItem(
+                    id: "online:\(pageURL)",
+                    title: "\(title) (Online MV)",
+                    mediaURL: streamURL,
+                    lyricURL: lyricURL,
+                    isVideo: true
+                )
+                if !self.playlist.contains(where: { $0.id == item.id }) {
+                    self.playlist.insert(item, at: 0)
+                }
+                self.loadItem(item)
+                self.status = "Online MV ready."
+            } catch {
+                self?.status = "Online MV unavailable: \(error.localizedDescription)"
+            }
+        }
     }
 
     func togglePlayback() {

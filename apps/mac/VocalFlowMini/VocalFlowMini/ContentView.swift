@@ -81,7 +81,7 @@ struct ContentView: View {
                         Text("Create Package")
                             .font(.vocal(17, weight: .semibold))
                             .foregroundStyle(AppTheme.text)
-                        Text("URL or local media → audio → optional stems → lyrics.")
+                        Text("One-shot: link/media → vocal + backing stems → synced lyrics.")
                             .font(.vocal(12, weight: .medium))
                             .foregroundStyle(AppTheme.mutedText)
                     }

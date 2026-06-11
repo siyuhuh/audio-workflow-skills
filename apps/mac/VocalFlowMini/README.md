@@ -53,6 +53,8 @@ Use the `Create Package` card to paste a media URL or choose a local audio/video
 
 When the job succeeds, VocalFlow Mini scans the output folder, writes `vocalflow-package.json`, and loads the package into the karaoke player.
 
+For URL sources the MV is not downloaded. Instead the player resolves a direct stream URL with `yt-dlp -g` at playback time and streams the online MV in AVPlayer, with lyrics synced to the same timeline. If resolution fails (offline, region lock), playback falls back to the generated backing/vocal stems.
+
 ## Karaoke Package Folders
 
 Click `Choose Folder` and select a folder that contains a karaoke package. VocalFlow Mini scans the folder recursively for:

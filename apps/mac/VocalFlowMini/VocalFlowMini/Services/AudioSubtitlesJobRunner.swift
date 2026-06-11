@@ -10,6 +10,15 @@ struct JobRunnerEvent {
 }
 
 final class AudioSubtitlesJobRunner: @unchecked Sendable {
+    /// MDX-Net model: much faster than the default roformer on CPU while still
+    /// producing usable vocal/instrumental stems for karaoke practice.
+    static let fastSeparatorModel = "UVR-MDX-NET-Inst_HQ_3.onnx"
+
+    /// Persistent cache so audio-separator does not re-download its model to
+    /// /tmp on every run (the audio-separator default is wiped on reboot).
+    static let separatorModelDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/VocalFlowMini/separator-models", isDirectory: true)
+
     private let processLock = NSLock()
     private var activeProcess: Process?
 
@@ -44,6 +53,9 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
             ))))
             for diagnostic in runtime.diagnostics {
                 onEvent(JobRunnerEvent(kind: .log(diagnostic + "\n")))
+            }
+            for check in Self.preflightChecks(job: job, environment: runtime.environment) {
+                onEvent(JobRunnerEvent(kind: .log(check + "\n")))
             }
             onEvent(JobRunnerEvent(kind: .log(commandPreview(executableURL: invocation.executableURL, arguments: invocation.arguments) + "\n")))
         }
@@ -162,6 +174,8 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
         }
         if job.options.separateVocals {
             args.append("--separate")
+            args += ["--separator-model", Self.fastSeparatorModel]
+            args += ["--separator-model-dir", Self.separatorModelDirectory.path]
             if job.options.exportMp3 {
                 args += ["--separator-format", "MP3"]
             }
@@ -172,6 +186,38 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
 
         args.append(job.source.cliValue)
         return args
+    }
+
+    private static func preflightChecks(job: ProcessingJob, environment: [String: String]) -> [String] {
+        var lines: [String] = []
+
+        func locate(_ name: String) -> String? {
+            for directory in (environment["PATH"] ?? "").split(separator: ":") {
+                let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(name)
+                if FileManager.default.isExecutableFile(atPath: candidate.path) {
+                    return candidate.path
+                }
+            }
+            return nil
+        }
+
+        lines.append("[check] ffmpeg: " + (locate("ffmpeg") ?? "MISSING - brew install ffmpeg"))
+
+        if case .url = job.source {
+            lines.append("[check] yt-dlp: " + (locate("yt-dlp") ?? "MISSING - brew install yt-dlp"))
+        }
+
+        if job.options.separateVocals {
+            lines.append("[check] audio-separator: " + (locate("audio-separator") ?? "MISSING - run setup_audio_separator.sh"))
+            let modelFile = separatorModelDirectory.appendingPathComponent(fastSeparatorModel)
+            if FileManager.default.fileExists(atPath: modelFile.path) {
+                lines.append("[check] separator model cached: \(modelFile.path)")
+            } else {
+                lines.append("[check] separator model \(fastSeparatorModel) not cached yet; first run downloads it once to \(separatorModelDirectory.path)")
+            }
+        }
+
+        return lines
     }
 
     private func commandPreview(executableURL: URL, arguments: [String]) -> String {

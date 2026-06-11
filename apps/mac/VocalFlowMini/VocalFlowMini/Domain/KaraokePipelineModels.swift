@@ -59,14 +59,14 @@ enum SubtitleSource: String, CaseIterable, Codable, Identifiable {
 
 struct ProcessingOptions: Codable, Equatable {
     var separateVocals = true
-    var saveVideoPreview = true
-    var saveAudio = true
+    var saveVideoPreview = false
+    var saveAudio = false
     var exportMp3 = true
     var localFallback = true
     var subtitleSource: SubtitleSource = .auto
     var model = "medium"
     var language = ""
-    var formats: [String] = ["lrc", "json", "srt", "ass"]
+    var formats: [String] = ["lrc", "json"]
 
     var normalizedLanguage: String? {
         let trimmed = language.trimmingCharacters(in: .whitespacesAndNewlines)
