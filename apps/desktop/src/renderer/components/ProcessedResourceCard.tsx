@@ -45,7 +45,7 @@ export function ProcessedResourceCard({
       whileHover={canEnter ? { y: -8, scale: 1.015 } : undefined}
       transition={{ type: "spring", stiffness: 420, damping: 30, mass: 0.8 }}
       className={cn(
-        "selectionTile group relative grid min-w-0 overflow-hidden rounded-lg bg-[#10110f] shadow-md",
+        "selectionTile group relative grid min-w-0 overflow-hidden rounded-lg bg-card shadow-md",
         "border transition-colors duration-200 ease-out",
         isSample
           ? "border-[color-mix(in_oklch,var(--secondary)_54%,var(--color-border))] bg-card"
@@ -71,7 +71,7 @@ export function ProcessedResourceCard({
         type="button"
         disabled={!canEnter}
         onClick={onEnter}
-        className="relative block w-full min-h-[210px] overflow-hidden border-0 bg-[#11130f] p-0 text-left text-white disabled:cursor-default disabled:opacity-100"
+        className="relative block w-full min-h-[210px] overflow-hidden border-0 bg-background p-0 text-left text-white disabled:cursor-default disabled:opacity-100"
       >
         <AlbumHoloCard title={title} coverUrl={coverUrl} active={focused} className="absolute inset-0" />
         <div className="absolute inset-0 grid content-end gap-1 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.1),transparent_34%,rgba(0,0,0,0.84)),linear-gradient(to_right,rgba(0,0,0,0.45),transparent)] p-3.5">

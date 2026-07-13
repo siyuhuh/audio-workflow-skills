@@ -470,6 +470,16 @@ struct ContentView: View {
                     )
                 }
 
+                if karaokePlayer.hasBackingTrack {
+                    ToggleRow(
+                        title: "Sing mode: MV + backing track",
+                        detail: "Play the MV muted with the instrumental stem. Turn off to hear the original vocals.",
+                        isOn: karaokePlayer.useBackingAudio
+                    ) {
+                        karaokePlayer.setUseBackingAudio($0)
+                    }
+                }
+
                 HStack(alignment: .top, spacing: 12) {
                     PackageSummaryView(
                         folderName: karaokePlayer.packageFolderName,

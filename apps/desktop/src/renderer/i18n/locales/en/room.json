@@ -66,6 +66,17 @@
     "noiseReduction": "Echo reduction",
     "noiseReductionHint": "Reduces feedback; may affect tone."
   },
+  "volumes": {
+    "title": "Volumes",
+    "backing": "Backing volume",
+    "vocal": "Vocal volume",
+    "backingShort": "Back",
+    "vocalShort": "Mic",
+    "muteBacking": "Mute backing",
+    "unmuteBacking": "Unmute backing",
+    "muteVocal": "Turn off mic monitor",
+    "enableVocal": "Turn on mic monitor"
+  },
   "editLyrics": "Edit lyrics",
   "noLocalTrack": "No local track",
   "noLocalAudio": "No local audio track available.",

@@ -61,7 +61,7 @@ export function FeaturedPackageCard({
         <Icon name="trash" />
       </button>
 
-      <div className="relative grid aspect-[16/10] min-h-[210px] place-items-stretch overflow-hidden rounded-lg bg-[#11130f]">
+      <div className="relative grid aspect-[16/10] min-h-[210px] place-items-stretch overflow-hidden rounded-lg bg-background">
         <AlbumHoloCard title={title} coverUrl={coverUrl} active={focused} className="absolute inset-0" />
         <span className="selectionPlayBadge">
           <Icon name="play" />

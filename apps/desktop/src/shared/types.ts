@@ -22,6 +22,8 @@ export interface JobOptions {
   separate: boolean;
   saveAudio: boolean;
   keepPlatformSubs: boolean;
+  /** Convert Traditional Chinese cue text to Simplified Chinese before writing outputs. */
+  simplifiedChinese: boolean;
   model: string;
   language: string;
   subLangs: string;
@@ -301,6 +303,13 @@ export interface AudioWorkflowApi {
    * concurrent requests for the same URL.
    */
   prefetchUrlMetadata?: (input: string) => Promise<UrlMetadataPreview | null>;
+  /**
+   * Resolve a media page URL into a direct stream URL playable by a
+   * `<video>` element (yt-dlp `-g`, progressive mp4 preferred). Returns
+   * `null` when resolution fails. Stream URLs expire; resolve at playback
+   * time and do not persist.
+   */
+  resolveStreamUrl?: (input: string) => Promise<string | null>;
   youtubeSearch: (query: string, opts?: { appendKaraoke?: boolean }) => Promise<YoutubeSearchResult[]>;
   bilibiliSearch: (query: string, opts?: { appendKaraoke?: boolean }) => Promise<YoutubeSearchResult[]>;
   getRoomStatus: () => Promise<RoomStatus>;

@@ -55,6 +55,8 @@ When the job succeeds, VocalFlow Mini scans the output folder, writes `vocalflow
 
 For URL sources the MV is not downloaded. Instead the player resolves a direct stream URL with `yt-dlp -g` at playback time and streams the online MV in AVPlayer, with lyrics synced to the same timeline. If resolution fails (offline, region lock), playback falls back to the generated backing/vocal stems.
 
+When the package has an instrumental stem, the MV plays in sing mode by default: the video is muted and the backing track supplies the audio, kept in sync with the video clock (drift corrected continuously). Use the "Sing mode" toggle to switch back to the MV's original vocals.
+
 ## Karaoke Package Folders
 
 Click `Choose Folder` and select a folder that contains a karaoke package. VocalFlow Mini scans the folder recursively for:

@@ -27,8 +27,8 @@
     "addTitle": "添加歌曲",
     "addEmpty": "粘贴链接、搜索媒体或选择文件",
     "karaokeTitle": "歌房",
-    "karaokeEmpty": "先选择一个歌曲包",
-    "ready": "可进入",
+    "karaokeEmpty": "先整理今晚的唱单",
+    "ready": "可演唱",
     "needsPackage": "需要歌曲包",
     "cached": "已有缓存"
   },
@@ -43,6 +43,22 @@
     "established": "Est. 2026",
     "navCapture": "采集",
     "navPractice": "选歌"
+  },
+  "room": {
+    "kicker": "今晚歌房",
+    "title": "先排好唱单，再上台。",
+    "subtitle": "在这里调整演唱顺序。准备好后点「开始演唱」进入舞台；首页选歌不会直接跳进演唱。",
+    "setlistLabel": "演唱顺序",
+    "setlistHint": "上移 / 下移调整顺序，点播放直接开唱。",
+    "startSinging": "开始演唱",
+    "reviewLyrics": "核对歌词",
+    "singThis": "演唱这首",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "ready": "可演唱",
+    "notReady": "缺少可播音轨或歌词",
+    "emptyTitle": "歌房还是空的。",
+    "emptyBody": "先去添加或选歌，再回到这里排今晚的唱单。"
   },
   "actions": {
     "run": "运行",

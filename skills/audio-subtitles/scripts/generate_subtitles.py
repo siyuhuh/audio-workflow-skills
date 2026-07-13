@@ -132,6 +132,7 @@ def main() -> int:
         if platform_result is not None:
             base_name, cues, metadata = platform_result
             emit_progress("download", progress=1.0, message="Platform subtitles ready", done=True)
+            cues = maybe_simplify_chinese(cues, metadata, args)
             emit_progress("write", progress=0.0, message="Writing subtitle files")
             outputs = write_outputs(output_dir, base_name, cues, metadata, formats)
             emit_progress("write", progress=1.0, done=True)
@@ -229,6 +230,7 @@ def main() -> int:
         for cleanup_func in reversed(cleanups):
             cleanup_func()
 
+    cues = maybe_simplify_chinese(cues, metadata, args)
     emit_progress("write", progress=0.0, message="Writing subtitle files")
     outputs = write_outputs(output_dir, base_name, cues, metadata, formats)
     emit_progress("write", progress=1.0, done=True)
@@ -299,6 +301,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-audio", action="store_true", help="Save extracted 16 kHz mono WAV next to outputs.")
     parser.add_argument("--save-video-preview", action="store_true", help="Save a low-resolution local video preview for in-app karaoke playback.")
     parser.add_argument("--vad-filter", action="store_true", help="Enable VAD filtering for the selected local word engine.")
+    parser.add_argument(
+        "--simplified-chinese",
+        action="store_true",
+        help="Convert Traditional Chinese subtitle text to Simplified Chinese before writing outputs.",
+    )
     parser.add_argument(
         "--no-preload-whisper",
         action="store_true",
@@ -1466,6 +1473,50 @@ def parse_formats(value: str) -> set[str]:
     if unknown:
         raise SystemExit(f"Unsupported formats: {', '.join(sorted(unknown))}")
     return formats
+
+
+def get_t2s_converter() -> Callable[[str], str]:
+    """Return a Traditional→Simplified converter, preferring zhconv then OpenCC."""
+    try:
+        import zhconv
+
+        return lambda text: zhconv.convert(text, "zh-cn")
+    except ImportError:
+        pass
+    try:
+        from opencc import OpenCC
+
+        converter = OpenCC("t2s")
+        return converter.convert
+    except ImportError as exc:
+        raise SystemExit(
+            "Missing Chinese conversion package for --simplified-chinese.\n"
+            "Install it with: pip install zhconv\n"
+            "Then rerun the same audio-subtitles command."
+        ) from exc
+
+
+def maybe_simplify_chinese(cues: list[Cue], metadata: dict, args: argparse.Namespace) -> list[Cue]:
+    if not args.simplified_chinese:
+        return cues
+    convert = get_t2s_converter()
+    simplified: list[Cue] = []
+    for cue in cues:
+        words = None
+        if cue.words:
+            words = [
+                TimedWord(
+                    text=convert(word.text),
+                    start=word.start,
+                    end=word.end,
+                    confidence=word.confidence,
+                )
+                for word in cue.words
+            ]
+        simplified.append(Cue(cue.start, cue.end, convert(cue.text), words))
+    metadata["simplified_chinese"] = True
+    print("Converted subtitle text to Simplified Chinese.", file=sys.stderr)
+    return simplified
 
 
 def write_outputs(output_dir: Path, base_name: str, cues: list[Cue], metadata: dict, formats: set[str]) -> list[Path]:

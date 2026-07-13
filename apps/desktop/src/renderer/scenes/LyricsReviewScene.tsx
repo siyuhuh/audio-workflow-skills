@@ -38,7 +38,7 @@ export function LyricsReviewScene({
   const { t } = useTranslation();
 
   return (
-    <main className="mx-auto grid max-w-[1200px] gap-6 p-6">
+    <main className="mx-auto grid max-w-[1200px] gap-6 px-6 pb-6 pt-2">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="grid min-w-0 gap-1">
           <Eyebrow>{t("package:detail")}</Eyebrow>

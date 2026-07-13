@@ -57,6 +57,7 @@
     "japanese": "日语",
     "korean": "韩语"
   },
+  "simplifiedChinese": "输出简体",
   "search": {
     "toggle": "媒体搜索",
     "hint": "搜索公开视频",

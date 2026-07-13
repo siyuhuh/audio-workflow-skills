@@ -27,8 +27,8 @@
     "addTitle": "Add song",
     "addEmpty": "Paste a link, search media, or choose a file",
     "karaokeTitle": "Room",
-    "karaokeEmpty": "Choose a package to sing",
-    "ready": "Ready",
+    "karaokeEmpty": "Build tonight’s setlist first",
+    "ready": "Ready to sing",
     "needsPackage": "Needs package",
     "cached": "Cached"
   },
@@ -43,6 +43,22 @@
     "established": "Est. 2026",
     "navCapture": "Capture",
     "navPractice": "Album"
+  },
+  "room": {
+    "kicker": "Tonight’s room",
+    "title": "Order the setlist, then take the stage.",
+    "subtitle": "Reorder songs here. Tap Start singing when you’re ready — Home never dumps you straight onto the Stage.",
+    "setlistLabel": "Setlist order",
+    "setlistHint": "Move songs up or down, then play one to start.",
+    "startSinging": "Start singing",
+    "reviewLyrics": "Review lyrics",
+    "singThis": "Sing this",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "ready": "Ready",
+    "notReady": "Missing playable audio or lyrics",
+    "emptyTitle": "The room is empty.",
+    "emptyBody": "Add or pick songs first, then come back to order tonight’s setlist."
   },
   "actions": {
     "run": "Run",

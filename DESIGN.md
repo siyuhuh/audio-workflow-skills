@@ -30,7 +30,7 @@ The app still uses existing CSS class names, but Tailwind theme variables are av
 - **Shape:** `0.5rem` radius as the default. Larger radii are allowed only for floating docks and pills.
 - **Depth:** Use the supplied small shadow tokens. Avoid the previous flat Linear look and avoid huge blurred hero shadows.
 - **Color behavior:** Green is the primary action, active state, and high-energy highlight. Avoid pink/purple as the main accent.
-- **Accent variants:** Users may switch between approved green-family accents in Settings. Variants must stay within the green/teal range and continue mapping through `--primary`, `--accent`, `--ring`, and `--ktv-accent`.
+- **Accent variants:** Users may switch between approved green-family accents in Settings. Variants must stay within the green/teal range. Changing accent only sets `--primary`; all tinted roles (`--accent`, `--ring`, `--ktv-accent`, `--color-success`, charts, sidebar accents) must derive from `--primary` so nothing stays stuck on the default green.
 - **Default theme:** Dark Mode is the product default. Light mode remains available as an explicit setting.
 
 ## Core Tokens
@@ -65,11 +65,12 @@ Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, an
 ## Layout And Surfaces
 
 - **Studio:** dark by default with near-black canvas, dark cards, and green action states. Light mode keeps soft surfaces for explicit preference only.
+- **Shell composition:** Prefer a quiet split layout — dark hero chrome at the top, solid card deck below — over decorative shaders, contour meshes, or competing background patterns.
 - **Stage:** darker token surface with green lyric progress. It can feel more expressive than Studio, but controls must stay readable.
-- **Desktop chrome:** The app owns its top chrome visually. On macOS, use hidden inset window chrome so the white native title bar does not sit above the dark Studio surface.
+- **Desktop chrome:** The app owns its top chrome visually. On macOS, use hidden inset window chrome so the white native title bar does not sit above the dark Studio surface. Primary Studio navigation belongs in the header (centered pill tabs): **选歌 / Album** browses packages, **添加 / Add** captures media, **歌房 / Room** opens the setlist lobby (reorder + start). Header Room must not dump the user straight onto Stage; Stage is entered only via Start singing / sing-this / package enter actions. Floating docks are for Stage/Karaoke only.
 - **Max width:** 1200px for Studio body; 1280px for Stage lyric line.
 - **Spacing:** 4px rhythm via `--spacing: 0.25rem`.
-- **Density:** Keep workflow controls compact, but allow more breathing room than the Linear pass.
+- **Density:** Keep workflow controls compact, but allow more breathing room than the Linear pass. Gallery and metric-style cards should read as one clear grid, not stacked translucent panels.
 
 ## Components
 
@@ -78,8 +79,8 @@ Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, an
 - **Cards:** `--card`, 1px `--border`, radius `--radius-lg`, `--shadow-sm`.
 - **Inputs:** `--card` or dark `--card`, 1px `--input`, focus ring from `--ring`.
 - **Status chips:** Use status colors only for state. Do not decorate random labels as success/warn/error.
-- **Stage dock:** Dark card token, small border, pill radius, no oversized glass blur.
-- **Scrollbars:** Use transparent tracks and thin theme-aware thumbs. Keep the thumb subtle in dark mode and slightly stronger in light mode, mapped through renderer scrollbar tokens rather than hard-coded gray.
+- **Stage dock:** Dark card token, small border, pill radius, no oversized glass blur. Keep backing + vocal (mic) volume as always-visible vertical faders next to transport — not buried only in Room settings.
+- **Scrollbars:** Quiet by default, theme-tinted on interaction. Thumbs use low-opacity `--foreground`, then mix in `--primary` on hover/active. Page scroll (`.studioScrollRegion`) uses a soft `--scrollbar-track-page` from `--card`; nested scrollers use a fainter `--scrollbar-track`. Never hard-code gray. The primary page scrollbar lives under the fixed header — never flush through chrome.
 
 ## Stage Lyrics
 
@@ -116,5 +117,11 @@ Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, an
 | 2026-04-30 | Added green-family accent variants              | Settings now allows controlled green/teal accent switching while preserving the product's green-led brand direction.                                           |
 | 2026-05-03 | Standardized transparent thin scrollbars        | Scrollbars should feel native and unobtrusive, with transparent tracks and theme-aware thumb contrast in both light and dark modes.                             |
 | 2026-05-03 | Hid native macOS title bar for Studio chrome    | The native white title bar clashed with the dark brand surface; the app should visually own the top chrome while preserving macOS traffic lights.               |
+| 2026-07-12 | Meevis-inspired Studio shell cleanup            | Topology contour background felt noisy; Studio now uses a quiet split shell (dark hero chrome + solid card deck), centered pill nav, and denser card grid inspired by the Meevis dashboard while keeping VocalFlow green tokens. |
+| 2026-07-12 | Scroll region lives below fixed header          | Page scroll and custom scrollbar now belong to `.studioScrollRegion` under `--studio-chrome-height`, so the thumb never runs through the fixed brand header. |
+| 2026-07-12 | Theme-tinted refined scrollbars                 | Scrollbar thumbs stay quiet with `--foreground`, then pick up `--primary` on hover/active; page track uses soft `--card` mix so the bar matches light/dark accents. |
+| 2026-07-13 | Room dock exposes backing + vocal volumes       | Karaoke Room needs one-tap mix control: backing track volume and mic monitor level sit next to transport as always-visible vertical faders. |
+| 2026-07-13 | Header Room is setlist lobby, not Stage         | 选歌 → browse, 添加 → capture, 歌房 → reorder tonight’s setlist then Start singing. Header must never skip the lobby and jump onto Stage. |
+| 2026-07-13 | Accent cascade is primary-driven                | Settings accent (green/lime/mint/teal) must retint primary, ring, ktv, success, charts, and sidebar together — no leftover hardcoded default-green utilities. |
 
 

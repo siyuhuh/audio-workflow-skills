@@ -15,26 +15,26 @@
   --secondary-foreground: oklch(0 0 0);
   --muted: oklch(0.8828 0.0285 98.1033);
   --muted-foreground: oklch(0.5382 0 0);
-  --accent: oklch(0.7395 0.2268 142.8504);
+  --accent: var(--primary);
   --accent-foreground: oklch(0 0 0);
   --destructive: oklch(0.6368 0.2078 25.3313);
   --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.8699 0 0);
   --input: oklch(0.8699 0 0);
-  --ring: oklch(0.7395 0.2268 142.8504);
-  --chart-1: oklch(0.7395 0.2268 142.8504);
-  --chart-2: oklch(0.8148 0.0819 225.7537);
-  --chart-3: oklch(0.7395 0.2268 142.8504);
-  --chart-4: oklch(0.8148 0.0819 225.7537);
-  --chart-5: oklch(0.7395 0.2268 142.8504);
+  --ring: var(--primary);
+  --chart-1: var(--primary);
+  --chart-2: var(--secondary);
+  --chart-3: var(--primary);
+  --chart-4: var(--secondary);
+  --chart-5: var(--primary);
   --sidebar: oklch(0.9809 0.0025 228.7836);
   --sidebar-foreground: oklch(0.3211 0 0);
-  --sidebar-primary: oklch(0.7395 0.2268 142.8504);
+  --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: oklch(0 0 0);
-  --sidebar-accent: oklch(0.7395 0.2268 142.8504);
+  --sidebar-accent: var(--primary);
   --sidebar-accent-foreground: oklch(0 0 0);
   --sidebar-border: oklch(0.8699 0 0);
-  --sidebar-ring: oklch(0.7395 0.2268 142.8504);
+  --sidebar-ring: var(--primary);
   --font-sans: Poppins, sans-serif;
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: "Roboto Mono", monospace;
@@ -59,6 +59,8 @@
   /* Existing renderer aliases mapped to the style token set. */
   --paper: var(--background);
   --ink: var(--foreground);
+  /* Fixed Studio chrome height — keep scene/page offsets in sync. */
+  --studio-chrome-height: 88px;
 
   /* Stage palette (Karaoke Room) */
   --ktv-bg: oklch(0.145 0.012 264.2926);
@@ -66,8 +68,8 @@
   --ktv-surface-strong: oklch(0.235 0.012 264.2926);
   --ktv-line: color-mix(in oklch, oklch(0.9219 0 0) 14%, transparent);
   --ktv-text-muted: color-mix(in oklch, oklch(0.9219 0 0) 72%, transparent);
-  --ktv-accent: oklch(0.7395 0.2268 142.8504);
-  --ktv-accent-2: oklch(0.68 0.19 142.8504);
+  --ktv-accent: var(--primary);
+  --ktv-accent-2: color-mix(in oklch, var(--primary) 82%, black);
 
   /* Semantic color roles */
   --color-surface: var(--background);
@@ -84,8 +86,8 @@
   --color-accent: var(--primary);
   --color-accent-strong: color-mix(in oklch, var(--primary) 86%, black);
   --color-accent-soft: color-mix(in oklch, var(--primary) 26%, var(--card));
-  --color-success: oklch(0.7395 0.2268 142.8504);
-  --color-success-soft: color-mix(in oklch, oklch(0.7395 0.2268 142.8504) 18%, var(--card));
+  --color-success: var(--primary);
+  --color-success-soft: color-mix(in oklch, var(--primary) 18%, var(--card));
   --color-warning: oklch(0.8652 0.1768 90.3816);
   --color-warning-soft: color-mix(in oklch, oklch(0.8652 0.1768 90.3816) 20%, var(--card));
   --color-danger: var(--destructive);
@@ -144,9 +146,14 @@
 
   /* Focus ring (used app-wide; tuned in S-04 for KTV contrast) */
   --focus-ring: color-mix(in oklch, var(--ring) 58%, transparent);
-  --scrollbar-thumb: color-mix(in oklch, var(--foreground) 24%, transparent);
-  --scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 38%, transparent);
-  --scrollbar-track: transparent;
+  /* Scrollbars: quiet by default, theme-tinted on hover/active. */
+  --scrollbar-size: 8px;
+  --scrollbar-size-page: 9px;
+  --scrollbar-thumb: color-mix(in oklch, var(--foreground) 18%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--primary) 42%, var(--foreground));
+  --scrollbar-thumb-active: color-mix(in oklch, var(--primary) 58%, var(--foreground));
+  --scrollbar-track: color-mix(in oklch, var(--foreground) 4%, transparent);
+  --scrollbar-track-page: color-mix(in oklch, var(--card) 55%, transparent);
 
   /* Font stacks */
   --font-family-sans:
@@ -179,16 +186,17 @@
 }
 
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 
 *::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
+  border-radius: var(--radius-pill);
 }
 
 *::-webkit-scrollbar-track-piece {
-  background: var(--scrollbar-track);
+  background: transparent;
 }
 
 *::-webkit-scrollbar-button {
@@ -198,14 +206,20 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   border-radius: var(--radius-pill);
   background: var(--scrollbar-thumb);
   background-clip: content-box;
+  transition: background 160ms var(--motion-ease-out);
 }
 
 *::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
   background-clip: content-box;
 }
 
@@ -233,11 +247,54 @@ body {
 
 .appShell,
 .appSceneFrame {
+  position: relative;
   background: var(--color-surface);
   color: var(--color-text);
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.studioScrollRegion {
+  position: absolute;
+  inset: var(--studio-chrome-height) 0 0;
+  z-index: 1;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track-page);
+}
+
+.studioScrollRegion::-webkit-scrollbar {
+  width: var(--scrollbar-size-page);
+}
+
+.studioScrollRegion::-webkit-scrollbar-track {
+  margin-block: 10px;
+  margin-inline-end: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--scrollbar-track-page);
+}
+
+.studioScrollRegion::-webkit-scrollbar-thumb {
+  border: 2.5px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--scrollbar-thumb);
+  background-clip: content-box;
+  transition: background 160ms var(--motion-ease-out);
+}
+
+.studioScrollRegion::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+.studioScrollRegion::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+  background-clip: content-box;
 }
 
 :is(.dark, .appShell[data-theme="dark"], .appSceneFrame[data-theme="dark"]) {
@@ -253,26 +310,26 @@ body {
   --secondary-foreground: oklch(0 0 0);
   --muted: oklch(0.26 0.008 264.2926);
   --muted-foreground: oklch(0.7155 0 0);
-  --accent: oklch(0.7395 0.2268 142.8504);
+  --accent: var(--primary);
   --accent-foreground: oklch(0 0 0);
   --destructive: oklch(0.6368 0.2078 25.3313);
   --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.31 0.006 264.2926);
   --input: oklch(0.31 0.006 264.2926);
-  --ring: oklch(0.7395 0.2268 142.8504);
-  --chart-1: oklch(0.7395 0.2268 142.8504);
-  --chart-2: oklch(0.68 0.19 142.8504);
-  --chart-3: oklch(0.8148 0.0819 225.7537);
-  --chart-4: oklch(0.8652 0.1768 90.3816);
-  --chart-5: oklch(0.8652 0.1768 90.3816);
+  --ring: var(--primary);
+  --chart-1: var(--primary);
+  --chart-2: color-mix(in oklch, var(--primary) 82%, black);
+  --chart-3: var(--primary);
+  --chart-4: var(--secondary);
+  --chart-5: var(--primary);
   --sidebar: oklch(0.145 0.012 264.2926);
   --sidebar-foreground: oklch(0.9219 0 0);
-  --sidebar-primary: oklch(0.7395 0.2268 142.8504);
+  --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: oklch(0 0 0);
-  --sidebar-accent: oklch(0.7395 0.2268 142.8504);
+  --sidebar-accent: var(--primary);
   --sidebar-accent-foreground: oklch(0 0 0);
   --sidebar-border: oklch(0.31 0.006 264.2926);
-  --sidebar-ring: oklch(0.7395 0.2268 142.8504);
+  --sidebar-ring: var(--primary);
   --paper: var(--background);
   --ink: var(--foreground);
   --color-surface: var(--background);
@@ -289,57 +346,59 @@ body {
   --color-accent: var(--primary);
   --color-accent-strong: color-mix(in oklch, var(--primary) 82%, white);
   --color-accent-soft: color-mix(in oklch, var(--primary) 24%, var(--card));
-  --color-success: var(--secondary);
-  --color-success-soft: color-mix(in oklch, var(--secondary) 20%, var(--card));
-  --color-warning: var(--accent);
-  --color-warning-soft: color-mix(in oklch, var(--accent) 18%, var(--card));
+  --color-success: var(--primary);
+  --color-success-soft: color-mix(in oklch, var(--primary) 18%, var(--card));
+  --color-warning: oklch(0.8652 0.1768 90.3816);
+  --color-warning-soft: color-mix(in oklch, oklch(0.8652 0.1768 90.3816) 18%, var(--card));
   --color-danger: var(--destructive);
   --color-danger-soft: color-mix(in oklch, var(--destructive) 18%, var(--card));
+  --ktv-accent: var(--primary);
+  --ktv-accent-2: color-mix(in oklch, var(--primary) 82%, black);
   --shadow-overlay: var(--shadow-lg-token);
-  --scrollbar-thumb: color-mix(in oklch, var(--foreground) 18%, transparent);
-  --scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 30%, transparent);
-  --scrollbar-track: transparent;
+  --scrollbar-thumb: color-mix(in oklch, var(--foreground) 16%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--primary) 48%, var(--foreground));
+  --scrollbar-thumb-active: color-mix(in oklch, var(--primary) 64%, var(--foreground));
+  --scrollbar-track: color-mix(in oklch, var(--foreground) 5%, transparent);
+  --scrollbar-track-page: color-mix(in oklch, var(--card) 42%, transparent);
   color-scheme: dark;
 }
 
 :is(.appShell, .appSceneFrame)[data-accent] {
+  /* Every accent-tinted role follows --primary from the variant below. */
+  --accent: var(--primary);
+  --ring: var(--primary);
+  --ktv-accent: var(--primary);
+  --ktv-accent-2: color-mix(in oklch, var(--primary) 82%, black);
+  --chart-1: var(--primary);
+  --chart-2: color-mix(in oklch, var(--primary) 82%, black);
+  --chart-3: var(--primary);
+  --chart-5: var(--primary);
+  --sidebar-primary: var(--primary);
+  --sidebar-accent: var(--primary);
+  --sidebar-ring: var(--primary);
   --color-accent: var(--primary);
   --color-accent-strong: color-mix(in oklch, var(--primary) 82%, var(--foreground));
   --color-accent-soft: color-mix(in oklch, var(--primary) 26%, var(--card));
+  --color-success: var(--primary);
+  --color-success-soft: color-mix(in oklch, var(--primary) 18%, var(--card));
   --color-ktv-accent: var(--ktv-accent);
-  --color-ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
+  --color-ktv-accent-2: var(--ktv-accent-2);
 }
 
 :is(.appShell, .appSceneFrame)[data-accent="green"] {
   --primary: oklch(0.7395 0.2268 142.8504);
-  --accent: oklch(0.7395 0.2268 142.8504);
-  --ring: oklch(0.7395 0.2268 142.8504);
-  --ktv-accent: oklch(0.7395 0.2268 142.8504);
-  --ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
 }
 
 :is(.appShell, .appSceneFrame)[data-accent="lime"] {
   --primary: oklch(0.7900 0.2200 132.5000);
-  --accent: oklch(0.7900 0.2200 132.5000);
-  --ring: oklch(0.7900 0.2200 132.5000);
-  --ktv-accent: oklch(0.7900 0.2200 132.5000);
-  --ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
 }
 
 :is(.appShell, .appSceneFrame)[data-accent="mint"] {
   --primary: oklch(0.7800 0.1700 160.0000);
-  --accent: oklch(0.7800 0.1700 160.0000);
-  --ring: oklch(0.7800 0.1700 160.0000);
-  --ktv-accent: oklch(0.7800 0.1700 160.0000);
-  --ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
 }
 
 :is(.appShell, .appSceneFrame)[data-accent="teal"] {
   --primary: oklch(0.7400 0.1500 185.0000);
-  --accent: oklch(0.7400 0.1500 185.0000);
-  --ring: oklch(0.7400 0.1500 185.0000);
-  --ktv-accent: oklch(0.7400 0.1500 185.0000);
-  --ktv-accent-2: color-mix(in oklch, var(--ktv-accent) 82%, black);
 }
 
 [data-accent-swatch="green"] {
@@ -415,8 +474,8 @@ body {
   --color-line-soft: color-mix(in oklch, var(--border) 68%, transparent);
   --color-accent-strong: color-mix(in oklch, var(--primary) 86%, black);
   --color-accent-soft: color-mix(in oklch, var(--primary) 26%, var(--card));
-  --color-success: oklch(0.7395 0.2268 142.8504);
-  --color-success-soft: color-mix(in oklch, oklch(0.7395 0.2268 142.8504) 18%, var(--card));
+  --color-success: var(--primary);
+  --color-success-soft: color-mix(in oklch, var(--primary) 18%, var(--card));
   --color-warning: oklch(0.8652 0.1768 90.3816);
   --color-warning-soft: color-mix(in oklch, oklch(0.8652 0.1768 90.3816) 20%, var(--card));
   --color-danger: var(--destructive);
@@ -486,12 +545,14 @@ textarea:focus-visible {
 .appShell {
   position: relative;
   isolation: isolate;
+  height: 100%;
   min-height: 0;
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: clamp(112px, 12vh, 140px) clamp(20px, 4vw, 56px) 104px;
+  padding: 0;
   background: var(--background);
+  overflow: hidden;
 }
 
 .appShell::before,
@@ -499,12 +560,27 @@ textarea:focus-visible {
   display: none;
 }
 
-.topologyBackgroundCanvas {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  opacity: 1;
-  pointer-events: none;
+.studioHeroBand {
+  position: relative;
+  z-index: 1;
+  padding: 32px clamp(20px, 4vw, 48px) 40px;
+  background:
+    radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--primary) 10%, transparent), transparent 55%),
+    var(--background);
+}
+
+.studioDeck {
+  position: relative;
+  z-index: 1;
+  padding: 28px clamp(20px, 4vw, 48px) 48px;
+  background: color-mix(in oklch, var(--card) 55%, var(--background));
+  border-top: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+}
+
+.studioDeckInner,
+.studioHeroInner {
+  width: min(1120px, 100%);
+  margin-inline: auto;
 }
 
 .appShell > section {
@@ -516,7 +592,30 @@ textarea:focus-visible {
   min-height: 0;
 }
 
-.appShell[data-has-workspace="false"] {
+.appSceneFrame--withChrome {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 0;
+}
+
+.appSceneFrame--withChrome .brandHeader {
+  z-index: 50;
+  background: color-mix(in oklch, var(--background) 88%, transparent);
+}
+
+.appSceneFrame--withChrome[data-theme="dark"] .brandHeader {
+  background: color-mix(in oklch, var(--ktv-bg) 90%, transparent);
+  border-bottom-color: color-mix(in oklch, white 10%, transparent);
+}
+
+.karaokeSceneShell {
+  min-height: 100%;
+}
+
+.appShell[data-has-workspace="false"] .studioHeroBand {
+  min-height: min(72vh, 720px);
   display: grid;
   align-content: center;
 }
@@ -527,12 +626,17 @@ textarea:focus-visible {
   right: 0;
   left: 0;
   z-index: 50;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 20px 32px;
+  gap: 16px;
+  min-height: var(--studio-chrome-height);
+  padding: 14px 24px;
   pointer-events: none;
+  background: color-mix(in oklch, var(--background) 88%, transparent);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  box-sizing: border-box;
 }
 
 html[data-platform="darwin"] .brandHeader {
@@ -540,13 +644,20 @@ html[data-platform="darwin"] .brandHeader {
   -webkit-app-region: drag;
 }
 
-.brandLogo,
-.brandHeaderActions,
-.brandIconButton {
+.brandHeaderNav {
+  justify-self: center;
   pointer-events: auto;
 }
 
-html[data-platform="darwin"] :is(.brandLogo, .brandHeaderActions, .brandIconButton) {
+.brandLogo,
+.brandHeaderActions,
+.brandIconButton,
+.brandHeaderNav,
+.brandStatusPill {
+  pointer-events: auto;
+}
+
+html[data-platform="darwin"] :is(.brandLogo, .brandHeaderActions, .brandIconButton, .brandHeaderNav, .brandStatusPill) {
   -webkit-app-region: no-drag;
 }
 
@@ -554,6 +665,7 @@ html[data-platform="darwin"] :is(.brandLogo, .brandHeaderActions, .brandIconButt
   display: flex;
   flex-direction: column;
   gap: 0;
+  justify-self: start;
   color: var(--foreground);
 }
 
@@ -588,21 +700,23 @@ html[data-platform="darwin"] :is(.brandLogo, .brandHeaderActions, .brandIconButt
 .brandHeaderActions {
   display: flex;
   align-items: center;
+  justify-self: end;
   gap: 8px;
 }
 
 .brandIconButton {
   position: relative;
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   padding: 0;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--card) 58%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in oklch, var(--card) 72%, transparent);
   color: var(--foreground);
-  opacity: 0.62;
+  opacity: 0.85;
+  box-shadow: var(--shadow-2xs);
   backdrop-filter: blur(12px);
   transition:
     opacity var(--motion-duration-fast) var(--motion-ease-out),
@@ -700,33 +814,20 @@ html[data-platform="darwin"] .brandStatusPill {
 }
 
 .brandHero {
-  min-height: min(420px, calc(100vh - 260px));
-}
-
-.appShell[data-has-workspace="true"] .brandHero {
-  min-height: auto;
-  align-items: start;
-}
-
-.brandHero[data-workspace-mode="home"] {
-  align-content: end;
-}
-
-.brandHero[data-workspace-mode="add"] {
   min-height: auto;
 }
 
 .brandCaptureCard {
-  background: color-mix(in oklch, var(--card) 88%, transparent);
+  background: var(--card);
   box-shadow: var(--shadow-sm);
 }
 
 .selectionGallery {
-  perspective: 1200px;
+  display: grid;
+  gap: 16px;
 }
 
 .selectionTile {
-  transform-style: preserve-3d;
   will-change: transform;
 }
 
@@ -843,7 +944,12 @@ html[data-platform="darwin"] .brandStatusPill {
 .albumHoloCard {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #1f2933, #10110f 55%, #304638);
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--card) 55%, black),
+    color-mix(in oklch, var(--background) 88%, black) 55%,
+    color-mix(in oklch, var(--primary) 32%, black)
+  );
   pointer-events: none;
 }
 
@@ -879,12 +985,34 @@ html[data-platform="darwin"] .brandStatusPill {
 }
 
 @media (max-width: 600px) {
-  .appShell {
-    padding-top: 96px;
+  :root {
+    --studio-chrome-height: 112px;
   }
 
   .brandHeader {
-    padding: 16px 20px;
+    padding: 12px 16px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "logo actions"
+      "nav nav";
+    gap: 10px;
+  }
+
+  .brandLogo {
+    grid-area: logo;
+  }
+
+  .brandHeaderNav {
+    grid-area: nav;
+    justify-self: stretch;
+  }
+
+  .brandHeaderNav > * {
+    width: 100%;
+  }
+
+  .brandHeaderActions {
+    grid-area: actions;
   }
 
   .brandIconButton {
@@ -1296,6 +1424,88 @@ html[data-platform="darwin"] .brandStatusPill {
 .stageTopProgress:focus-visible .stageTopProgressTime {
   opacity: 1;
   transform: translateX(-50%) translateY(0) scale(1);
+}
+
+/* Karaoke Room: vertical backing / mic faders next to transport. */
+.roomQuickVolumes {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.625rem;
+  padding: 0.375rem 0.5rem 0.375rem;
+  border: 1px solid var(--color-ktv-line, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--color-ktv-surface, var(--card)) 88%, transparent);
+}
+
+.roomQuickVolumeStrip {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+}
+
+.roomQuickVolumeLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-ktv-text-muted, var(--muted-foreground));
+  line-height: 1;
+}
+
+.roomVolumeFader {
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 18px;
+  height: 72px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  accent-color: var(--color-ktv-accent, var(--primary));
+  background: transparent;
+}
+
+.roomVolumeFader:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.roomVolumeFader:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
+}
+
+.roomVolumeFader::-webkit-slider-runnable-track {
+  width: 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.roomVolumeFader::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-left: -4px;
+  border-radius: 999px;
+  border: none;
+  background: var(--color-ktv-accent, var(--primary));
+  box-shadow: var(--shadow-sm-token, none);
+}
+
+.roomVolumeFader::-moz-range-track {
+  width: 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.roomVolumeFader::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-ktv-accent, var(--primary));
 }
 
 

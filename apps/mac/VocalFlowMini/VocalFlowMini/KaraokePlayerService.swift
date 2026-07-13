@@ -11,6 +11,9 @@ final class KaraokePlayerService: ObservableObject {
         let mediaURL: URL
         let lyricURL: URL?
         let isVideo: Bool
+        /// Instrumental stem to play instead of the video's own audio
+        /// (sing mode: muted MV + backing track).
+        var backingAudioURL: URL? = nil
     }
 
     struct LyricCue: Identifiable, Equatable {
@@ -36,8 +39,11 @@ final class KaraokePlayerService: ObservableObject {
     @Published private(set) var selectedTrackIsVideo = false
     @Published private(set) var playbackVolume: Float = 0.85
     @Published private(set) var playbackRate: Float = 1.0
+    @Published private(set) var hasBackingTrack = false
+    @Published private(set) var useBackingAudio = true
 
     private var timeObserver: Any?
+    private var backingPlayer: AVPlayer?
 
     private static let mediaExtensions = Set(["mp3", "m4a", "wav", "flac", "aac", "mp4", "mov", "m4v"])
     private static let videoExtensions = Set(["mp4", "mov", "m4v"])
@@ -105,11 +111,16 @@ final class KaraokePlayerService: ObservableObject {
         // Default to streaming the online MV when the package came from a URL
         // and no local video file exists in the package.
         if package.playback.videoURL == nil, case .url(let pageURL) = package.source {
-            resolveOnlineVideo(pageURL: pageURL, title: package.title, lyricURL: package.playback.lyricURL)
+            resolveOnlineVideo(
+                pageURL: pageURL,
+                title: package.title,
+                lyricURL: package.playback.lyricURL,
+                backingURL: package.playback.backingURL
+            )
         }
     }
 
-    private func resolveOnlineVideo(pageURL: String, title: String, lyricURL: URL?) {
+    private func resolveOnlineVideo(pageURL: String, title: String, lyricURL: URL?, backingURL: URL?) {
         status = "Resolving online MV stream..."
         let anchorItemID = selectedItemID
 
@@ -125,7 +136,8 @@ final class KaraokePlayerService: ObservableObject {
                     title: "\(title) (Online MV)",
                     mediaURL: streamURL,
                     lyricURL: lyricURL,
-                    isVideo: true
+                    isVideo: true,
+                    backingAudioURL: backingURL
                 )
                 if !self.playlist.contains(where: { $0.id == item.id }) {
                     self.playlist.insert(item, at: 0)
@@ -146,18 +158,26 @@ final class KaraokePlayerService: ObservableObject {
 
         if isPlaying {
             player.pause()
+            backingPlayer?.pause()
             isPlaying = false
             status = "Paused."
         } else {
             player.rate = playbackRate
             isPlaying = true
-            status = selectedTrackIsVideo ? "Playing MV." : "Playing track."
+            syncBackingToVideo()
+            if backingAudioActive {
+                status = "Playing MV with backing track."
+            } else {
+                status = selectedTrackIsVideo ? "Playing MV." : "Playing track."
+            }
         }
     }
 
     func stopPlayback() {
         player?.pause()
         player?.seek(to: .zero)
+        backingPlayer?.pause()
+        backingPlayer?.seek(to: .zero)
         isPlaying = false
         if selectedTrackURL != nil {
             status = "Stopped."
@@ -167,12 +187,64 @@ final class KaraokePlayerService: ObservableObject {
     func setPlaybackVolume(_ value: Float) {
         playbackVolume = value.clamped(to: 0...1)
         player?.volume = playbackVolume
+        backingPlayer?.volume = playbackVolume
     }
 
     func setPlaybackRate(_ value: Float) {
         playbackRate = value.clamped(to: 0.5...1.5)
         if isPlaying {
             player?.rate = playbackRate
+            if backingAudioActive {
+                backingPlayer?.rate = playbackRate
+            }
+        }
+    }
+
+    func setUseBackingAudio(_ enabled: Bool) {
+        useBackingAudio = enabled
+        applyAudioRouting()
+        if enabled, isPlaying {
+            syncBackingToVideo()
+        }
+        if hasBackingTrack {
+            status = enabled ? "MV with backing track." : "MV with original audio."
+        }
+    }
+
+    private var backingAudioActive: Bool {
+        useBackingAudio && backingPlayer != nil
+    }
+
+    /// Mute the MV's own audio while the backing stem is audible, or the
+    /// reverse when the user wants the original vocals.
+    private func applyAudioRouting() {
+        player?.isMuted = backingAudioActive
+        player?.volume = playbackVolume
+        backingPlayer?.volume = playbackVolume
+        if !backingAudioActive {
+            backingPlayer?.pause()
+        }
+    }
+
+    /// The video player is the master clock; snap the backing stem to it.
+    private func syncBackingToVideo() {
+        guard backingAudioActive, let player, let backingPlayer else { return }
+        backingPlayer.seek(to: player.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero)
+        if isPlaying {
+            backingPlayer.rate = playbackRate
+        }
+    }
+
+    private func correctBackingDrift(videoTime: TimeInterval) {
+        guard isPlaying, backingAudioActive, let backingPlayer else { return }
+        let backingTime = backingPlayer.currentTime().seconds
+        guard backingTime.isFinite, videoTime.isFinite else { return }
+        if abs(backingTime - videoTime) > 0.4 {
+            backingPlayer.seek(
+                to: CMTime(seconds: videoTime, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            )
         }
     }
 
@@ -190,25 +262,40 @@ final class KaraokePlayerService: ObservableObject {
 
     private func loadItem(_ item: PlaylistItem) {
         player?.pause()
+        backingPlayer?.pause()
+        backingPlayer = nil
         removeTimeObserver()
 
         let player = AVPlayer(url: item.mediaURL)
         player.volume = playbackVolume
+
+        if item.isVideo, let backingURL = item.backingAudioURL {
+            backingPlayer = AVPlayer(url: backingURL)
+        }
+        hasBackingTrack = backingPlayer != nil
 
         selectedItemID = item.id
         selectedTrackURL = item.mediaURL
         selectedTrackName = item.title
         selectedTrackIsVideo = item.isVideo
         self.player = player
+        applyAudioRouting()
         isPlaying = false
         currentTime = 0
         loadLyrics(from: item.lyricURL)
         addTimeObserver(to: player)
-        status = item.isVideo ? "MV ready." : "Track ready."
+        if hasBackingTrack {
+            status = "MV ready (backing track audio)."
+        } else {
+            status = item.isVideo ? "MV ready." : "Track ready."
+        }
     }
 
     private func resetSelection() {
         player?.pause()
+        backingPlayer?.pause()
+        backingPlayer = nil
+        hasBackingTrack = false
         removeTimeObserver()
         player = nil
         selectedItemID = nil
@@ -228,6 +315,7 @@ final class KaraokePlayerService: ObservableObject {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             Task { @MainActor [weak self] in
                 self?.updateLyrics(at: time.seconds)
+                self?.correctBackingDrift(videoTime: time.seconds)
             }
         }
     }
@@ -347,6 +435,18 @@ final class KaraokePlayerService: ObservableObject {
             lyricURL: sharedLyricURL,
             to: &items
         )
+
+        // Local MV plays first, muted, over the backing stem when one exists.
+        if let videoURL, !items.contains(where: { $0.mediaURL.path == videoURL.path }) {
+            items.insert(PlaylistItem(
+                id: videoURL.path,
+                title: "\(packageTitle) (MV)",
+                mediaURL: videoURL,
+                lyricURL: sharedLyricURL,
+                isVideo: true,
+                backingAudioURL: backingURL
+            ), at: 0)
+        }
 
         return items.isEmpty ? scanPackageFolder(package.folderURL) : items
     }

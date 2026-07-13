@@ -66,6 +66,17 @@
     "noiseReduction": "回声抑制",
     "noiseReductionHint": "减少啸叫，可能影响音色。"
   },
+  "volumes": {
+    "title": "音量",
+    "backing": "伴奏音量",
+    "vocal": "人声音量",
+    "backingShort": "伴奏",
+    "vocalShort": "人声",
+    "muteBacking": "静音伴奏",
+    "unmuteBacking": "取消伴奏静音",
+    "muteVocal": "关闭人声监听",
+    "enableVocal": "开启人声监听"
+  },
   "editLyrics": "编辑歌词",
   "noLocalTrack": "没有本地音轨",
   "noLocalAudio": "没有可用的本地音频轨道。",

@@ -21,7 +21,11 @@ export type IconName =
   | "spark"
   | "rewind"
   | "pause"
-  | "trash";
+  | "trash"
+  | "volume"
+  | "volumeMute"
+  | "chevronUp"
+  | "chevronDown";
 
 interface IconProps {
   name: IconName;
@@ -49,7 +53,11 @@ const paths: Record<IconName, string[]> = {
   spark: ["M10 3.5 11.6 8 16 10l-4.4 2L10 16.5 8.4 12 4 10l4.4-2Z"],
   rewind: ["M10 6 5.5 10 10 14z", "M15 6l-4.5 4 4.5 4z"],
   pause: ["M7.5 5.5v9", "M12.5 5.5v9"],
-  trash: ["M5 6.5h10", "M8 6.5V5h4v1.5", "M6.5 8v7.5h7V8", "M9 9.5v4", "M11 9.5v4"]
+  trash: ["M5 6.5h10", "M8 6.5V5h4v1.5", "M6.5 8v7.5h7V8", "M9 9.5v4", "M11 9.5v4"],
+  volume: ["M3.5 8h2.5l3-3v10l-3-3H3.5z", "M12 7.5a3.5 3.5 0 0 1 0 5", "M13.8 5.5a6 6 0 0 1 0 9"],
+  volumeMute: ["M3.5 8h2.5l3-3v10l-3-3H3.5z", "M12.5 8.5l4 4", "M16.5 8.5l-4 4"],
+  chevronUp: ["M5.5 12 10 7.5 14.5 12"],
+  chevronDown: ["M5.5 8 10 12.5 14.5 8"]
 };
 
 export function Icon({ name, className }: IconProps) {

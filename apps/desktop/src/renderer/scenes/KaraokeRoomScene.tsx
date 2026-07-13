@@ -33,6 +33,10 @@ interface PlaybackController {
   isPlaying: boolean;
   endedCount: number;
   canControl: boolean;
+  volume: number;
+  muted: boolean;
+  setVolume: (volume: number) => void;
+  toggleMute: () => void;
   play: () => void;
   pause: () => void;
   restart: () => void;
@@ -239,7 +243,7 @@ export function KaraokeRoomScene({
       animate={{ opacity: 1 }}
       transition={{ duration: motionDuration.base, ease: motionEase }}
       data-theme="dark"
-      className="appSceneFrame relative grid min-h-screen grid-rows-[auto_minmax(0,1fr)] bg-ktv-bg text-white"
+      className="karaokeSceneShell relative grid grid-rows-[auto_minmax(0,1fr)] bg-ktv-bg text-white"
     >
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-ktv-line bg-ktv-bg/85 px-6 py-4 backdrop-blur-xl">
         <div className="grid min-w-0 gap-1">
@@ -411,7 +415,7 @@ export function KaraokeRoomScene({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-self-center">
+            <div className="flex flex-wrap items-end justify-center gap-3 lg:justify-self-center">
               <button
                 type="button"
                 disabled={!hasPlayableMedia}
@@ -446,6 +450,32 @@ export function KaraokeRoomScene({
               >
                 <Icon name="next" />
               </button>
+
+              <RoomQuickVolumes
+                mediaVolume={playbackController.volume}
+                mediaMuted={playbackController.muted}
+                mediaDisabled={!hasPlayableMedia}
+                onMediaVolumeChange={playbackController.setVolume}
+                onToggleMediaMute={playbackController.toggleMute}
+                micGain={microphoneMonitor.monitorGain}
+                micEnabled={microphoneMonitor.isMonitoring}
+                onMicGainChange={(gain) => {
+                  microphoneMonitor.setMonitorGain(gain);
+                  if (gain > 0 && !microphoneMonitor.isMonitoring) {
+                    microphoneMonitor.setIsMonitoring(true);
+                  }
+                }}
+                onToggleMic={() => {
+                  if (microphoneMonitor.isMonitoring) {
+                    microphoneMonitor.setIsMonitoring(false);
+                    return;
+                  }
+                  if (microphoneMonitor.monitorGain <= 0) {
+                    microphoneMonitor.setMonitorGain(0.35);
+                  }
+                  microphoneMonitor.setIsMonitoring(true);
+                }}
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-2 lg:justify-self-end">
@@ -959,6 +989,96 @@ function shiftTimedText(text: string, offsetSeconds: number): string {
   );
 
   return shifted;
+}
+
+interface RoomQuickVolumesProps {
+  mediaVolume: number;
+  mediaMuted: boolean;
+  mediaDisabled: boolean;
+  onMediaVolumeChange: (volume: number) => void;
+  onToggleMediaMute: () => void;
+  micGain: number;
+  micEnabled: boolean;
+  onMicGainChange: (gain: number) => void;
+  onToggleMic: () => void;
+}
+
+function RoomQuickVolumes({
+  mediaVolume,
+  mediaMuted,
+  mediaDisabled,
+  onMediaVolumeChange,
+  onToggleMediaMute,
+  micGain,
+  micEnabled,
+  onMicGainChange,
+  onToggleMic
+}: RoomQuickVolumesProps) {
+  const { t } = useTranslation();
+  const mediaSilent = mediaMuted || mediaVolume <= 0;
+  const micSilent = !micEnabled || micGain <= 0;
+
+  return (
+    <div
+      className="roomQuickVolumes"
+      aria-label={t("room:volumes.title")}
+    >
+      <div className="roomQuickVolumeStrip" title={t("room:volumes.backing")}>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.02}
+          value={mediaSilent ? 0 : mediaVolume}
+          disabled={mediaDisabled}
+          onChange={(event) => onMediaVolumeChange(Number(event.currentTarget.value))}
+          aria-label={t("room:volumes.backing")}
+          className="roomVolumeFader"
+        />
+        <button
+          type="button"
+          disabled={mediaDisabled}
+          onClick={onToggleMediaMute}
+          aria-label={mediaSilent ? t("room:volumes.unmuteBacking") : t("room:volumes.muteBacking")}
+          aria-pressed={mediaSilent}
+          className={cn(
+            "inline-grid size-8 place-items-center rounded-full text-white/85 transition-colors hover:enabled:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+            mediaSilent && "text-ktv-text-muted"
+          )}
+        >
+          <Icon name={mediaSilent ? "volumeMute" : "volume"} />
+        </button>
+        <span className="roomQuickVolumeLabel">{t("room:volumes.backingShort")}</span>
+      </div>
+
+      <div className="roomQuickVolumeStrip" title={t("room:volumes.vocal")}>
+        <input
+          type="range"
+          min={0}
+          max={1.5}
+          step={0.05}
+          value={micGain}
+          onChange={(event) => onMicGainChange(Number(event.currentTarget.value))}
+          aria-label={t("room:volumes.vocal")}
+          className="roomVolumeFader"
+        />
+        <button
+          type="button"
+          onClick={onToggleMic}
+          aria-label={micSilent ? t("room:volumes.enableVocal") : t("room:volumes.muteVocal")}
+          aria-pressed={!micSilent}
+          className={cn(
+            "inline-grid size-8 place-items-center rounded-full text-white/85 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+            !micSilent && "text-ktv-accent",
+            micSilent && "text-ktv-text-muted"
+          )}
+        >
+          <Icon name="mic" />
+        </button>
+        <span className="roomQuickVolumeLabel">{t("room:volumes.vocalShort")}</span>
+      </div>
+    </div>
+  );
 }
 
 const transportBtnClasses =

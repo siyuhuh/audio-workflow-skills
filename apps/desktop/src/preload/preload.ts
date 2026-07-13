@@ -52,6 +52,8 @@ const api: AudioWorkflowApi = {
     ipcRenderer.invoke("bilibili:search", query, opts?.appendKaraoke ?? false) as Promise<YoutubeSearchResult[]>,
   prefetchUrlMetadata: (input: string) =>
     ipcRenderer.invoke("metadata:prefetch", input) as Promise<UrlMetadataPreview | null>,
+  resolveStreamUrl: (input: string) =>
+    ipcRenderer.invoke("stream:resolve", input) as Promise<string | null>,
   getRoomStatus: () => ipcRenderer.invoke("room:status"),
   enqueueRoomSong: (input, title, requestedBy) => ipcRenderer.invoke("room:enqueue", input, title, requestedBy),
   startRoomQueueItem: (itemId) => ipcRenderer.invoke("room:start-item", itemId),

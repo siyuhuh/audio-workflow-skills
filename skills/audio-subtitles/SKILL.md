@@ -80,6 +80,14 @@ audio-subtitles --subtitle-source local "https://www.youtube.com/watch?v=..."
 audio-subtitles --force-local "https://www.youtube.com/watch?v=..."
 ```
 
+Convert Traditional Chinese subtitle text to Simplified Chinese (Whisper and platform captions often emit mixed or Traditional script):
+
+```bash
+audio-subtitles --simplified-chinese --language zh "https://www.bilibili.com/video/BV..."
+```
+
+Requires `zhconv` (`pip install zhconv`). The desktop app installs it automatically when the option is enabled.
+
 Try platform subtitles first, then use local Whisper if none exist:
 
 ```bash

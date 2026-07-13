@@ -375,7 +375,7 @@ export function SettingsPanel({
                 </div>
                 {usingAutoLink ? (
                   <span
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-400"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/40 bg-accent-soft px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-accent-strong"
                     title={uvrDetection?.uvrRoot ?? undefined}
                   >
                     {t("settings:separator.autoBadge", { count: uvrDetection?.modelCount ?? 0 })}

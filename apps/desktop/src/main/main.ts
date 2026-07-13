@@ -107,6 +107,7 @@ interface RuntimeNeeds {
   ytDlp: boolean;
   whisper: boolean;
   separator: boolean;
+  zhconv: boolean;
 }
 
 type RuntimeLog = (chunk: string) => void;
@@ -126,14 +127,16 @@ const runtimePackageChecks = {
   ytDlp: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('yt_dlp') else 1)",
   whisper: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('faster_whisper') else 1)",
   whisperTimestamped: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('whisper_timestamped') else 1)",
-  separator: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('audio_separator') else 1)"
+  separator: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('audio_separator') else 1)",
+  zhconv: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('zhconv') else 1)"
 };
 
 const runtimePackages = {
   ytDlp: "yt-dlp",
   whisper: "faster-whisper",
   whisperTimestamped: "whisper-timestamped",
-  separator: "audio-separator[cpu]"
+  separator: "audio-separator[cpu]",
+  zhconv: "zhconv"
 };
 
 const subtitleExtensions = new Set([".srt", ".vtt", ".lrc", ".txt", ".json", ".ass"]);
@@ -282,12 +285,17 @@ app.whenReady().then(() => {
     );
   }
   registerMediaProtocol();
+  registerBilibiliMediaHeaders();
   registerIpcHandlers();
   registerMediaPermissions();
   startWebApiServer();
   createWindow();
 
   app.on("activate", () => {
+    // macOS keeps the process alive after the last window closes. The web API
+    // powers browser/UI search + remote room, so bring it back if it was torn
+    // down, then recreate the window.
+    startWebApiServer();
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
@@ -299,12 +307,20 @@ app.on("window-all-closed", () => {
     terminateChildProcess(child);
   }
   runningJobs.clear();
-  webApiServer?.close();
-  webApiServer = null;
 
+  // On macOS the app stays in the Dock; keep the web API listening so Vite UI
+  // / remote room / HTTP search fallbacks don't die with "Failed to fetch".
+  // Tear the server down only when the process is actually quitting.
   if (process.platform !== "darwin") {
+    webApiServer?.close();
+    webApiServer = null;
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  webApiServer?.close();
+  webApiServer = null;
 });
 
 function registerMediaPermissions(): void {
@@ -425,6 +441,22 @@ function registerIpcHandlers(): void {
         env: runtime.env,
         python: runtime.python
       });
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle("stream:resolve", async (_event, input: string): Promise<string | null> => {
+    const trimmed = String(input ?? "").trim();
+    if (!trimmed || !isHttpUrl(trimmed)) {
+      return null;
+    }
+    try {
+      const runtime = await prepareAudioRuntime(ytdlpSearchPlaceholderOptions(), () => {});
+      if (!runtime.python) {
+        return null;
+      }
+      return await resolveDirectStreamUrl(trimmed, runtime.python, runtime.env);
     } catch {
       return null;
     }
@@ -1068,8 +1100,17 @@ function terminateChildProcess(child: ChildProcessByStdio<null, Readable, Readab
 }
 
 function startWebApiServer(): void {
-  if (webApiServer) {
+  if (webApiServer?.listening) {
     return;
+  }
+  if (webApiServer) {
+    webApiServer.removeAllListeners();
+    try {
+      webApiServer.close();
+    } catch {
+      // already closed
+    }
+    webApiServer = null;
   }
 
   webApiServer = createServer((request, response) => {
@@ -1791,6 +1832,30 @@ function registerMediaProtocol(): void {
     }
 
     return streamMediaFile(safePath, request);
+  });
+}
+
+/**
+ * Bilibili CDN rejects media requests without a site Referer (403).
+ * Inject one so the muted online MV `<video>` can play resolved streams.
+ */
+function registerBilibiliMediaHeaders(): void {
+  const filter = {
+    urls: [
+      "*://*.bilivideo.com/*",
+      "*://*.bilivideo.cn/*",
+      "*://*.akamaized.net/*",
+      "*://*.hdslb.com/*"
+    ]
+  };
+  session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
+    const requestHeaders = { ...details.requestHeaders };
+    requestHeaders.Referer = "https://www.bilibili.com/";
+    if (!requestHeaders["User-Agent"] && !requestHeaders["user-agent"]) {
+      requestHeaders["User-Agent"] =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    }
+    callback({ requestHeaders });
   });
 }
 
@@ -2767,7 +2832,7 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
   const env = withHuggingFaceEnv(withPath(process.env, pathDirs));
   const needs = runtimeNeeds(options);
 
-  if (!needs.ytDlp && !needs.whisper && !needs.separator) {
+  if (!needs.ytDlp && !needs.whisper && !needs.separator && !needs.zhconv) {
     return { env };
   }
 
@@ -2823,6 +2888,9 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
   if (needs.separator && !(await pythonCheck(venvPython, runtimePackageChecks.separator, runtimeEnv))) {
     missingPackages.push(runtimePackages.separator);
   }
+  if (needs.zhconv && !(await pythonCheck(venvPython, runtimePackageChecks.zhconv, runtimeEnv))) {
+    missingPackages.push(runtimePackages.zhconv);
+  }
 
   if (missingPackages.length > 0) {
     log(`[runtime] Installing ${missingPackages.join(", ")}. First run may take several minutes.\n`);
@@ -2849,6 +2917,7 @@ function ytdlpSearchPlaceholderOptions(): JobOptions {
     separate: false,
     saveAudio: false,
     keepPlatformSubs: false,
+    simplifiedChinese: false,
     model: "medium",
     language: "",
     subLangs: "",
@@ -3133,7 +3202,8 @@ function runtimeNeeds(options: JobOptions): RuntimeNeeds {
   return {
     ytDlp: urlInput,
     whisper: needsLocalTranscription,
-    separator: options.separate && !separatedStemInput
+    separator: options.separate && !separatedStemInput,
+    zhconv: options.simplifiedChinese
   };
 }
 
@@ -3515,6 +3585,9 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
   if (options.keepPlatformSubs) {
     args.push("--keep-platform-subs");
   }
+  if (options.simplifiedChinese) {
+    args.push("--simplified-chinese");
+  }
 
   args.push(input);
   return args;
@@ -3544,6 +3617,70 @@ function normalizeFormats(formats: OutputFormat[]): OutputFormat[] {
   const allowed = new Set(fallback);
   const selected = formats.filter((format) => allowed.has(format));
   return selected.length > 0 ? selected : fallback;
+}
+
+/**
+ * Resolve a media page URL (YouTube, Bilibili, ...) into a direct stream URL
+ * that a `<video>` element can play. Stream URLs expire after a few hours, so
+ * this is resolved at room entry and never persisted.
+ *
+ * Bilibili only publishes DASH (video-only + audio-only). Prefer a muted
+ * ≤720p AVC video stream; combined `b[ext=mp4]` almost never exists there.
+ */
+function resolveDirectStreamUrl(
+  url: string,
+  python: { command: string; argsPrefix: string[] },
+  env: NodeJS.ProcessEnv
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const format = isBilibiliUrl(url)
+      ? "bv*[height<=720][vcodec^=avc1]/bv*[height<=720][vcodec^=avc]/bv*[height<=720]/bv*"
+      : "b[ext=mp4]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/b";
+    const args = [
+      ...python.argsPrefix,
+      "-m",
+      "yt_dlp",
+      "--no-playlist",
+      "--socket-timeout",
+      "20",
+      "-f",
+      format,
+      "-g",
+      url
+    ];
+    const child = spawn(python.command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let settled = false;
+    const settle = (value: string | null) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      settle(null);
+    }, 30_000);
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      settle(null);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        settle(null);
+        return;
+      }
+      const first = stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => /^https?:\/\//i.test(line));
+      settle(first ?? null);
+    });
+  });
 }
 
 function isHttpUrl(value: string): boolean {

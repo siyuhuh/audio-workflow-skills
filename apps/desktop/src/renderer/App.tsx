@@ -60,6 +60,7 @@ import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { NotificationToaster } from "./components/NotificationToaster";
 import { useNotifications, type NotificationAction } from "./lib/notifications";
 import { RoomRemoteDrawer } from "./components/RoomRemoteDrawer";
+import { RoomSetlistPanel } from "./components/RoomSetlistPanel";
 import { SettingsPanel, HF_TOKEN_FIELD_ID, SEPARATOR_MODEL_DIR_FIELD_ID } from "./components/SettingsPanel";
 import { PackageBadges } from "./components/PackageBadges";
 import { FeaturedPackageCard } from "./components/FeaturedPackageCard";
@@ -74,9 +75,9 @@ import {
 } from "./components/MicrophoneMonitorPanel";
 import { LyricsReviewScene } from "./scenes/LyricsReviewScene";
 import { KaraokeRoomScene } from "./scenes/KaraokeRoomScene";
-import { TopologyBackgroundCanvas } from "./components/visual/TopologyBackgroundCanvas";
 import { cn } from "./lib/cn";
 import { Button } from "./components/ui/Button";
+import { Card } from "./components/ui/Card";
 import { Eyebrow } from "./components/ui/Eyebrow";
 import { Field } from "./components/ui/Field";
 import { Checkbox } from "./components/ui/Checkbox";
@@ -190,6 +191,10 @@ interface PlaybackController {
   isPlaying: boolean;
   endedCount: number;
   canControl: boolean;
+  volume: number;
+  muted: boolean;
+  setVolume: (volume: number) => void;
+  toggleMute: () => void;
   play: () => void;
   pause: () => void;
   restart: () => void;
@@ -233,6 +238,7 @@ const defaultOptions: JobOptions = {
   separate: true,
   saveAudio: false,
   keepPlatformSubs: false,
+  simplifiedChinese: true,
   model: "small",
   language: "",
   subLangs: "",
@@ -439,7 +445,16 @@ export default function App() {
   const [lyricFont, setLyricFont] = useState<LyricFont>("rounded");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [youtubePanelOpen, setYoutubePanelOpen] = useState(false);
-  const [workspaceMode, setWorkspaceMode] = useState<"home" | "add">("home");
+  const [workspaceMode, setWorkspaceMode] = useState<"home" | "add" | "karaoke">("home");
+  const [setlistOrder, setSetlistOrder] = useState<string[]>(() => {
+    try {
+      const raw = window.localStorage.getItem("vocalflow.setlistOrder");
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+    } catch {
+      return [];
+    }
+  });
   const [mediaSearchPlatform, setMediaSearchPlatform] = useState<"youtube" | "bilibili">("youtube");
   const [youtubeQuery, setYoutubeQuery] = useState("");
   const [youtubeAppendKaraoke, setYoutubeAppendKaraoke] = useState(false);
@@ -487,7 +502,32 @@ export default function App() {
   const trackAssets = useMemo(() => buildTrackAssets(playbackAssets), [playbackAssets]);
   const playbackBundle = useMemo(() => activeReview?.playbackBundle ?? null, [activeReview]);
   const packageVideoPath = useMemo(() => packageVideoPathForReview(activeReview), [activeReview]);
-  const previewVideoPath = packageVideoPath && packageVideoPath !== selectedMediaPath ? packageVideoPath : null;
+  // Online MV stage backdrop: when the package has no local video but came
+  // from a URL, resolve a direct stream URL on room entry so the muted MV
+  // can play over the backing-stem audio. Resolved URLs expire after a few
+  // hours, so this is per-session state and never persisted.
+  const [onlineMvUrl, setOnlineMvUrl] = useState("");
+  const onlineMvSourceUrl = playbackBundle?.sourceUrl ?? null;
+  useEffect(() => {
+    let ignore = false;
+    setOnlineMvUrl("");
+    if (appScene !== "karaoke-room" || !onlineMvSourceUrl || packageVideoPath || !audioWorkflow.resolveStreamUrl) {
+      return;
+    }
+    audioWorkflow
+      .resolveStreamUrl(onlineMvSourceUrl)
+      .then((url) => {
+        if (!ignore && url) {
+          setOnlineMvUrl(url);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, [appScene, onlineMvSourceUrl, packageVideoPath]);
+  const previewVideoPath =
+    packageVideoPath && packageVideoPath !== selectedMediaPath ? packageVideoPath : onlineMvUrl || null;
   const playbackController = usePlaybackController(selectedMediaPath, previewVideoPath);
   const microphoneMonitor = useMicrophoneMonitor();
   const wordTimingSubtitlePath = useMemo(() => bestWordTimingSubtitlePath(selectedSubtitlePath, subtitleAssets), [selectedSubtitlePath, subtitleAssets]);
@@ -509,6 +549,32 @@ export default function App() {
     () => Array.from(stats.byKey.values()).map((group) => group.entry),
     [stats]
   );
+  const orderedKaraokePackages = useMemo(() => {
+    const byId = new Map(karaokePackages.map((entry) => [entry.id, entry]));
+    const ordered: SavedJobHistory[] = [];
+    for (const id of setlistOrder) {
+      const entry = byId.get(id);
+      if (entry) {
+        ordered.push(entry);
+        byId.delete(id);
+      }
+    }
+    for (const entry of karaokePackages) {
+      if (byId.has(entry.id)) {
+        ordered.push(entry);
+      }
+    }
+    return ordered;
+  }, [karaokePackages, setlistOrder]);
+  const roomSetlistItems = useMemo(
+    () =>
+      orderedKaraokePackages.map((entry) => ({
+        entry,
+        title: reviewDisplayTitle(entry),
+        ready: Boolean(entry.workflowMode === "karaoke" && entry.playbackBundle.controllable && entry.primarySubtitle)
+      })),
+    [orderedKaraokePackages]
+  );
   const featuredVariant: "continue" | "sample" =
     stats.featured && !isSampleHistoryEntry(stats.featured.entry) ? "continue" : "sample";
   const cachedPackageForInput = useMemo(() => {
@@ -529,11 +595,24 @@ export default function App() {
   }, [history, options.input]);
   const roomQueue = roomStatus?.queue ?? [];
   const nextRoomRequest = roomQueue.find((item) => item.status === "queued") ?? null;
-  const showWorkspace = Boolean(activeReview || jobs.length > 0 || advancedOpen || workspaceMode === "add");
+  const showWorkspace = Boolean(
+    workspaceMode !== "karaoke" && (activeReview || jobs.length > 0 || advancedOpen || workspaceMode === "add")
+  );
   const showActivityPane = Boolean(jobs.length > 0 || advancedOpen);
   const effectiveTheme = themeMode === "system" ? (systemPrefersDark ? "dark" : "light") : themeMode;
-  const currentNavTarget: AppNavTarget = appScene === "karaoke-room" ? "karaoke" : workspaceMode;
-  const canNavigateToKaraoke = Boolean(activeReview?.workflowMode === "karaoke" && activeReview.playbackBundle.controllable && selectedSubtitlePath);
+  const currentNavTarget: AppNavTarget =
+    appScene === "karaoke-room" || appScene === "lyrics-review" ? "karaoke" : workspaceMode;
+  const canEnterActiveStage = Boolean(
+    activeReview?.workflowMode === "karaoke" && activeReview.playbackBundle.controllable && selectedSubtitlePath
+  );
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("vocalflow.setlistOrder", JSON.stringify(setlistOrder));
+    } catch {
+      // ignore quota / private mode failures
+    }
+  }, [setlistOrder]);
 
   useEffect(() => {
     audioWorkflow
@@ -1202,12 +1281,58 @@ export default function App() {
     window.setTimeout(() => captureInputRef.current?.focus(), 0);
   }
 
-  function navigateKaraoke() {
-    if (!canNavigateToKaraoke) {
+  function navigateKaraokeLobby() {
+    setWorkspaceMode("karaoke");
+    setAppScene("workspace");
+    setYoutubePanelOpen(false);
+  }
+
+  function moveSetlistItem(historyId: string, direction: -1 | 1) {
+    const ids = orderedKaraokePackages.map((entry) => entry.id);
+    const index = ids.indexOf(historyId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) {
       return;
     }
-    setReviewTab("karaoke");
-    setAppScene("karaoke-room");
+    const next = [...ids];
+    const [item] = next.splice(index, 1);
+    next.splice(nextIndex, 0, item);
+    setSetlistOrder(next);
+  }
+
+  function enterKaraokeStage(historyId?: string) {
+    const targetId =
+      historyId ??
+      (selectedHistoryId && orderedKaraokePackages.some((entry) => entry.id === selectedHistoryId)
+        ? selectedHistoryId
+        : orderedKaraokePackages.find((entry) => entry.playbackBundle.controllable && entry.primarySubtitle)?.id) ??
+      orderedKaraokePackages[0]?.id;
+    if (!targetId) {
+      navigateKaraokeLobby();
+      return;
+    }
+    const entry = history.find((item) => item.id === targetId) ?? orderedKaraokePackages.find((item) => item.id === targetId);
+    if (!entry || entry.workflowMode !== "karaoke") {
+      navigateKaraokeLobby();
+      return;
+    }
+    if (!entry.playbackBundle.controllable || !entry.primarySubtitle) {
+      selectHistoryEntry(entry.id);
+      return;
+    }
+    enterKaraokeFromHistoryAndPlay(entry.id);
+  }
+
+  function handleFloatingKaraokeNav() {
+    if (appScene === "karaoke-room") {
+      return;
+    }
+    if (appScene === "lyrics-review" && canEnterActiveStage) {
+      setReviewTab("karaoke");
+      setAppScene("karaoke-room");
+      return;
+    }
+    navigateKaraokeLobby();
   }
 
   const dockTitle =
@@ -1224,25 +1349,149 @@ export default function App() {
         : activeReviewTitle || t("common:dock.homeEmpty");
   const dockAction =
     currentNavTarget === "karaoke"
-      ? canNavigateToKaraoke
+      ? roomSetlistItems.some((item) => item.ready)
         ? t("common:dock.ready")
         : t("common:dock.needsPackage")
       : currentNavTarget === "add" && cachedPackageForInput
         ? t("common:dock.cached")
         : undefined;
 
-  const floatingNav = (
-    <FloatingBottomNav
-      active={currentNavTarget}
-      karaokeDisabled={!canNavigateToKaraoke}
-      contextTitle={dockTitle}
-      contextSubtitle={dockSubtitle}
-      contextAction={dockAction}
-      onHome={navigateHome}
-      onAdd={navigateAdd}
-      onKaraoke={navigateKaraoke}
-      t={t}
-    />
+  const floatingNav =
+    appScene === "karaoke-room" || appScene === "lyrics-review" ? (
+      <FloatingBottomNav
+        active={currentNavTarget}
+        karaokeDisabled={false}
+        contextTitle={dockTitle}
+        contextSubtitle={dockSubtitle}
+        contextAction={dockAction}
+        onHome={navigateHome}
+        onAdd={navigateAdd}
+        onKaraoke={handleFloatingKaraokeNav}
+        t={t}
+      />
+    ) : null;
+
+  function handleHeaderNav(target: AppNavTarget) {
+    if (target === "home") {
+      navigateHome();
+      return;
+    }
+    if (target === "add") {
+      navigateAdd();
+      return;
+    }
+    // Room tab opens the setlist lobby — never jump straight onto Stage from Home/Add.
+    // If already singing, keep the Stage; use playlist controls to change songs.
+    if (appScene === "karaoke-room") {
+      return;
+    }
+    navigateKaraokeLobby();
+  }
+
+  const studioChromeHeader = (
+    <header className="brandHeader">
+      <div className="brandLogo" aria-label={t("common:appName")}>
+        <span className="brandLogoLine">
+          <span className="brandLogoStrong">Vocal</span>
+          <span className="brandLogoLight">Flow</span>
+        </span>
+        <span className="brandLogoMeta">{t("common:home.established")}</span>
+      </div>
+
+      <div className="brandHeaderNav">
+        <SegmentedControl
+          variant="pill"
+          value={currentNavTarget}
+          options={[
+            ["home", t("common:nav.home")],
+            ["add", t("common:nav.add")],
+            ["karaoke", t("common:nav.karaoke")]
+          ]}
+          onChange={handleHeaderNav}
+        />
+      </div>
+
+      <div className="brandHeaderActions">
+        <HeaderJobStatusPill
+          job={liveJob}
+          t={t}
+          onActivate={() => {
+            if (appScene !== "workspace") {
+              navigateAdd();
+            }
+            window.setTimeout(() => {
+              const target = document.getElementById("captureStatus");
+              if (target) {
+                target.scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+            }, 0);
+          }}
+        />
+        <button
+          className="brandIconButton"
+          type="button"
+          onClick={() => setRoomDrawerOpen((open) => !open)}
+          aria-label={t("room:drawerToggle")}
+          aria-expanded={roomDrawerOpen}
+          aria-controls="vocalflow-room-drawer"
+        >
+          <Icon name="qr" />
+          {roomQueue.length > 0 || roomStatus?.nowPlaying ? (
+            <span className="brandIconStatusDot" aria-label={t("room:statusDot")} />
+          ) : null}
+        </button>
+        <button
+          className="brandIconButton"
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          aria-label={t("settings:button")}
+        >
+          <Icon name="settings" />
+        </button>
+      </div>
+    </header>
+  );
+
+  const studioOverlays = (
+    <>
+      <RoomRemoteDrawer
+        open={roomDrawerOpen}
+        onClose={() => setRoomDrawerOpen(false)}
+        roomStatus={roomStatus}
+        roomQrDataUrl={roomQrDataUrl}
+        roomMessage={roomMessage}
+        roomQueue={roomQueue}
+        nextRoomRequest={nextRoomRequest}
+        isRunning={isRunning}
+        onCopyLink={copyRemoteRoomLink}
+        onProcessItem={(item) => {
+          void processRoomQueueItem(item);
+        }}
+        onRemoveItem={removeRoomItem}
+        onClearQueue={clearRoomQueue}
+        t={t}
+      />
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        themeMode={themeMode}
+        accentColor={accentColor}
+        locale={currentLocale}
+        hfToken={hfToken}
+        hfEndpoint={hfEndpoint}
+        separatorModelDir={separatorModelDir}
+        uvrDetection={uvrDetection}
+        onThemeModeChange={handleThemeModeChange}
+        onAccentColorChange={handleAccentColorChange}
+        onLocaleChange={handleLanguageChange}
+        onHfTokenChange={handleHfTokenChange}
+        onHfEndpointChange={handleHfEndpointChange}
+        onSeparatorModelDirChange={handleSeparatorModelDirChange}
+        onPickFolder={handlePickFolder}
+        onRedetectUvr={handleRedetectUvr}
+        t={t}
+      />
+    </>
   );
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
@@ -1580,8 +1829,8 @@ export default function App() {
     if (!activeReview) {
       return;
     }
-    const currentIndex = karaokePackages.findIndex((entry) => entry.id === activeReview.id);
-    const nextPackage = currentIndex >= 0 ? karaokePackages[currentIndex + 1] : karaokePackages[0];
+    const currentIndex = orderedKaraokePackages.findIndex((entry) => entry.id === activeReview.id);
+    const nextPackage = currentIndex >= 0 ? orderedKaraokePackages[currentIndex + 1] : orderedKaraokePackages[0];
     if (nextPackage) {
       enterKaraokeFromHistoryAndPlay(nextPackage.id);
     }
@@ -1591,12 +1840,12 @@ export default function App() {
     if (!activeReview) {
       return;
     }
-    const currentIndex = karaokePackages.findIndex((entry) => entry.id === activeReview.id);
+    const currentIndex = orderedKaraokePackages.findIndex((entry) => entry.id === activeReview.id);
     const previousPackage =
       currentIndex > 0
-        ? karaokePackages[currentIndex - 1]
+        ? orderedKaraokePackages[currentIndex - 1]
         : currentIndex === 0
-          ? karaokePackages.at(-1)
+          ? orderedKaraokePackages.at(-1)
           : null;
     if (previousPackage && previousPackage.id !== activeReview.id) {
       enterKaraokeFromHistoryAndPlay(previousPackage.id);
@@ -1654,7 +1903,9 @@ export default function App() {
 
   if (appScene === "lyrics-review" && activeReview) {
     return (
-      <div className="appSceneFrame" data-theme={effectiveTheme} data-accent={accentColor}>
+      <div className="appSceneFrame appSceneFrame--withChrome" data-theme={effectiveTheme} data-accent={accentColor}>
+        {studioChromeHeader}
+        <div className="studioScrollRegion">
         <LyricsReviewScene
           activeReview={activeReview}
           cues={cues}
@@ -1670,6 +1921,8 @@ export default function App() {
           onScriptChange={setScriptText}
           onSave={saveScript}
         />
+        </div>
+        {studioOverlays}
         {floatingNav}
         <NotificationToaster />
       </div>
@@ -1678,7 +1931,9 @@ export default function App() {
 
   if (appScene === "karaoke-room" && activeReview) {
     return (
-      <div className="appSceneFrame" data-theme="dark" data-accent={accentColor}>
+      <div className="appSceneFrame appSceneFrame--withChrome" data-theme="dark" data-accent={accentColor}>
+        {studioChromeHeader}
+        <div className="studioScrollRegion">
         <KaraokeRoomScene
           activeCue={activeCue}
           activeCueIndex={activeCueIndex}
@@ -1688,11 +1943,11 @@ export default function App() {
           playbackController={playbackController}
           roomQueue={roomQueue}
           songOptions={
-            karaokePackages.some((entry) => entry.id === activeReview.id)
-              ? karaokePackages.map((entry) => ({ id: entry.id, title: reviewDisplayTitle(entry) }))
+            orderedKaraokePackages.some((entry) => entry.id === activeReview.id)
+              ? orderedKaraokePackages.map((entry) => ({ id: entry.id, title: reviewDisplayTitle(entry) }))
               : [
                   { id: activeReview.id, title: reviewDisplayTitle(activeReview) },
-                  ...karaokePackages.map((entry) => ({ id: entry.id, title: reviewDisplayTitle(entry) }))
+                  ...orderedKaraokePackages.map((entry) => ({ id: entry.id, title: reviewDisplayTitle(entry) }))
                 ]
           }
           trackAssets={trackAssets}
@@ -1733,6 +1988,8 @@ export default function App() {
           onTrackRoleChange={setTrackRole}
           isRunning={isRunning}
         />
+        </div>
+        {studioOverlays}
         {floatingNav}
         <NotificationToaster />
       </div>
@@ -1741,7 +1998,7 @@ export default function App() {
 
   return (
     <motion.main
-      className="appShell grid min-h-screen w-full gap-6"
+      className="appShell w-full"
       data-has-workspace={showWorkspace}
       data-theme={effectiveTheme}
       data-accent={accentColor}
@@ -1749,84 +2006,68 @@ export default function App() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: motionDuration.base, ease: motionEase }}
     >
-      <TopologyBackgroundCanvas />
-      <section
-        className="grid gap-6"
+      {studioChromeHeader}
+
+      <div className="studioScrollRegion">
+      <div
+        className="studioHeroBand"
         onDrop={handleDrop}
         onDragOver={(event) => event.preventDefault()}
       >
-        {/* Top bar */}
-        <header className="brandHeader">
-          <div className="brandLogo" aria-label={t("common:appName")}>
-            <span className="brandLogoLine">
-              <span className="brandLogoStrong">Vocal</span>
-              <span className="brandLogoLight">Flow</span>
-            </span>
-            <span className="brandLogoMeta">{t("common:home.established")}</span>
-          </div>
-
-          <HeaderJobStatusPill
-            job={liveJob}
-            t={t}
-            onActivate={() => {
-              const target = document.getElementById("captureStatus");
-              if (target) {
-                target.scrollIntoView({ behavior: "smooth", block: "center" });
-              }
-            }}
-          />
-
-          <div className="brandHeaderActions">
-            <button
-              className="brandIconButton"
-              type="button"
-              onClick={() => setRoomDrawerOpen((open) => !open)}
-              aria-label={t("room:drawerToggle")}
-              aria-expanded={roomDrawerOpen}
-              aria-controls="vocalflow-room-drawer"
-            >
-              <Icon name="qr" />
-              {(roomQueue.length > 0 || roomStatus?.nowPlaying) ? (
-                <span className="brandIconStatusDot" aria-label={t("room:statusDot")} />
-              ) : null}
-            </button>
-            <button
-              className="brandIconButton"
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              aria-label={t("settings:button")}
-            >
-              <Icon name="settings" />
-            </button>
-          </div>
-        </header>
+        <div className="studioHeroInner">
 
         {/* Brand hero */}
         <section className="brandHero grid items-center gap-8" data-workspace-mode={workspaceMode}>
-          <div className="grid max-w-[820px] content-start gap-5">
+          <div className="grid max-w-[760px] content-start gap-5">
             <div className="grid gap-4">
-              <Eyebrow>{workspaceMode === "add" ? t("common:home.addKicker") : t("common:home.kicker")}</Eyebrow>
-              <h1 className="m-0 max-w-[780px] text-[clamp(44px,7vw,76px)] font-semibold leading-[0.95] tracking-[-0.06em] text-foreground">
-                {workspaceMode === "add" ? t("common:home.addTitle") : t("common:home.title")}
+              <Eyebrow>
+                {workspaceMode === "add"
+                  ? t("common:home.addKicker")
+                  : workspaceMode === "karaoke"
+                    ? t("common:room.kicker")
+                    : t("common:home.kicker")}
+              </Eyebrow>
+              <h1 className="m-0 max-w-[720px] text-[clamp(36px,5.5vw,56px)] font-semibold leading-[1.02] tracking-[-0.05em] text-foreground">
+                {workspaceMode === "add"
+                  ? t("common:home.addTitle")
+                  : workspaceMode === "karaoke"
+                    ? t("common:room.title")
+                    : t("common:home.title")}
               </h1>
-              <p className="m-0 max-w-[660px] text-[clamp(16px,2vw,20px)] font-normal leading-relaxed text-muted-foreground">
-                {workspaceMode === "add" ? t("common:home.addSubtitle") : t("common:home.subtitle")}
+              <p className="m-0 max-w-[560px] text-base font-normal leading-relaxed text-muted-foreground">
+                {workspaceMode === "add"
+                  ? t("common:home.addSubtitle")
+                  : workspaceMode === "karaoke"
+                    ? t("common:room.subtitle")
+                    : t("common:home.subtitle")}
               </p>
               {workspaceMode === "home" ? (
                 <div className="flex flex-wrap gap-2 pt-2">
                   <Button
                     variant="primary"
                     size="lg"
-                    onClick={navigateKaraoke}
-                    disabled={!canNavigateToKaraoke}
+                    onClick={navigateKaraokeLobby}
                     className="gap-2"
                   >
-                    <Icon name="play" />
-                    {t("common:actions.enterKaraoke")}
+                    <Icon name="music" />
+                    {t("common:nav.karaoke")}
                   </Button>
                   <Button size="lg" onClick={navigateAdd} className="gap-2">
                     <Icon name="plus" />
                     {t("common:nav.add")}
+                  </Button>
+                </div>
+              ) : null}
+              {workspaceMode === "karaoke" && roomSetlistItems.some((item) => item.ready) ? (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={() => enterKaraokeStage()}
+                    className="gap-2"
+                  >
+                    <Icon name="play" />
+                    {t("common:room.startSinging")}
                   </Button>
                 </div>
               ) : null}
@@ -1836,7 +2077,7 @@ export default function App() {
         {workspaceMode === "add" ? (
         <div className="grid gap-3">
           <p className="m-0 text-sm font-medium text-faint">{t("common:home.captureHint")}</p>
-          <div className="brandCaptureCard grid gap-3 rounded-lg border border-border bg-elevated p-4 shadow-sm backdrop-blur-md">
+          <Card surface="card" padding="lg" elevated className="brandCaptureCard grid gap-3">
             <label className="block text-sm font-medium text-muted-foreground" htmlFor="input">
               {t("capture:inputLabel")}
             </label>
@@ -1902,6 +2143,12 @@ export default function App() {
                   <option value="ko">{t("capture:languageOptions.korean")}</option>
                 </select>
               </label>
+              <Checkbox
+                label={t("capture:simplifiedChinese")}
+                checked={options.simplifiedChinese}
+                onChange={(checked) => updateOptions({ simplifiedChinese: checked })}
+                className="self-end pb-1"
+              />
               <Button onClick={chooseInput} className="gap-2">
                 <Icon name="folder" />
                 {t("capture:selectFile")}
@@ -1911,8 +2158,18 @@ export default function App() {
                 {advancedOpen ? t("capture:advanced.hide") : t("capture:advanced.show")}
               </Button>
             </div>
+          </Card>
+        </div>
+        ) : null}
           </div>
-          <section className="mediaSearchCard grid gap-3 rounded-lg border border-border bg-card/80 p-4 shadow-sm backdrop-blur-md">
+        </section>
+        </div>
+      </div>
+
+      <div className="studioDeck">
+        <div className="studioDeckInner grid gap-5">
+        {workspaceMode === "add" ? (
+          <Card surface="card" padding="lg" elevated className="mediaSearchCard grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="grid size-8 place-items-center rounded-full border border-line-soft bg-muted text-muted-foreground">
@@ -2028,11 +2285,8 @@ export default function App() {
                 ))}
               </ul>
             ) : null}
-          </section>
-        </div>
+          </Card>
         ) : null}
-          </div>
-        </section>
 
         <section id="captureStatus" aria-label={t("capture:jobStream.headerLabel")} className="grid gap-3 scroll-mt-32">
           <LiveJobStatus job={liveJob} t={t} />
@@ -2041,7 +2295,7 @@ export default function App() {
         </section>
 
         {workspaceMode === "home" ? (
-          <section className="selectionGallery grid gap-4" aria-label={t("library:shelfHeader")}>
+          <section className="selectionGallery" aria-label={t("library:shelfHeader")}>
             {stats.featured ? (
               <FeaturedPackageEntry
                 entry={stats.featured.entry}
@@ -2053,7 +2307,7 @@ export default function App() {
             ) : null}
 
             {stats.shelfList.length > 0 ? (
-              <section className="grid gap-3 rounded-lg border border-border bg-card/72 p-4 shadow-sm backdrop-blur-md">
+              <Card surface="card" padding="lg" elevated className="grid gap-3">
                 <div className="flex items-center justify-between gap-3">
                   <Eyebrow className="m-0">{t("library:shelfHeader")}</Eyebrow>
                   <span className="text-xs font-medium text-faint tabular-nums">
@@ -2071,13 +2325,16 @@ export default function App() {
                     />
                   ))}
                 </div>
-              </section>
+              </Card>
             ) : null}
 
             {!stats.featured && stats.shelfList.length === 0 ? (
-              <section
+              <Card
+                surface="elevated"
+                padding="lg"
+                bordered
                 aria-label={t("library:emptyTitle")}
-                className="grid gap-3 rounded-lg border border-dashed border-border bg-elevated p-8 text-center"
+                className="grid gap-3 border-dashed p-8 text-center"
               >
                 <h2 className="m-0 text-lg font-semibold text-foreground">{t("library:emptyTitle")}</h2>
                 <p className="m-0 text-sm font-medium text-muted-foreground">{t("library:emptyBody")}</p>
@@ -2085,50 +2342,25 @@ export default function App() {
                   <Icon name="plus" />
                   {t("common:nav.add")}
                 </Button>
-              </section>
+              </Card>
             ) : null}
           </section>
         ) : null}
-      </section>
 
-      <RoomRemoteDrawer
-        open={roomDrawerOpen}
-        onClose={() => setRoomDrawerOpen(false)}
-        roomStatus={roomStatus}
-        roomQrDataUrl={roomQrDataUrl}
-        roomMessage={roomMessage}
-        roomQueue={roomQueue}
-        nextRoomRequest={nextRoomRequest}
-        isRunning={isRunning}
-        onCopyLink={copyRemoteRoomLink}
-        onProcessItem={(item) => {
-          void processRoomQueueItem(item);
-        }}
-        onRemoveItem={removeRoomItem}
-        onClearQueue={clearRoomQueue}
-        t={t}
-      />
-
-      <SettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        themeMode={themeMode}
-        accentColor={accentColor}
-        locale={currentLocale}
-        hfToken={hfToken}
-        hfEndpoint={hfEndpoint}
-        separatorModelDir={separatorModelDir}
-        uvrDetection={uvrDetection}
-        onThemeModeChange={handleThemeModeChange}
-        onAccentColorChange={handleAccentColorChange}
-        onLocaleChange={handleLanguageChange}
-        onHfTokenChange={handleHfTokenChange}
-        onHfEndpointChange={handleHfEndpointChange}
-        onSeparatorModelDirChange={handleSeparatorModelDirChange}
-        onPickFolder={handlePickFolder}
-        onRedetectUvr={handleRedetectUvr}
-        t={t}
-      />
+        {workspaceMode === "karaoke" ? (
+          <RoomSetlistPanel
+            items={roomSetlistItems}
+            selectedId={selectedHistoryId}
+            onSelect={(historyId) => {
+              setSelectedHistoryId(historyId);
+              setActiveJobId(null);
+            }}
+            onMove={moveSetlistItem}
+            onStart={(historyId) => enterKaraokeStage(historyId)}
+            onReview={(historyId) => selectHistoryEntry(historyId)}
+            onAddSongs={navigateAdd}
+          />
+        ) : null}
 
       {showWorkspace ? (
         <section
@@ -2465,6 +2697,12 @@ export default function App() {
           ) : null}
         </section>
       ) : null}
+        </div>
+      </div>
+      </div>
+
+      {studioOverlays}
+
       {floatingNav}
       <NotificationToaster />
     </motion.main>
@@ -2490,6 +2728,11 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [endedCount, setEndedCount] = useState(0);
+  const [volume, setVolumeState] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const volumeBeforeMuteRef = useRef(1);
+  const volumeRef = useRef(1);
+  const mutedRef = useRef(false);
 
   useEffect(() => {
     let ignore = false;
@@ -2535,6 +2778,15 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
   }, [isPlaying]);
 
   useEffect(() => {
+    volumeRef.current = volume;
+    mutedRef.current = muted;
+    const media = mediaRef.current;
+    if (media) {
+      media.volume = muted ? 0 : volume;
+    }
+  }, [mediaUrl, muted, volume]);
+
+  useEffect(() => {
     return () => {
       clearPendingPreviewSync();
     };
@@ -2546,6 +2798,13 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
     setPreviewStatus("");
 
     if (!previewPath) {
+      return;
+    }
+
+    // Remote stream URLs (online MV resolved via yt-dlp -g) are playable
+    // directly; only local filesystem paths need the media-token IPC.
+    if (/^https?:\/\//i.test(previewPath)) {
+      setPreviewUrl(previewPath);
       return;
     }
 
@@ -2748,6 +3007,7 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
   }
 
   function onLoadedMetadata(event: SyntheticEvent<HTMLMediaElement>) {
+    event.currentTarget.volume = mutedRef.current ? 0 : volumeRef.current;
     setKnownDuration(event.currentTarget.duration);
     flushPendingSeek(event.currentTarget);
   }
@@ -2757,6 +3017,7 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
   }
 
   function onCanPlay(event: SyntheticEvent<HTMLMediaElement>) {
+    event.currentTarget.volume = mutedRef.current ? 0 : volumeRef.current;
     setKnownDuration(event.currentTarget.duration);
     flushPendingSeek(event.currentTarget);
   }
@@ -2819,6 +3080,26 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
     }
   }
 
+  function setVolume(next: number) {
+    const clamped = Math.max(0, Math.min(1, next));
+    setVolumeState(clamped);
+    if (clamped > 0) {
+      setMuted(false);
+      volumeBeforeMuteRef.current = clamped;
+    }
+  }
+
+  function toggleMute() {
+    if (muted || volume <= 0) {
+      const restored = volumeBeforeMuteRef.current > 0 ? volumeBeforeMuteRef.current : 1;
+      setMuted(false);
+      setVolumeState(restored);
+      return;
+    }
+    volumeBeforeMuteRef.current = volume;
+    setMuted(true);
+  }
+
   return {
     mediaRef,
     previewRef,
@@ -2831,6 +3112,10 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
     isPlaying,
     endedCount,
     canControl: Boolean(mediaUrl),
+    volume,
+    muted,
+    setVolume,
+    toggleMute,
     play,
     pause,
     restart,

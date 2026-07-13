@@ -53,16 +53,30 @@ interface AlbumHoloCardProps {
   className?: string;
 }
 
+function resolveThemePrimaryRgb(): string {
+  const host =
+    document.querySelector<HTMLElement>(".appShell, .appSceneFrame") ?? document.documentElement;
+  const probe = document.createElement("span");
+  probe.style.color = "var(--primary)";
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  host.appendChild(probe);
+  const color = getComputedStyle(probe).color || "rgb(80, 200, 90)";
+  probe.remove();
+  return color;
+}
+
 function createFallbackTexture(title: string): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 768;
   canvas.height = 480;
   const context = canvas.getContext("2d");
   if (context) {
+    const accent = resolveThemePrimaryRgb();
     const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
     gradient.addColorStop(0, "#1f2933");
     gradient.addColorStop(0.54, "#10110f");
-    gradient.addColorStop(1, "#304638");
+    gradient.addColorStop(1, accent);
     context.fillStyle = gradient;
     context.fillRect(0, 0, canvas.width, canvas.height);
 

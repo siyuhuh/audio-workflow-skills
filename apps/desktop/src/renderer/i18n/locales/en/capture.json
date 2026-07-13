@@ -57,6 +57,7 @@
     "japanese": "日本語",
     "korean": "한국어"
   },
+  "simplifiedChinese": "Simplified Chinese",
   "search": {
     "toggle": "Media search",
     "hint": "Search public videos",
