@@ -5,6 +5,7 @@ import argparse
 import fnmatch
 from html import unescape
 import json
+import math
 import os
 import re
 import shutil
@@ -989,6 +990,20 @@ def probe_duration_seconds(source: Path) -> float | None:
         return None
 
 
+def parse_ffmpeg_progress_seconds(value: str) -> float | None:
+    """Convert ffmpeg's microsecond progress value into a safe timestamp.
+
+    ffmpeg can emit AV_NOPTS_VALUE (a very large negative integer) before it
+    has a usable output timestamp. Treat that and other invalid values as
+    unavailable so implementation details never appear in progress copy.
+    """
+    try:
+        current = float(value) / 1_000_000.0
+    except ValueError:
+        return None
+    return current if math.isfinite(current) and current >= 0 else None
+
+
 def convert_audio(source: Path, target: Path) -> None:
     duration = probe_duration_seconds(source)
     cmd = [
@@ -1032,17 +1047,17 @@ def convert_audio(source: Path, target: Path) -> None:
                 if key not in {"out_time_ms", "out_time_us"}:
                     continue
 
-                try:
-                    current = float(value) / 1_000_000.0
-                except ValueError:
+                current = parse_ffmpeg_progress_seconds(value)
+                if current is None:
                     continue
 
                 now = time.monotonic()
                 if duration and now - last_emit_at >= 0.5:
+                    display_current = min(current, duration)
                     emit_progress(
                         "convert",
-                        progress=min(0.99, current / duration),
-                        message=f"{current:.0f}s / {duration:.0f}s",
+                        progress=min(0.99, display_current / duration),
+                        message=f"{display_current:.0f}s / {duration:.0f}s",
                     )
                     last_emit_at = now
     finally:

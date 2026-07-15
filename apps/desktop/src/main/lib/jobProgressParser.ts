@@ -83,6 +83,15 @@ const FFMPEG_PROGRESS_KEYS = new Set([
   "stream_0_0_q"
 ]);
 
+function parseFfmpegTimestamp(value: string, unitsPerMillisecond: number): number | undefined {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || !Number.isSafeInteger(raw) || raw < 0) {
+    return undefined;
+  }
+  const milliseconds = Math.round(raw / unitsPerMillisecond);
+  return Number.isSafeInteger(milliseconds) && milliseconds >= 0 ? milliseconds : undefined;
+}
+
 const YTDLP_DOWNLOAD_RE =
   /^\[download\]\s+(\d+(?:\.\d+)?)%\s+of\s+~?\s*([\d.]+\s*\w+)(?:\s+at\s+([\d.]+\s*\w+\/s))?(?:\s+ETA\s+([\d:]+))?/;
 const YTDLP_DOWNLOAD_DONE_RE =
@@ -193,7 +202,7 @@ export function parseRawProgressLine(line: string, state: RawParseState): RawLin
     const outMs = state.ffmpeg.lastOutTimeMs;
     const speed = state.ffmpeg.lastSpeed;
     const segments: string[] = [];
-    if (typeof outMs === "number") {
+    if (typeof outMs === "number" && Number.isSafeInteger(outMs) && outMs >= 0) {
       segments.push(`${Math.floor(outMs / 1000)}s`);
     }
     if (speed) {
@@ -216,15 +225,11 @@ export function parseRawProgressLine(line: string, state: RawParseState): RawLin
     if (FFMPEG_PROGRESS_KEYS.has(key)) {
       const value = trimmed.slice(eqIdx + 1).trim();
       if (key === "out_time_us") {
-        const n = Number(value);
-        if (Number.isFinite(n)) {
-          state.ffmpeg.lastOutTimeMs = Math.round(n / 1000);
-        }
+        state.ffmpeg.lastOutTimeMs = parseFfmpegTimestamp(value, 1000);
       } else if (key === "out_time_ms") {
-        const n = Number(value);
-        if (Number.isFinite(n)) {
-          state.ffmpeg.lastOutTimeMs = n;
-        }
+        // Despite the legacy key name, ffmpeg reports this value in
+        // microseconds as well (the same unit as out_time_us).
+        state.ffmpeg.lastOutTimeMs = parseFfmpegTimestamp(value, 1000);
       } else if (key === "speed" && value && value !== "N/A") {
         state.ffmpeg.lastSpeed = value;
       }
