@@ -79,7 +79,7 @@
   --panel-dark-fg: oklch(0.96 0.01 128);
   --barcode: repeating-linear-gradient(90deg, oklch(0.28 0.018 135 / 0.55) 0 1px, transparent 1px 5px);
   --hover-fill: color-mix(in oklch, var(--primary) 22%, transparent);
-  --texture-opacity: 0.55;
+  --texture-wash: 88%;
   --surface-chassis: var(--card);
   --surface-chassis-gradient: none;
   --chassis-border: var(--rule);
@@ -319,10 +319,23 @@ body {
 }
 
 .studioScrollRegion {
+  --canvas-texture-color: var(--background);
   position: absolute;
   inset: var(--studio-chrome-height) 0 0;
   z-index: 1;
   min-height: 0;
+  isolation: isolate;
+  background-color: var(--canvas-texture-color);
+  background-image:
+    linear-gradient(
+      color-mix(in oklch, var(--canvas-texture-color) var(--texture-wash), transparent),
+      color-mix(in oklch, var(--canvas-texture-color) var(--texture-wash), transparent)
+    ),
+    url("./assets/noise.png");
+  background-repeat: repeat, repeat;
+  background-position: 0 0, 50% 50%;
+  background-size: auto, 100px 100px;
+  background-blend-mode: normal, soft-light;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -783,35 +796,12 @@ textarea:focus-visible {
   max-width: none;
   margin: 0;
   padding: 0;
-  background-color: var(--background);
-  /* Codrops demo-4: tiled noise is the film texture (scanlines are demo 1–3). */
-  background-image: url("./assets/noise.png");
-  background-size: 100px 100px;
-  background-repeat: repeat;
-  background-position: 50% 50%;
-  background-blend-mode: soft-light;
+  background: var(--background);
   overflow: hidden;
 }
 
-/* Film grain sits above UI so the Codrops texture actually reads. */
 .appShell::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  pointer-events: none;
-  opacity: var(--texture-opacity, 0.55);
-  background-image: url("./assets/noise.png");
-  background-size: 100px 100px;
-  background-repeat: repeat;
-  background-position: 50% 50%;
-  mix-blend-mode: multiply;
-}
-
-.appShell[data-theme="dark"]::before,
-.appShell[data-accent="ink"]::before {
-  mix-blend-mode: soft-light;
-  opacity: 0.72;
+  content: none;
 }
 
 .appShell::after {
@@ -821,45 +811,25 @@ textarea:focus-visible {
 .appSceneFrame {
   position: relative;
   isolation: isolate;
-  background-color: var(--background);
-  background-image: url("./assets/noise.png");
-  background-size: 100px 100px;
-  background-repeat: repeat;
-  background-position: 50% 50%;
-  background-blend-mode: soft-light;
+  background: var(--background);
 }
 
 .appSceneFrame::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  pointer-events: none;
-  opacity: var(--texture-opacity, 0.5);
-  background-image: url("./assets/noise.png");
-  background-size: 100px 100px;
-  background-repeat: repeat;
-  background-position: 50% 50%;
-  mix-blend-mode: multiply;
-}
-
-.appSceneFrame[data-theme="dark"]::before {
-  mix-blend-mode: soft-light;
-  opacity: 0.7;
+  content: none;
 }
 
 .studioHeroBand {
   position: relative;
   z-index: 1;
   padding: 32px clamp(20px, 4vw, 48px) 40px;
-  background: var(--background);
+  background: transparent;
 }
 
 .studioDeck {
   position: relative;
   z-index: 1;
   padding: 28px clamp(20px, 4vw, 48px) 48px;
-  background: var(--background);
+  background: transparent;
   border-top: 1px solid var(--rule);
 }
 
@@ -1360,7 +1330,7 @@ button.uiKey::after {
 .studioHeroBand:has(.captureConsole) {
   padding-top: 20px;
   padding-bottom: 20px;
-  background: var(--background);
+  background: transparent;
 }
 
 .captureConsole {
@@ -2286,8 +2256,19 @@ button.uiKey::after {
   color-scheme: dark;
 }
 
+.appShell[data-workspace-mode="karaoke"] .studioScrollRegion,
+.appSceneFrame[data-theme="dark"] .studioScrollRegion {
+  --canvas-texture-color: var(--room-ink);
+  --texture-wash: 90%;
+}
+
 .appShell[data-workspace-mode="karaoke"] .studioHeroBand,
-.appShell[data-workspace-mode="karaoke"] .studioDeck,
+.appShell[data-workspace-mode="karaoke"] .studioDeck {
+  background: transparent;
+  border-color: var(--rule);
+  color: var(--room-panel);
+}
+
 .appShell[data-workspace-mode="karaoke"] .brandHeader {
   background: var(--room-ink);
   border-color: var(--rule);
