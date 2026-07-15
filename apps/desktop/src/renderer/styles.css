@@ -38,9 +38,15 @@
   --sidebar-accent-foreground: oklch(0 0 0);
   --sidebar-border: oklch(0.28 0.018 135 / 0.28);
   --sidebar-ring: var(--primary);
-  --font-sans: "JetBrains Mono", "Nanum Gothic Coding", monospace;
-  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
-  --font-mono: "JetBrains Mono", "Nanum Gothic Coding", monospace;
+  --font-sans-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu,
+    "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei UI", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
+  --font-serif-stack: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono-stack: "SFMono-Regular", "SF Mono", "Cascadia Code", "Roboto Mono",
+    "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+  --font-sans: var(--font-sans-stack);
+  --font-serif: var(--font-serif-stack);
+  --font-mono: var(--font-mono-stack);
   --radius: 0.75rem;
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
@@ -213,19 +219,15 @@
   --scrollbar-track-page: color-mix(in oklch, var(--card) 55%, transparent);
 
   /* Font stacks */
-  --font-family-sans:
-    var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
-    "Noto Sans CJK SC", sans-serif;
+  --font-family-sans: var(--font-sans-stack);
   --font-family-display: var(--font-family-sans);
-  --font-family-mono:
-    var(--font-mono), "SFMono-Regular", Consolas, "Liberation Mono", "Noto Sans Mono CJK SC", monospace;
+  --font-family-mono: var(--font-mono-stack);
 
   color: var(--color-text);
   background: var(--color-surface);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
-  font-weight: 300;
+  font-weight: 400;
   font-optical-sizing: auto;
   font-synthesis: none;
   font-variant-numeric: tabular-nums;
@@ -678,9 +680,9 @@ body {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --font-serif: var(--font-serif);
+  --font-sans: var(--font-sans-stack);
+  --font-mono: var(--font-mono-stack);
+  --font-serif: var(--font-serif-stack);
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
@@ -958,7 +960,7 @@ html[data-platform="darwin"] :is(.brandLogo, .brandHeaderActions, .brandIconButt
   gap: 6px;
   font-size: 15px;
   line-height: 1;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -975,7 +977,7 @@ html[data-platform="darwin"] :is(.brandLogo, .brandHeaderActions, .brandIconButt
   color: var(--color-text-faint);
   font-size: 8px;
   font-weight: 400;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.1em;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -1131,10 +1133,10 @@ button.uiKey {
   border-radius: 0;
   background: transparent;
   color: var(--foreground);
-  font-family: var(--font-mono);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: var(--font-family-sans);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   box-shadow: none;
   transition: color 180ms var(--motion-ease-out);
   -webkit-tap-highlight-color: transparent;
@@ -1297,10 +1299,10 @@ button.uiKey::after {
   border: 0;
   background: transparent;
   color: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: var(--font-family-sans);
+  font-weight: 560;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
   transition: color 160ms var(--motion-ease-out), background-color 160ms var(--motion-ease-out);
 }
@@ -2241,7 +2243,9 @@ button.uiKey::after {
 
 .appShell[data-workspace-mode="karaoke"],
 .karaokeSceneShell,
-.appSceneFrame:has(.karaokeSceneShell) {
+.roomStage,
+.appSceneFrame:has(.karaokeSceneShell),
+.appSceneFrame:has(.roomStage) {
   --background: var(--room-ink);
   --foreground: var(--room-panel);
   --card: var(--room-ink-elevated);
@@ -2337,11 +2341,10 @@ button.uiKey::after {
 
 .roomInstrumentNext {
   margin: 10px 0 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-family-sans);
   font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: color-mix(in oklch, var(--room-panel) 72%, transparent);
 }
 
@@ -2358,21 +2361,19 @@ button.uiKey::after {
 
 .roomInstrumentSelectedTitle {
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-family-sans);
   font-size: clamp(1.4rem, 3vw, 2rem);
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  letter-spacing: -0.02em;
   line-height: 1.05;
 }
 
 .roomInstrumentSelectedMeta {
   margin: 8px 0 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-family-sans);
   font-size: 0.72rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--room-panel-fg) 72%, transparent);
 }
 
@@ -2448,13 +2449,13 @@ button.uiKey::after {
   padding: 14px 12px;
   border-bottom: 1px solid var(--rule);
   border-radius: var(--radius-md);
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-family: var(--font-family-sans);
+  letter-spacing: 0;
   color: var(--room-panel);
 }
 
 .roomSetlistIndex {
+  font-family: var(--font-family-mono);
   font-size: 0.72rem;
   font-weight: 500;
   color: color-mix(in oklch, var(--room-panel) 55%, transparent);
@@ -2484,7 +2485,7 @@ button.uiKey::after {
 .roomSetlistMeta {
   font-size: 0.68rem;
   font-weight: 400;
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--room-panel) 55%, transparent);
 }
 
@@ -3431,3 +3432,1428 @@ select:focus-visible {
   }
 }
 
+/* ── Import flow: one clear action, defaults first, details on demand. ── */
+
+.importFlow {
+  display: grid;
+  gap: 28px;
+  width: min(920px, 100%);
+  margin-inline: auto;
+  padding-block: clamp(24px, 5vh, 64px);
+}
+
+.importFlowHeader {
+  display: grid;
+  gap: 12px;
+  max-width: 720px;
+}
+
+.importFlowHeader h1 {
+  max-width: 700px;
+  margin: 0;
+  font-size: clamp(2.25rem, 5.4vw, 4.3rem);
+  font-weight: 560;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+:is(:lang(zh), :lang(zh-CN)) .importFlowHeader h1 {
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.importFlowHeader p {
+  max-width: 640px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.importComposer {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  background: var(--card);
+}
+
+.importComposerField {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 76px;
+  padding: 10px 10px 10px 20px;
+  background: var(--panel-dark);
+  color: var(--panel-dark-fg);
+}
+
+.importComposerIcon {
+  display: grid;
+  place-items: center;
+  color: color-mix(in oklch, var(--panel-dark-fg) 48%, transparent);
+}
+
+.importComposerInput,
+:is(.appShell, .appSceneFrame)[data-theme="dark"] .importComposerInput {
+  min-width: 0;
+  min-height: 52px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--panel-dark-fg);
+  font-size: clamp(1rem, 2vw, 1.22rem);
+  font-weight: 450;
+  outline: none;
+}
+
+.importComposerInput::placeholder,
+:is(.appShell, .appSceneFrame)[data-theme="dark"] .importComposerInput::placeholder {
+  color: color-mix(in oklch, var(--panel-dark-fg) 38%, transparent);
+}
+
+.importComposerFile,
+.importComposerStop,
+.importComposerSubmit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  border: 0;
+  font-family: var(--font-family-sans);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.importComposerFile {
+  width: 48px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--panel-dark-fg) 8%, transparent);
+  color: var(--panel-dark-fg);
+}
+
+.importComposerSubmit,
+.importComposerStop {
+  min-width: 142px;
+  padding-inline: 18px;
+  border-radius: var(--radius-md);
+}
+
+.importComposerSubmit {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.importComposerStop {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+.importComposerFile:active:enabled,
+.importComposerSubmit:active:enabled,
+.importComposerStop:active:enabled,
+.importPlanEdit:active:enabled,
+.importAdvancedLink:active:enabled,
+.importCached button:active:enabled {
+  transform: scale(0.97);
+}
+
+.importPlan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+}
+
+.importPlanSummary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.importPlanStatus {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 14%, transparent);
+}
+
+.importPlanSummary strong {
+  display: block;
+  color: var(--foreground);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.importPlanSummary p {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.importPlanEdit,
+.importAdvancedLink,
+.importCached button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  border: 0;
+  padding-inline: 12px;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-family-sans);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.importPlanEdit:hover,
+.importPlanEdit:focus-visible,
+.importAdvancedLink:hover,
+.importAdvancedLink:focus-visible,
+.importCached button:hover,
+.importCached button:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.importOptions {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(150px, 0.7fr) minmax(180px, auto) auto;
+  align-items: end;
+  gap: 16px;
+  border-top: 1px solid var(--rule);
+  padding: 18px 20px;
+  transform-origin: top;
+}
+
+.importOptionGroup {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.importOptionGroup > span {
+  color: var(--muted-foreground);
+  font-family: var(--font-family-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.importOptionGroup select {
+  min-height: 38px;
+  border-color: var(--rule);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.importAdvancedLink {
+  justify-self: end;
+}
+
+.importHint {
+  margin: 0;
+  border-top: 1px solid var(--rule);
+  padding: 12px 20px;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.importComposer > [role="status"] {
+  margin: 0 20px 16px;
+  border-color: var(--rule);
+  box-shadow: none;
+}
+
+.importCached {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--rule);
+  padding: 12px 20px;
+}
+
+.importCached p {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 550;
+}
+
+@media (max-width: 760px) {
+  .importFlow {
+    gap: 22px;
+    padding-block: 20px;
+  }
+
+  .importComposerField {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 8px 8px 8px 14px;
+  }
+
+  .importComposerSubmit,
+  .importComposerStop {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .importOptions {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .importAdvancedLink {
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .importComposerFile,
+  .importComposerSubmit,
+  .importComposerStop,
+  .importPlanEdit,
+  .importAdvancedLink,
+  .importCached button {
+    transition-duration: 1ms;
+  }
+}
+
+/* ── Karaoke stage: lyrics first, one dock, secondary controls tucked away. ── */
+
+.appSceneFrame:has(.roomStage) .studioScrollRegion {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.roomStage {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--room-ink);
+  color: var(--room-panel);
+}
+
+.roomStageCanvas {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+  background: var(--room-ink);
+}
+
+.roomStageMedia {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.roomStageScrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(4, 6, 5, 0.72), transparent 28%),
+    linear-gradient(to top, rgba(4, 6, 5, 0.8), transparent 52%),
+    linear-gradient(to right, rgba(4, 6, 5, 0.26), transparent 28%, transparent 72%, rgba(4, 6, 5, 0.18));
+  pointer-events: none;
+}
+
+.roomStageFallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 48px;
+  background:
+    radial-gradient(circle at 50% 44%, color-mix(in oklch, var(--room-panel) 16%, transparent), transparent 30%),
+    var(--room-ink);
+}
+
+.roomStageOrb {
+  display: grid;
+  width: clamp(120px, 15vw, 190px);
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--room-panel) 32%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--room-panel) 8%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 76%, transparent);
+  font-family: var(--font-family-sans);
+  font-size: clamp(2.8rem, 7vw, 5.6rem);
+  font-weight: 400;
+}
+
+.roomStageVisualizer {
+  display: flex;
+  align-items: center;
+  gap: clamp(3px, 0.45vw, 7px);
+  width: min(440px, 62vw);
+  height: 52px;
+}
+
+.roomStageVisualizer span {
+  flex: 1 1 0;
+  height: 100%;
+  min-width: 2px;
+  background: color-mix(in oklch, var(--room-panel) 64%, transparent);
+  transform-origin: center;
+  transition: transform 120ms linear;
+}
+
+.roomStageFallback:not([data-playing="true"]) .roomStageVisualizer span {
+  transform: scaleY(0.12) !important;
+}
+
+.roomStageTopbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: clamp(18px, 3vw, 32px);
+  pointer-events: none;
+}
+
+.roomStageNow {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.roomStageNow > span {
+  color: color-mix(in oklch, var(--room-panel) 62%, transparent);
+  font-family: var(--font-family-sans);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.roomStageNow strong {
+  max-width: min(520px, 58vw);
+  overflow: hidden;
+  color: white;
+  font-size: clamp(0.95rem, 2vw, 1.2rem);
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomStageNow p {
+  max-width: min(520px, 58vw);
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.52);
+  font-family: var(--font-family-sans);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomStageExit,
+.roomTransportButton,
+.roomToolTrigger,
+.roomToolPanelClose,
+.roomMixerRow button,
+.roomQueueItem button,
+.roomEditorNudge button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--room-panel);
+  transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.roomStageExit {
+  width: 40px;
+  height: 40px;
+  pointer-events: auto;
+  background: color-mix(in oklch, black 52%, transparent);
+}
+
+.roomStageExit:active:enabled,
+.roomTransportButton:active:enabled,
+.roomToolTrigger:active:enabled,
+.roomToolPanelClose:active:enabled,
+.roomMixerRow button:active:enabled,
+.roomQueueItem button:active:enabled,
+.roomSongItem:active:enabled,
+.roomStyleGrid button:active:enabled,
+.roomStageMenu button:active:enabled,
+.roomMicMonitorButton:active:enabled,
+.roomSwitch:active:enabled,
+.roomEditor button:active:enabled {
+  transform: scale(0.97);
+}
+
+.roomStageLyrics.roomLyrics {
+  right: clamp(20px, 5vw, 80px);
+  bottom: clamp(48px, 9vh, 100px);
+  left: clamp(20px, 5vw, 80px);
+  gap: 10px;
+}
+
+.roomStageLyrics .roomLyricContext {
+  color: rgba(255, 255, 255, 0.46);
+  font-size: clamp(17px, 2vw, 27px);
+  font-weight: 520;
+}
+
+.roomStageLyrics .karaokeLyricLine {
+  font-size: clamp(38px, 6vw, 78px);
+}
+
+.roomControlDock {
+  position: relative;
+  z-index: 10;
+  flex: none;
+  padding: 18px clamp(18px, 3vw, 30px) 16px;
+  border-top: 1px solid color-mix(in oklch, var(--room-panel) 18%, transparent);
+  background: var(--room-ink);
+}
+
+.roomProgress {
+  position: absolute;
+  top: -7px;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  height: 14px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.roomProgress[data-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.roomProgressTrack,
+.roomProgressFill {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  transform-origin: left;
+}
+
+.roomProgressTrack {
+  background: color-mix(in oklch, var(--room-panel) 18%, transparent);
+}
+
+.roomProgressFill {
+  background: var(--room-panel);
+}
+
+.roomProgressThumb {
+  position: absolute;
+  top: 1px;
+  width: 2px;
+  height: 12px;
+  background: var(--room-needle);
+  transform: translateX(-50%) scaleY(1);
+  transform-origin: center;
+  transition: transform 140ms var(--motion-ease-out);
+}
+
+.roomProgress:hover .roomProgressThumb,
+.roomProgress:focus-visible .roomProgressThumb {
+  transform: translateX(-50%) scaleY(1.5);
+}
+
+.roomControlRow {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) auto minmax(190px, 1fr);
+  align-items: center;
+  gap: 22px;
+}
+
+.roomControlTrack {
+  min-width: 0;
+  justify-self: start;
+}
+
+.roomTransport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.roomTransportButton {
+  width: 42px;
+  height: 42px;
+}
+
+.roomTransportButton--primary {
+  width: 54px;
+  height: 54px;
+  background: var(--room-panel);
+  color: var(--room-panel-fg);
+}
+
+.roomTransportTime {
+  min-width: 44px;
+  color: color-mix(in oklch, var(--room-panel) 52%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.roomTools {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.roomToolTrigger {
+  position: relative;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--room-panel);
+  cursor: pointer;
+  font-family: var(--font-family-sans);
+  font-size: 0.72rem;
+  font-weight: 650;
+  transition: background-color 140ms var(--motion-ease-out), transform 140ms var(--motion-ease-out);
+  user-select: none;
+}
+
+.roomToolTrigger--text {
+  font-size: 0.76rem;
+  letter-spacing: -0.02em;
+}
+
+.roomToolTrigger[data-open="true"] {
+  background: color-mix(in oklch, var(--room-panel) 14%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 88%, white);
+}
+
+.roomToolBadge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  display: grid;
+  min-width: 15px;
+  height: 15px;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--room-needle);
+  color: white;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.roomToolPanel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 14px);
+  z-index: 30;
+  display: grid;
+  width: min(352px, calc(100vw - 24px));
+  max-height: min(70vh, 560px);
+  gap: 0;
+  overflow-y: auto;
+  border: 1px solid color-mix(in oklch, var(--room-panel) 18%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  background: color-mix(in oklch, var(--room-ink-elevated) 94%, black);
+  color: var(--room-panel);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.38);
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: bottom right;
+  transition: opacity 150ms var(--motion-ease-out), transform 150ms var(--motion-ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+}
+
+.roomToolPanelHeader {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid color-mix(in oklch, var(--room-panel) 12%, transparent);
+  padding: 0 10px 0 14px;
+}
+
+.roomToolPanelHeader > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.roomToolPanelHeader strong {
+  color: var(--room-panel);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.roomToolPanelHeader > div > span,
+.roomPopoverLabel {
+  color: color-mix(in oklch, var(--room-panel) 54%, transparent);
+  font-family: var(--font-family-sans);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.roomToolPanelClose {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: color-mix(in oklch, var(--room-panel) 56%, transparent);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.roomToolSectionStack,
+.roomSettingsStack {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.roomMixer {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.roomMixerRow {
+  display: grid;
+  grid-template-columns: 32px 70px minmax(110px, 1fr) 32px;
+  align-items: center;
+  gap: 9px;
+}
+
+.roomMixerRow button {
+  width: 32px;
+  height: 32px;
+}
+
+.roomMixerRow > span {
+  overflow: hidden;
+  color: color-mix(in oklch, var(--room-panel) 78%, transparent);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomMixerRow input[type="range"] {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--room-panel);
+}
+
+.roomMixerRow output {
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.roomStylePreview {
+  display: grid;
+  gap: 7px;
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: color-mix(in oklch, var(--room-panel) 7%, transparent);
+}
+
+.roomStylePreview > span {
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-family: var(--font-family-sans);
+  font-size: 0.64rem;
+  letter-spacing: 0;
+}
+
+.roomStylePreview strong {
+  overflow: hidden;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomToolSectionStack section {
+  display: grid;
+  gap: 8px;
+}
+
+.roomStyleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.roomStyleGrid button {
+  min-height: 38px;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  background: color-mix(in oklch, var(--room-panel) 5%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 70%, transparent);
+  font-size: 0.72rem;
+  text-align: left;
+  transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.roomStyleGrid button[data-selected="true"] {
+  background: var(--room-panel);
+  color: var(--room-panel-fg);
+}
+
+.roomQueueList {
+  display: grid;
+  gap: 3px;
+}
+
+.roomQueueItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid color-mix(in oklch, var(--room-panel) 12%, transparent);
+  padding: 9px 6px;
+}
+
+.roomQueueItem > div:first-child {
+  min-width: 0;
+}
+
+.roomQueueItem strong,
+.roomQueueItem span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomQueueItem strong {
+  color: var(--room-panel);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.roomQueueItem span {
+  margin-top: 2px;
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-size: 0.62rem;
+}
+
+.roomQueueItem > div:last-child {
+  display: flex;
+  gap: 2px;
+}
+
+.roomQueueItem button {
+  width: 30px;
+  height: 30px;
+}
+
+.roomSongItem {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  background: transparent;
+  color: color-mix(in oklch, var(--room-panel) 68%, transparent);
+  text-align: left;
+  transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.roomSongItem > span {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.roomSongItem > strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.74rem;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomSongItem[data-active="true"] {
+  background: color-mix(in oklch, var(--room-panel) 13%, transparent);
+  color: var(--room-panel);
+}
+
+.roomMicPanel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid color-mix(in oklch, var(--room-panel) 12%, transparent);
+  padding-top: 14px;
+}
+
+.roomMicHeader,
+.roomMicOption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.roomMicHeader > div,
+.roomMicOption > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.roomMicHeader strong,
+.roomMicOption strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: color-mix(in oklch, var(--room-panel) 88%, white);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.roomMicHeader > div > span,
+.roomMicOption > div > span {
+  overflow: hidden;
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-size: 0.64rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomMicMonitorButton {
+  display: inline-flex;
+  min-height: 30px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 0 10px;
+  background: color-mix(in oklch, var(--room-panel) 7%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 68%, transparent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  transition: background-color 140ms var(--motion-ease-out), color 140ms var(--motion-ease-out), transform 140ms var(--motion-ease-out);
+}
+
+.roomMicMonitorButton[data-selected="true"] {
+  background: var(--room-panel);
+  color: var(--room-panel-fg);
+}
+
+.roomMicDevice,
+.appSceneFrame[data-theme="dark"] .roomMicDevice {
+  min-height: 38px;
+  border: 1px solid color-mix(in oklch, var(--room-panel) 14%, transparent);
+  border-radius: var(--radius-md);
+  padding-inline: 10px;
+  background: color-mix(in oklch, var(--room-panel) 5%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 84%, white);
+  font-size: 0.72rem;
+}
+
+.roomMicLevel {
+  display: grid;
+  gap: 7px;
+}
+
+.roomMicLevel > span {
+  color: color-mix(in oklch, var(--room-panel) 52%, transparent);
+  font-size: 0.64rem;
+  font-weight: 500;
+}
+
+.roomMicLevel input[type="range"] {
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--room-panel);
+}
+
+.roomMicLevel input[type="range"]:disabled {
+  opacity: 0.32;
+}
+
+.roomMicOption {
+  border-top: 1px solid color-mix(in oklch, var(--room-panel) 12%, transparent);
+  padding-top: 12px;
+}
+
+.roomSwitch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--room-panel) 12%, transparent);
+  transition: background-color 140ms var(--motion-ease-out), transform 140ms var(--motion-ease-out);
+}
+
+.roomSwitch > span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--room-panel) 70%, white);
+  transform: translateX(0);
+  transition: transform 160ms var(--motion-ease-out), background-color 140ms var(--motion-ease-out);
+}
+
+.roomSwitch[data-selected="true"] {
+  background: var(--room-panel);
+}
+
+.roomSwitch[data-selected="true"] > span {
+  background: var(--room-panel-fg);
+  transform: translateX(16px);
+}
+
+.roomSettingsField {
+  display: grid;
+  gap: 7px;
+}
+
+.roomSettingsField > span {
+  color: color-mix(in oklch, var(--room-panel) 54%, transparent);
+  font-family: var(--font-family-sans);
+  font-size: 0.66rem;
+  letter-spacing: 0;
+}
+
+.roomSettingsField select,
+.appSceneFrame[data-theme="dark"] .roomSettingsField select {
+  min-height: 40px;
+  border-color: color-mix(in oklch, var(--room-panel) 18%, transparent);
+  background: color-mix(in oklch, var(--room-panel) 6%, transparent);
+  color: var(--room-panel);
+}
+
+.roomStageMenu {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid color-mix(in oklch, var(--room-panel) 14%, transparent);
+  padding-top: 10px;
+}
+
+.roomStageMenu button {
+  display: grid;
+  grid-template-columns: 24px minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0 8px;
+  background: transparent;
+  color: color-mix(in oklch, var(--room-panel) 76%, transparent);
+  font-size: 0.72rem;
+  text-align: left;
+  transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.roomStageMenu button > span {
+  overflow: hidden;
+  color: color-mix(in oklch, var(--room-panel) 42%, transparent);
+  font-size: 0.62rem;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomSettingsNotice {
+  margin: 0;
+  color: color-mix(in oklch, var(--room-panel) 52%, transparent);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.roomHiddenMedia {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.roomEditorBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.66);
+}
+
+.roomEditor {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(760px, 88vh);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--room-panel) 22%, transparent);
+  border-radius: var(--radius-xl);
+  background: var(--room-ink-elevated);
+  color: var(--room-panel);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.58);
+  transform-origin: center;
+}
+
+.roomEditorHeader,
+.roomEditorFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+.roomEditorHeader {
+  border-bottom: 1px solid color-mix(in oklch, var(--room-panel) 14%, transparent);
+}
+
+.roomEditorHeader > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.roomEditorHeader strong {
+  color: var(--room-panel);
+  font-size: 0.86rem;
+}
+
+.roomEditorHeader span,
+.roomEditorFooter > span {
+  overflow: hidden;
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-size: 0.64rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomEditorNudge,
+.roomEditorFooter > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.roomEditorNudge button {
+  width: 32px;
+  height: 32px;
+}
+
+.roomEditorNudge > span {
+  min-width: 68px;
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+.roomEditorHint {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid color-mix(in oklch, var(--room-panel) 12%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.roomEditorHint p {
+  margin: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomEditorBody {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  min-height: 0;
+}
+
+.roomEditorCues {
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid color-mix(in oklch, var(--room-panel) 12%, transparent);
+  padding: 10px;
+}
+
+.roomEditorCues button {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0 9px;
+  background: transparent;
+  color: color-mix(in oklch, var(--room-panel) 66%, transparent);
+  text-align: left;
+  transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.roomEditorCues button[data-active="true"] {
+  background: color-mix(in oklch, var(--room-panel) 12%, transparent);
+  color: var(--room-panel);
+}
+
+.roomEditorCues button > span {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.roomEditorCues button > strong {
+  overflow: hidden;
+  font-size: 0.68rem;
+  font-weight: 540;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomEditorCues > p {
+  margin: 12px;
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-size: 0.72rem;
+}
+
+.roomEditorBody textarea,
+.appSceneFrame[data-theme="dark"] .roomEditorBody textarea {
+  min-height: 300px;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  padding: 16px;
+  background: color-mix(in oklch, black 18%, transparent);
+  color: var(--room-panel);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.7;
+  outline: none;
+}
+
+.roomEditorFooter {
+  border-top: 1px solid color-mix(in oklch, var(--room-panel) 14%, transparent);
+}
+
+.roomEditorFooter button {
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  background: transparent;
+  color: var(--room-panel);
+  font-size: 0.7rem;
+  transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.roomEditorFooter .roomEditorSave {
+  background: var(--room-panel);
+  color: var(--room-panel-fg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .roomStageExit:hover:enabled,
+  .roomTransportButton:hover:enabled,
+  .roomToolTrigger:hover:enabled,
+  .roomToolPanelClose:hover:enabled,
+  .roomMixerRow button:hover:enabled,
+  .roomQueueItem button:hover:enabled,
+  .roomEditorNudge button:hover:enabled {
+    background: color-mix(in oklch, var(--room-panel) 12%, transparent);
+  }
+
+  .roomTransportButton--primary:hover:enabled {
+    background: color-mix(in oklch, var(--room-panel) 88%, white);
+  }
+
+  .roomSongItem:hover:enabled,
+  .roomStyleGrid button:hover:enabled,
+  .roomStageMenu button:hover:enabled,
+  .roomMicMonitorButton:hover:enabled,
+  .roomEditorCues button:hover:enabled,
+  .roomEditorFooter button:hover:enabled {
+    background: color-mix(in oklch, var(--room-panel) 9%, transparent);
+  }
+}
+
+@media (max-width: 900px) {
+  .roomControlRow {
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+  }
+
+  .roomControlTrack .hoverFillGroup button {
+    padding-inline: 10px;
+  }
+
+  .roomTransportTime {
+    display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .roomControlDock {
+    padding-inline: 12px;
+  }
+
+  .roomControlRow {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "transport transport"
+      "track tools";
+    row-gap: 10px;
+  }
+
+  .roomControlTrack {
+    grid-area: track;
+  }
+
+  .roomTransport {
+    grid-area: transport;
+  }
+
+  .roomTools {
+    grid-area: tools;
+  }
+
+  .roomStageLyrics.roomLyrics {
+    bottom: 34px;
+  }
+
+  .roomStageLyrics .karaokeLyricLine {
+    font-size: clamp(29px, 9vw, 52px);
+  }
+
+  .roomEditorBody {
+    grid-template-columns: 1fr;
+  }
+
+  .roomEditorCues {
+    max-height: 210px;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in oklch, var(--room-panel) 12%, transparent);
+  }
+}
+
+@media (max-height: 720px) and (min-width: 681px) {
+  .roomStageLyrics.roomLyrics {
+    bottom: 30px;
+  }
+
+  .roomStageLyrics .roomLyricContext {
+    font-size: 16px;
+  }
+
+  .roomStageLyrics .karaokeLyricLine {
+    font-size: clamp(32px, 5.4vw, 64px);
+  }
+
+  .roomControlDock {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+
+  .roomTransportButton {
+    width: 38px;
+    height: 38px;
+  }
+
+  .roomTransportButton--primary {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roomStageVisualizer span,
+  .roomStageExit,
+  .roomTransportButton,
+  .roomToolTrigger,
+  .roomToolPanel,
+  .roomToolPanelClose,
+  .roomMicMonitorButton,
+  .roomSwitch,
+  .roomSwitch > span,
+  .roomMixerRow button,
+  .roomQueueItem button,
+  .roomSongItem,
+  .roomStyleGrid button,
+  .roomStageMenu button,
+  .roomEditor button {
+    transition-duration: 1ms;
+  }
+}

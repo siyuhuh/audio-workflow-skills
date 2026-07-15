@@ -37,7 +37,6 @@ import {
   packageVideoPathForReview,
   reviewDisplayTitle,
   reviewMediaFamilyKey,
-  shortInputLabel,
   sourceUrlForKey
 } from "./lib/packageStats";
 import type { Translator } from "./lib/types";
@@ -91,11 +90,6 @@ import { Field } from "./components/ui/Field";
 import { Checkbox } from "./components/ui/Checkbox";
 import { SegmentedControl } from "./components/ui/SegmentedControl";
 import { Icon } from "./components/ui/Icon";
-
-const CAPTURE_SCOPE_BARS = [
-  28, 46, 62, 38, 74, 52, 88, 40, 66, 54, 78, 34, 70, 48, 92, 36, 60, 44, 82, 50, 68, 42, 76, 58, 84, 32, 64, 56, 90, 46, 72,
-  38, 80, 52, 66, 44, 86, 48, 70, 40, 76, 54, 62, 36, 88, 50, 68, 42
-] as const;
 
 interface ProcessedResourceCardEntryProps {
   entry: SavedJobHistory;
@@ -182,7 +176,6 @@ interface JobRecord {
   id: string;
   input: string;
   status: JobStatus;
-  startedAt: string;
   result?: JobResult;
 }
 
@@ -619,7 +612,6 @@ export default function App() {
   const showWorkspace = Boolean(
     workspaceMode !== "karaoke" && (activeReview || jobs.length > 0 || advancedOpen || workspaceMode === "add")
   );
-  const showActivityPane = Boolean(jobs.length > 0 || advancedOpen);
   const effectiveTheme = themeMode === "system" ? (systemPrefersDark ? "dark" : "light") : themeMode;
   const currentNavTarget: AppNavTarget =
     appScene === "karaoke-room" || appScene === "lyrics-review" ? "karaoke" : workspaceMode;
@@ -1182,53 +1174,32 @@ export default function App() {
 
   const captureInputKind = useMemo(() => classifyCaptureInput(options.input), [options.input]);
   const captureBusy = isRunning || youtubeSearching;
-  const captureScopeProgress = useMemo(() => {
-    if (youtubeSearching) {
-      return 0.42;
-    }
-    if (!isRunning) {
-      return options.input.trim() ? 0.08 : 0.03;
-    }
-    const stages = [...progressStages.values()];
-    if (stages.length === 0) {
-      return 0.12;
-    }
-    const done = stages.filter((stage) => stage.done || stage.failed).length;
-    return Math.min(0.94, 0.12 + done / Math.max(stages.length, 1));
-  }, [isRunning, options.input, progressStages, youtubeSearching]);
-  const captureLcdReadout = useMemo(() => {
-    if (cachedPackageForInput) {
-      return reviewDisplayTitle(cachedPackageForInput).slice(0, 28);
-    }
-    if (urlPreview?.title) {
-      return urlPreview.title.slice(0, 28);
-    }
-    const trimmed = options.input.trim();
-    if (!trimmed) {
-      return "STANDBY";
-    }
-    if (captureInputKind === "search") {
-      return trimmed.slice(0, 28).toUpperCase();
-    }
-    try {
-      return new URL(normalizeCaptureInput(trimmed)).hostname.replace(/^www\./, "").toUpperCase();
-    } catch {
-      return trimmed.slice(0, 28).toUpperCase();
-    }
-  }, [cachedPackageForInput, captureInputKind, options.input, urlPreview?.title]);
-  const captureLcdStatus = youtubeSearching
-    ? "SEARCH"
-    : isRunning
-      ? "RUN"
-      : cachedPackageForInput
-        ? "CACHE"
-        : captureInputKind === "url"
-          ? "LINK"
-          : captureInputKind === "local"
-            ? "FILE"
-            : options.input.trim()
-              ? "QUERY"
-              : "READY";
+  const capturePlanParts = [
+    options.workflowMode === "karaoke"
+      ? t("capture:flow.karaokePlan")
+      : t("capture:flow.subtitlePlan"),
+    options.language
+      ? t("capture:flow.languageValue", { language: options.language.toUpperCase() })
+      : t("capture:flow.autoLanguage")
+  ];
+  if (options.workflowMode === "karaoke") {
+    capturePlanParts.push(
+      options.separate ? t("capture:flow.withBacking") : t("capture:flow.originalOnly")
+    );
+  }
+  const capturePlanSummary = capturePlanParts.join(" · ");
+  let captureActionIcon: "folder" | "search" | "spark" = "spark";
+  let captureActionLabel = t("common:actions.addSong");
+  if (cachedPackageForInput) {
+    captureActionIcon = "folder";
+    captureActionLabel = t("capture:cache.openExisting");
+  } else if (youtubeSearching) {
+    captureActionIcon = "search";
+    captureActionLabel = t("common:actions.searching");
+  } else if (captureInputKind === "search") {
+    captureActionIcon = "search";
+    captureActionLabel = t("common:actions.search");
+  }
 
   useEffect(() => {
     const trimmed = options.input.trim();
@@ -1278,7 +1249,7 @@ export default function App() {
   function setWorkflowMode(workflowMode: WorkflowMode) {
     updateOptions({
       workflowMode,
-      localFallback: workflowMode === "karaoke",
+      localFallback: true,
       separate: workflowMode === "karaoke",
       saveAudio: false,
       formats: workflowMode === "karaoke" ? ["lrc"] : ["srt"]
@@ -1633,8 +1604,7 @@ export default function App() {
     const nextJob: JobRecord = {
       id: jobId,
       input: runOptions.input,
-      status: "running",
-      startedAt: new Date().toLocaleTimeString()
+      status: "running"
     };
 
     // Activity column shows ONE card per distinct input. Retrying the
@@ -1904,10 +1874,6 @@ export default function App() {
     }
   }
 
-  async function removeHistoryEntry(historyId: string) {
-    await removeHistoryEntries([historyId]);
-  }
-
   async function removeHistoryEntries(historyIds: string[]) {
     const uniqueIds = [...new Set(historyIds)];
     let nextHistory = history;
@@ -1918,13 +1884,6 @@ export default function App() {
     if (selectedHistoryId && uniqueIds.includes(selectedHistoryId)) {
       setSelectedHistoryId(null);
     }
-  }
-
-  function selectQueueJob(jobId: string) {
-    setActiveJobId(jobId);
-    setSelectedHistoryId(null);
-    const job = jobs.find((item) => item.id === jobId);
-    setAppScene(job?.result?.historyEntry?.workflowMode === "karaoke" ? "lyrics-review" : "workspace");
   }
 
   function selectHistoryEntry(historyId: string) {
@@ -2159,303 +2118,163 @@ export default function App() {
       >
         <div className="studioHeroInner">
 
-        {/* Brand hero / Capture console */}
+        {/* Primary import flow: one decision now, expert controls on demand. */}
         {workspaceMode === "add" ? (
-        <section className="captureConsole" aria-label={t("capture:inputLabel")}>
-          <div className="captureDeck" data-busy={captureBusy ? "true" : "false"}>
-            <div className="captureScope" aria-hidden="true">
-              <div className="captureScopeWave">
-                <div className="captureScopeBars">
-                  {CAPTURE_SCOPE_BARS.map((height, index) => (
-                    <span key={index} style={{ height: `${height}%` }} />
-                  ))}
-                </div>
-                <div
-                  className="captureScopePlayhead"
-                  style={{ left: `calc(${Math.round(captureScopeProgress * 100)}% - 1px)` }}
-                />
-              </div>
-              <div className="captureScopeRuler">
-                <span>00:00</span>
-                <span>00:15</span>
-                <span>00:30</span>
-                <span>00:45</span>
-                <span>01:00</span>
-              </div>
-            </div>
+        <section className="importFlow" aria-label={t("capture:inputLabel")}>
+          <header className="importFlowHeader">
+            <Eyebrow>{t("capture:flow.kicker")}</Eyebrow>
+            <h1>{t("capture:flow.title")}</h1>
+            <p>{t("capture:flow.subtitle")}</p>
+          </header>
 
-            <div className="captureMid">
-              <div className="captureLcd">
-                <div className="captureLcdTop">
-                  <span className="captureLcdRec" data-live={captureBusy ? "true" : "false"}>
-                    <span className="captureLcdRecDot" />
-                    {captureBusy ? "LIVE" : "IDLE"}
-                  </span>
-                  <span className="captureLcdBadge">{captureLcdStatus}</span>
-                </div>
-                <p className="captureLcdReadout" title={captureLcdReadout}>
-                  {captureLcdReadout}
-                </p>
-                <div className="captureLcdMeta">
-                  <span>
-                    {options.workflowMode.toUpperCase()} ·{" "}
-                    {(options.language || "auto").toUpperCase()}
-                    {options.separate ? " · STEM" : ""}
-                  </span>
-                  <span>
-                    {captureInputKind === "search"
-                      ? t("capture:search.unifiedHint")
-                      : options.input.trim() || t("common:home.captureHint")}
-                  </span>
-                </div>
-                <div className="captureLcdMeters" aria-hidden="true">
-                  <div className="captureLcdMeterRow">
-                    <span>L</span>
-                    <div className="captureLcdMeterTrack">
-                      <div
-                        className="captureLcdMeterFill"
-                        style={{ width: `${Math.round((captureBusy ? 0.72 : 0.18 + captureScopeProgress * 0.4) * 100)}%` }}
-                      />
-                    </div>
-                    <span>-12</span>
-                  </div>
-                  <div className="captureLcdMeterRow">
-                    <span>R</span>
-                    <div className="captureLcdMeterTrack">
-                      <div
-                        className="captureLcdMeterFill"
-                        style={{ width: `${Math.round((captureBusy ? 0.58 : 0.12 + captureScopeProgress * 0.35) * 100)}%` }}
-                      />
-                    </div>
-                    <span>-18</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="captureCluster">
-                <div className="captureCircleStack">
-                  <button
-                    type="button"
-                    className="uiKey uiKeyCircle captureCircle captureCircleStop"
-                    data-armed={isRunning ? "true" : "false"}
-                    onClick={cancelJob}
-                    disabled={!isRunning}
-                    aria-label={t("common:actions.stop")}
-                  >
-                    <span className="captureCircleIcon">
-                      <Icon name="stop" />
-                      STOP
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="uiKey uiKeyCircle uiKeyPrimary captureCircle captureCircleGo"
-                    onClick={submitCaptureInput}
-                    disabled={!options.input.trim() || isRunning || youtubeSearching}
-                    aria-label={
-                      cachedPackageForInput
-                        ? t("capture:cache.openExisting")
-                        : captureInputKind === "search"
-                          ? t("common:actions.search")
-                          : t("common:actions.addSong")
-                    }
-                  >
-                    <span className="captureCircleIcon">
-                      <Icon
-                        name={
-                          cachedPackageForInput
-                            ? "folder"
-                            : captureInputKind === "search"
-                              ? "search"
-                              : "spark"
-                        }
-                      />
-                      {youtubeSearching
-                        ? "…"
-                        : cachedPackageForInput
-                          ? "OPEN"
-                          : captureInputKind === "search"
-                            ? "FIND"
-                            : "GO"}
-                    </span>
-                  </button>
-                </div>
-                <div className="capturePad" aria-hidden="true">
-                  <div className="capturePadRing" />
-                  <span className="capturePadLabel" data-slot="n">
-                    YT
-                  </span>
-                  <span className="capturePadLabel" data-slot="s">
-                    BL
-                  </span>
-                  <span className="capturePadLabel" data-slot="w">
-                    URL
-                  </span>
-                  <span className="capturePadLabel" data-slot="e">
-                    LOC
-                  </span>
-                  <button
-                    type="button"
-                    className="capturePadCore"
-                    onClick={chooseInput}
-                    aria-label={t("capture:selectFile")}
-                  >
-                    <Icon name="folder" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="captureFoot">
-              <div className="captureSearchWell">
-                <span className="captureSearchWellIcon" aria-hidden="true">
-                  <Icon name={captureInputKind === "search" ? "search" : "spark"} />
-                </span>
-                <input
-                  id="input"
-                  ref={captureInputRef}
-                  value={options.input}
-                  onChange={(event) => updateOptions({ input: event.target.value })}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" || !options.input.trim() || isRunning) {
-                      return;
-                    }
-                    event.preventDefault();
-                    submitCaptureInput();
-                  }}
-                  placeholder={t("capture:inputPlaceholder")}
-                  className="captureSearchInput"
-                  aria-label={t("capture:inputLabel")}
-                />
-                <span className="captureSearchChip" data-active="true">
-                  {captureInputKind === "search" ? "SEARCH" : captureInputKind === "local" ? "LOCAL" : "URL"}
-                </span>
-              </div>
-
-              {captureInputKind === "search" && options.input.trim() ? (
-                <p className="captureHintLine">{t("capture:search.unifiedHint")}</p>
-              ) : null}
-              <UrlPreviewCard state={urlPreviewState} preview={urlPreview} t={t} />
-              {cachedPackageForInput ? (
-                <div className="grid gap-2">
-                  <p className="m-0 text-sm font-semibold text-accent-strong">
-                    {t("capture:cache.hint", { title: reviewDisplayTitle(cachedPackageForInput) })}
-                  </p>
-                  <button
-                    type="button"
-                    className="captureKey self-start"
-                    onClick={() => void runJob()}
-                    disabled={isRunning}
-                  >
-                    {t("capture:cache.redownload")}
-                  </button>
-                </div>
-              ) : null}
-
-              <div className="captureKeyRow">
-                <button type="button" className="captureKey" onClick={chooseInput}>
-                  FILE
-                </button>
-                <button
-                  type="button"
-                  className="captureKey"
-                  onClick={() => setCaptureOptionsOpen((open) => !open)}
-                  aria-expanded={captureOptionsOpen}
-                >
-                  OPTION
-                </button>
-                <button
-                  type="button"
-                  className="captureKey"
-                  onClick={() => setAdvancedOpen((open) => !open)}
-                  aria-expanded={advancedOpen}
-                >
-                  {advancedOpen ? "HIDE" : "ADV"}
-                </button>
-                <button
-                  type="button"
-                  className="captureKey captureKeyPrimary"
-                  onClick={submitCaptureInput}
-                  disabled={!options.input.trim() || isRunning || youtubeSearching}
-                >
-                  {cachedPackageForInput
-                    ? t("capture:cache.openExisting")
-                    : youtubeSearching
-                      ? t("common:actions.searching")
-                      : captureInputKind === "search"
-                        ? t("common:actions.search")
-                        : t("common:actions.addSong")}
-                </button>
-              </div>
-
-              <details
-                className="captureOptionsDrawer"
-                open={captureOptionsOpen}
-                onToggle={(event) => setCaptureOptionsOpen(event.currentTarget.open)}
+          <div className="importComposer" data-busy={captureBusy ? "true" : "false"}>
+            <div className="importComposerField">
+              <span className="importComposerIcon" aria-hidden="true">
+                <Icon name={captureInputKind === "search" ? "search" : "spark"} />
+              </span>
+              <input
+                id="input"
+                ref={captureInputRef}
+                value={options.input}
+                onChange={(event) => updateOptions({ input: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || !options.input.trim() || isRunning) {
+                    return;
+                  }
+                  event.preventDefault();
+                  submitCaptureInput();
+                }}
+                placeholder={t("capture:inputPlaceholder")}
+                className="importComposerInput"
+                aria-label={t("capture:inputLabel")}
+              />
+              <button
+                type="button"
+                className="importComposerFile"
+                onClick={chooseInput}
+                aria-label={t("capture:selectFile")}
+                title={t("capture:selectFile")}
               >
-                <summary>
-                  <span className="inline-flex items-center gap-2">
-                    <Icon name="sliders" />
-                    {t("capture:options.toggle")}
-                    <span className="text-xs font-medium text-faint">{t("capture:options.hint")}</span>
-                  </span>
-                </summary>
-                <div className="captureOptionsDrawerBody">
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div className="w-[220px] max-w-full">
-                      <SegmentedControl
-                        value={options.workflowMode}
-                        options={[
-                          ["karaoke", t("capture:modes.karaoke")],
-                          ["subtitle", t("capture:modes.subtitle")]
-                        ]}
-                        onChange={setWorkflowMode}
-                      />
-                    </div>
-                    <label className="grid w-44 gap-1">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {t("common:language.label")}
-                      </span>
-                      <select
-                        value={options.language}
-                        onChange={(event) => updateOptions({ language: event.target.value })}
-                        className="min-h-9 w-full rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--focus-ring)]"
-                      >
-                        <option value="">{t("capture:languageOptions.auto")}</option>
-                        <option value="en">{t("capture:languageOptions.english")}</option>
-                        <option value="zh">{t("capture:languageOptions.chinese")}</option>
-                        <option value="ja">{t("capture:languageOptions.japanese")}</option>
-                        <option value="ko">{t("capture:languageOptions.korean")}</option>
-                      </select>
-                    </label>
-                    <Checkbox
-                      label={t("capture:simplifiedChinese")}
-                      checked={options.simplifiedChinese}
-                      onChange={(checked) => updateOptions({ simplifiedChinese: checked })}
-                      className="self-end pb-1"
+                <Icon name="folder" />
+              </button>
+              {isRunning ? (
+                <button type="button" className="importComposerStop" onClick={cancelJob}>
+                  <Icon name="stop" />
+                  {t("common:actions.stop")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="importComposerSubmit"
+                  onClick={submitCaptureInput}
+                  disabled={!options.input.trim() || youtubeSearching}
+                >
+                  <Icon name={captureActionIcon} />
+                  {captureActionLabel}
+                </button>
+              )}
+            </div>
+
+            <div className="importPlan">
+              <div className="importPlanSummary">
+                <span className="importPlanStatus" aria-hidden="true" />
+                <div className="min-w-0">
+                  <strong>{t("capture:flow.defaultPlan")}</strong>
+                  <p>{capturePlanSummary}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="importPlanEdit"
+                onClick={() => setCaptureOptionsOpen((open) => !open)}
+                aria-expanded={captureOptionsOpen}
+              >
+                <Icon name="sliders" />
+                {t("capture:flow.adjust")}
+              </button>
+            </div>
+
+            <AnimatePresence initial={false}>
+              {captureOptionsOpen ? (
+                <motion.div
+                  className="importOptions"
+                  initial={{ opacity: 0, transform: "translateY(-6px)" }}
+                  animate={{ opacity: 1, transform: "translateY(0)" }}
+                  exit={{ opacity: 0, transform: "translateY(-4px)" }}
+                  transition={{ duration: motionDuration.fast, ease: motionEase }}
+                >
+                  <div className="importOptionGroup">
+                    <span>{t("capture:flow.useFor")}</span>
+                    <SegmentedControl
+                      value={options.workflowMode}
+                      options={[
+                        ["karaoke", t("capture:modes.karaoke")],
+                        ["subtitle", t("capture:modes.subtitle")]
+                      ]}
+                      onChange={setWorkflowMode}
                     />
                   </div>
-                  <div className="grid gap-2 md:grid-cols-2">
+                  <label className="importOptionGroup">
+                    <span>{t("common:language.label")}</span>
+                    <select
+                      value={options.language}
+                      onChange={(event) => updateOptions({ language: event.target.value })}
+                    >
+                      <option value="">{t("capture:languageOptions.auto")}</option>
+                      <option value="en">{t("capture:languageOptions.english")}</option>
+                      <option value="zh">{t("capture:languageOptions.chinese")}</option>
+                      <option value="ja">{t("capture:languageOptions.japanese")}</option>
+                      <option value="ko">{t("capture:languageOptions.korean")}</option>
+                    </select>
+                  </label>
+                  {options.workflowMode === "karaoke" ? (
+                    <Checkbox
+                      label={t("capture:search.splitVocalsDefault")}
+                      checked={options.separate}
+                      onChange={(checked) => updateOptions({ separate: checked })}
+                    />
+                  ) : null}
+                  {captureInputKind === "search" ? (
                     <Checkbox
                       label={t("capture:search.appendKaraoke")}
                       checked={youtubeAppendKaraoke}
                       onChange={setYoutubeAppendKaraoke}
                     />
-                    <Checkbox
-                      label={t("capture:search.splitVocalsDefault")}
-                      checked={options.separate}
-                      disabled={options.workflowMode !== "karaoke"}
-                      onChange={(checked) => updateOptions({ separate: checked })}
-                    />
-                  </div>
-                  {youtubeAppendKaraoke && options.separate && options.workflowMode === "karaoke" ? (
-                    <p className="mt-0 mb-0 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-sm font-medium text-warning">
-                      {t("capture:search.karaokeSplitWarning")}
-                    </p>
                   ) : null}
-                </div>
-              </details>
-            </div>
+                  <button
+                    type="button"
+                    className="importAdvancedLink"
+                    onClick={() => {
+                      setAdvancedOpen((open) => {
+                        const next = !open;
+                        if (next) {
+                          window.requestAnimationFrame(() =>
+                            document.getElementById("captureAdvanced")?.scrollIntoView({ behavior: "smooth", block: "start" })
+                          );
+                        }
+                        return next;
+                      });
+                    }}
+                    aria-expanded={advancedOpen}
+                  >
+                    {advancedOpen ? t("capture:advanced.hide") : t("capture:flow.advanced")}
+                  </button>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+
+            {captureInputKind === "search" && options.input.trim() ? (
+              <p className="importHint">{t("capture:search.unifiedHint")}</p>
+            ) : null}
+            <UrlPreviewCard state={urlPreviewState} preview={urlPreview} t={t} />
+            {cachedPackageForInput ? (
+              <div className="importCached">
+                <p>{t("capture:cache.hint", { title: reviewDisplayTitle(cachedPackageForInput) })}</p>
+                <button type="button" onClick={() => void runJob()} disabled={isRunning}>
+                  {t("capture:cache.redownload")}
+                </button>
+              </div>
+            ) : null}
           </div>
         </section>
         ) : workspaceMode === "karaoke" ? (
@@ -2467,10 +2286,10 @@ export default function App() {
           <div className="roomInstrumentTuner" style={{ ["--needle-pos" as string]: "38%" }} aria-hidden="true">
             <span className="roomInstrumentNeedle" />
           </div>
-          <h1 className="m-0 max-w-[720px] font-mono text-[clamp(1.4rem,3vw,2.1rem)] font-semibold uppercase leading-[1.1] tracking-[0.04em] text-foreground">
+          <h1 className="m-0 max-w-[720px] text-[clamp(1.4rem,3vw,2.1rem)] font-semibold leading-[1.1] tracking-[-0.025em] text-foreground">
             {t("common:room.title")}
           </h1>
-          <p className="m-0 mt-3 max-w-[560px] font-mono text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          <p className="m-0 mt-3 max-w-[560px] text-sm font-normal leading-relaxed text-muted-foreground">
             {t("common:room.subtitle")}
           </p>
           {roomSetlistItems.some((item) => item.ready) ? (
@@ -2535,7 +2354,7 @@ export default function App() {
           <div id="mediaSearchResults" className="captureResultsChassis scroll-mt-32">
             <div className="captureResultsHead">
               <div>
-                <h2 className="m-0 text-sm font-semibold uppercase tracking-[0.08em] text-foreground">
+                <h2 className="m-0 text-sm font-semibold tracking-[-0.01em] text-foreground">
                   {t("capture:search.resultsTitle")}
                 </h2>
                 <p className="m-0 mt-1 text-xs font-medium text-muted-foreground">
@@ -2691,12 +2510,7 @@ export default function App() {
         ) : null}
 
       {showWorkspace ? (
-        <section
-          className={cn(
-            "grid gap-4",
-            showActivityPane && "lg:grid-cols-[minmax(0,1fr)_300px]"
-          )}
-        >
+        <section className="grid gap-4">
           <section className="grid gap-4">
             {activeReview ? (
               <section className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-border bg-muted p-4">
@@ -2826,6 +2640,7 @@ export default function App() {
           <AnimatePresence initial={false}>
             {advancedOpen ? (
               <motion.section
+                id="captureAdvanced"
                 className="-m-1 grid gap-3 overflow-hidden p-1"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
@@ -2841,7 +2656,12 @@ export default function App() {
                         ["platform", t("capture:advanced.options.platform")],
                         ["local", t("capture:advanced.options.local")]
                       ]}
-                      onChange={(value) => updateOptions({ subtitleSource: value })}
+                      onChange={(value) =>
+                        updateOptions({
+                          subtitleSource: value,
+                          localFallback: value !== "platform"
+                        })
+                      }
                     />
                   </Field>
 
@@ -2893,7 +2713,6 @@ export default function App() {
                     disabled={options.workflowMode !== "karaoke"}
                     onChange={(checked) => updateOptions({ separate: checked })}
                   />
-                  <Checkbox label={t("capture:advanced.fields.localFallback")} checked={options.localFallback} onChange={(checked) => updateOptions({ localFallback: checked })} />
                   <Checkbox label={t("capture:advanced.fields.keepRawVtt")} checked={options.keepPlatformSubs} onChange={(checked) => updateOptions({ keepPlatformSubs: checked })} />
                   <Checkbox
                     label={autoSavesAudio ? t("capture:advanced.fields.playableAudioAuto") : t("capture:advanced.fields.keepExtractedAudio")}
@@ -2961,68 +2780,6 @@ export default function App() {
           </AnimatePresence>
           </section>
 
-          {showActivityPane ? (
-            <aside className="grid max-h-[calc(100vh-168px)] gap-3 overflow-auto rounded-lg border border-border bg-card p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="m-0 text-sm font-semibold text-foreground">{t("capture:activity.title")}</h2>
-                <span className="font-mono text-xs font-semibold text-faint tabular-nums">{jobs.length}</span>
-              </div>
-              <div className="grid gap-1.5">
-                {jobs.length === 0 ? (
-                  <p className="m-0 text-sm text-faint">{t("capture:activity.empty")}</p>
-                ) : (
-                  jobs.map((job) => (
-                    <button
-                      key={job.id}
-                      type="button"
-                      className={cn(
-                        "grid gap-1 rounded-md border border-border bg-background px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]",
-                        job.id === activeJobId && "border-primary bg-accent-soft"
-                      )}
-                      onClick={() => selectQueueJob(job.id)}
-                    >
-                      <span className="truncate text-sm font-semibold text-foreground">
-                        {job.result?.historyEntry ? reviewDisplayTitle(job.result.historyEntry) : shortInputLabel(job.input)}
-                      </span>
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {job.status} - {job.startedAt}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-
-              <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-                <h2 className="m-0 text-sm font-semibold text-foreground">{t("capture:history.title")}</h2>
-                <span className="font-mono text-xs font-semibold text-faint tabular-nums">{history.length}</span>
-              </div>
-              <div className="grid gap-1.5">
-                {history.length === 0 ? (
-                  <p className="m-0 text-sm text-faint">{t("capture:history.empty")}</p>
-                ) : (
-                  history.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className={cn(
-                        "grid gap-2 rounded-md border border-border bg-background p-2",
-                        entry.id === selectedHistoryId && "border-primary bg-accent-soft"
-                      )}
-                    >
-                      <button type="button" className="grid min-w-0 gap-1 text-left" onClick={() => selectHistoryEntry(entry.id)}>
-                        <span className="truncate text-sm font-semibold text-foreground">{reviewDisplayTitle(entry)}</span>
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {entry.workflowMode} - {new Date(entry.createdAt).toLocaleString()}
-                        </span>
-                      </button>
-                      <Button variant="danger" size="sm" className="justify-self-start" onClick={() => removeHistoryEntry(entry.id)}>
-                        {t("common:actions.remove")}
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </aside>
-          ) : null}
         </section>
       ) : null}
         </div>

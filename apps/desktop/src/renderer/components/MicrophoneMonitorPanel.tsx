@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next";
-import { cn } from "../lib/cn";
 import { Icon } from "./ui/Icon";
 
 export interface AudioInputDevice {
@@ -30,31 +29,25 @@ export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps)
   const displayStatus =
     monitor.status === "Monitoring input. Use headphones to avoid feedback."
       ? t("room:mic.headphones")
-      : monitor.status;
+      : monitor.status === "Monitor off"
+        ? t("room:mic.monitorOff")
+        : monitor.status;
 
   return (
-    <section
-      data-monitoring={monitor.isMonitoring}
-      className="grid gap-3 rounded-lg border border-ktv-line bg-ktv-surface p-3"
-    >
-      <header className="flex items-center justify-between gap-3">
-        <div className="grid gap-0.5">
-          <strong className="inline-flex items-center gap-2 text-sm font-semibold text-white">
+    <section data-monitoring={monitor.isMonitoring} className="roomMicPanel">
+      <header className="roomMicHeader">
+        <div>
+          <strong>
             <Icon name="mic" />
-            <span className="whitespace-nowrap">{t("room:mic.title")}</span>
+            <span>{t("room:mic.title")}</span>
           </strong>
-          <span className="text-xs font-medium text-ktv-text-muted">{displayStatus}</span>
+          <span>{displayStatus}</span>
         </div>
         <button
           type="button"
           data-selected={monitor.isMonitoring}
           onClick={() => monitor.setIsMonitoring(!monitor.isMonitoring)}
-          className={cn(
-            "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors",
-            monitor.isMonitoring
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-ktv-line bg-transparent text-white/80 hover:border-white/30 hover:bg-white/5"
-          )}
+          className="roomMicMonitorButton"
         >
           <Icon name="headphones" />
           {monitor.isMonitoring ? t("room:mic.monitorOn") : t("room:mic.monitor")}
@@ -64,7 +57,7 @@ export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps)
       <select
         value={monitor.selectedDeviceId}
         onChange={(event) => monitor.setSelectedDeviceId(event.target.value)}
-        className="min-h-9 rounded-md border border-ktv-line bg-ktv-surface-strong px-3 text-sm text-white"
+        className="roomMicDevice"
       >
         <option value="">{t("room:mic.systemDefault")}</option>
         {monitor.devices.map((device) => (
@@ -74,8 +67,8 @@ export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps)
         ))}
       </select>
 
-      <label className="grid gap-1.5">
-        <span className="text-xs font-medium text-ktv-text-muted">{t("room:mic.level")}</span>
+      <label className="roomMicLevel">
+        <span>{t("room:mic.level")}</span>
         <input
           type="range"
           min="0"
@@ -84,41 +77,27 @@ export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps)
           value={monitor.monitorGain}
           disabled={!monitor.isMonitoring}
           onChange={(event) => monitor.setMonitorGain(Number(event.currentTarget.value))}
-          className="w-full accent-primary disabled:opacity-40"
         />
       </label>
 
-      <div className="rounded-md border border-ktv-line bg-ktv-surface-strong p-2.5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="grid min-w-0 gap-0.5">
-            <strong className="inline-flex items-center gap-2 text-sm font-semibold text-white">
-              <Icon name="settings" />
-              <span className="whitespace-nowrap">{t("room:mic.noiseReduction")}</span>
-            </strong>
-            <span className="text-xs font-normal leading-snug text-ktv-text-muted">
-              {t("room:mic.noiseReductionHint")}
-            </span>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={monitor.noiseReduction}
-            onClick={() => monitor.setNoiseReduction(!monitor.noiseReduction)}
-            className={cn(
-              "relative h-7 w-12 flex-none rounded-full border transition-colors",
-              monitor.noiseReduction
-                ? "border-primary bg-primary"
-                : "border-ktv-line bg-black/20"
-            )}
-          >
-            <span
-              className={cn(
-                "absolute top-1/2 size-5 -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform",
-                monitor.noiseReduction ? "translate-x-[22px]" : "translate-x-1"
-              )}
-            />
-          </button>
+      <div className="roomMicOption">
+        <div>
+          <strong>
+            <Icon name="settings" />
+            <span>{t("room:mic.noiseReduction")}</span>
+          </strong>
+          <span>{t("room:mic.noiseReductionHint")}</span>
         </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={monitor.noiseReduction}
+          onClick={() => monitor.setNoiseReduction(!monitor.noiseReduction)}
+          data-selected={monitor.noiseReduction}
+          className="roomSwitch"
+        >
+          <span />
+        </button>
       </div>
     </section>
   );

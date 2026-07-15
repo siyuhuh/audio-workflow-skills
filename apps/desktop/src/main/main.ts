@@ -857,7 +857,7 @@ function parseProgressEvent(jobId: string, rawLine: string): JobProgressStage | 
 const STDERR_TAIL_MAX_LINES = 40;
 
 async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: (log: { jobId: string; stream: "stdout" | "stderr"; chunk: string }) => void): Promise<JobResult> {
-  const jobOptions = withDefaultDesktopOutputDir(options, jobId);
+  const jobOptions = withDefaultDesktopOutputDir(withAutomaticLocalFallback(options), jobId);
   const runtime = await prepareAudioRuntime(jobOptions, (chunk) => {
     emitLog({ jobId, stream: "stderr", chunk });
   });
@@ -2821,7 +2821,7 @@ function uniquePaths(values: string[]): string[] {
 function buildCommandPreview(options: JobOptions, runtime?: PreparedRuntime): CommandPreview {
   const invocation = audioSubtitlesInvocation(runtime);
   const command = invocation.command;
-  const args = [...invocation.argsPrefix, ...buildAudioSubtitlesArgs(options)];
+  const args = [...invocation.argsPrefix, ...buildAudioSubtitlesArgs(withAutomaticLocalFallback(options))];
   return {
     command,
     args,
@@ -3233,6 +3233,20 @@ function runtimeNeeds(options: JobOptions): RuntimeNeeds {
     separator: options.separate && !separatedStemInput,
     zhconv: options.simplifiedChinese
   };
+}
+
+/**
+ * Desktop auto mode is a complete recovery strategy, not merely a caption
+ * preference: try the cheap platform source first, then continue with local
+ * transcription when captions are unavailable. `platform` remains the only
+ * explicit opt-out so advanced users can still request a strict source.
+ */
+function withAutomaticLocalFallback(options: JobOptions): JobOptions {
+  const input = normalizeMediaInput(options.input.trim());
+  if (!isHttpUrl(input) || options.subtitleSource !== "auto" || options.localFallback) {
+    return options;
+  }
+  return { ...options, localFallback: true };
 }
 
 function withDefaultDesktopOutputDir(options: JobOptions, jobId: string): JobOptions {

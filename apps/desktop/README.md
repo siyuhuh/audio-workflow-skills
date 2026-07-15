@@ -9,7 +9,7 @@ The app is intentionally a thin shell:
 - UI handles input, settings, queue, logs, and output discovery.
 - Processing stays in `audio-subtitles`.
 - Platform captions are still the first path for supported media URLs.
-- Bilibili falls back to local Whisper by default when platform subtitles are unavailable.
+- In Auto mode, any supported media URL falls back to local Whisper when platform subtitles are unavailable.
 - Local Whisper and source separation are configurable from the UI.
 
 ## Run Locally

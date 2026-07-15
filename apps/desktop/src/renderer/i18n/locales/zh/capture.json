@@ -4,6 +4,21 @@
   "inputLabel": "歌曲链接、搜索或本地媒体",
   "inputPlaceholder": "粘贴 URL，或输入歌名搜索",
   "selectFile": "选择文件",
+  "flow": {
+    "kicker": "添加歌曲",
+    "title": "放进一首歌，剩下的交给 VocalFlow。",
+    "subtitle": "粘贴链接、搜索歌名或选择本地文件。默认方案会自动准备歌词、伴奏和本地歌曲包。",
+    "defaultPlan": "推荐方案",
+    "karaokePlan": "练唱歌曲包",
+    "subtitlePlan": "字幕文件",
+    "autoLanguage": "自动识别语言",
+    "languageValue": "语言 {{language}}",
+    "withBacking": "生成伴奏",
+    "originalOnly": "保留原曲",
+    "adjust": "调整",
+    "useFor": "用途",
+    "advanced": "高级参数"
+  },
   "options": {
     "toggle": "采集选项",
     "hint": "模式、语言、本地文件"

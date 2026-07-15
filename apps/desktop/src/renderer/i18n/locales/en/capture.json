@@ -4,6 +4,21 @@
   "inputLabel": "Song link, search, or local media",
   "inputPlaceholder": "Paste a URL, or type a song name to search",
   "selectFile": "Select file",
+  "flow": {
+    "kicker": "Add a song",
+    "title": "Bring a song. VocalFlow handles the rest.",
+    "subtitle": "Paste a link, search by name, or choose a local file. The recommended plan prepares lyrics, backing, and a local song package automatically.",
+    "defaultPlan": "Recommended plan",
+    "karaokePlan": "Practice package",
+    "subtitlePlan": "Subtitle files",
+    "autoLanguage": "Auto-detect language",
+    "languageValue": "Language {{language}}",
+    "withBacking": "Create backing",
+    "originalOnly": "Keep original",
+    "adjust": "Adjust",
+    "useFor": "Use for",
+    "advanced": "Advanced parameters"
+  },
   "options": {
     "toggle": "Capture options",
     "hint": "Mode, language, file"

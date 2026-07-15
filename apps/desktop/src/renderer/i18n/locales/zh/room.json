@@ -14,6 +14,8 @@
   "queueRemove": "移除",
   "statusDot": "存在房间请求",
   "title": "演唱房间",
+  "nowSinging": "正在演唱",
+  "leaveStage": "离开舞台",
   "settings": "房间",
   "song": "演唱歌曲",
   "lyrics": "歌词",
@@ -60,6 +62,7 @@
     "title": "麦克风输入",
     "monitor": "监听",
     "monitorOn": "监听已开",
+    "monitorOff": "监听已关闭",
     "systemDefault": "系统默认输入",
     "level": "监听音量",
     "headphones": "建议佩戴耳机，避免回声啸叫。",
@@ -92,6 +95,7 @@
     "originalMix": "原始混音"
   },
   "transport": {
+    "position": "播放进度",
     "restart": "重新开始",
     "previous": "上一首",
     "play": "播放",

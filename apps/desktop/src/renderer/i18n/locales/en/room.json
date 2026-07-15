@@ -14,6 +14,8 @@
   "queueRemove": "Remove",
   "statusDot": "Active room request",
   "title": "Karaoke Room",
+  "nowSinging": "Now singing",
+  "leaveStage": "Leave stage",
   "settings": "Room",
   "song": "Karaoke song",
   "lyrics": "Lyrics",
@@ -60,6 +62,7 @@
     "title": "Mic input",
     "monitor": "Monitor",
     "monitorOn": "Monitor on",
+    "monitorOff": "Monitor off",
     "systemDefault": "System default input",
     "level": "Monitor level",
     "headphones": "Use headphones to avoid feedback.",
@@ -92,6 +95,7 @@
     "originalMix": "Original mix"
   },
   "transport": {
+    "position": "Playback position",
     "restart": "Restart",
     "previous": "Previous",
     "play": "Play",

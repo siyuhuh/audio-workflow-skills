@@ -58,10 +58,10 @@ Renderer aliases (`--color-surface`, `--color-accent`, `--ktv-*`) must map back 
 
 ## Typography
 
-- **Sans / UI:** JetBrains Mono (+ Nanum Gothic Coding), matching [Codrops Line TextHover demo 4](https://github.com/codrops/LineTextHoverAnimations).
-- **Mono:** Same stack for readouts and technical labels.
-- **Weight:** Prefer 300–500 for body; 600–700 for emphasis.
-- **Hierarchy:** Large mono figures for key readouts; tiny tracked uppercase labels for metadata.
+- **Sans / UI:** System-first stack. Prefer San Francisco / PingFang on Apple, Segoe UI / Microsoft YaHei UI on Windows, and Roboto / the native CJK fallback elsewhere.
+- **Mono:** SF Mono / Cascadia Code / JetBrains Mono only for timecodes, progress values, logs, commands, and true technical readouts.
+- **Weight:** Use 400 for body, 500–600 for controls and headings, and reserve 700 for rare emphasis.
+- **Hierarchy:** Natural-case UI copy by default. Small tracked uppercase is reserved for short Latin metadata labels; never add tracking to Chinese labels or body copy.
 
 ## Layout And Surfaces
 
@@ -92,9 +92,17 @@ Renderer aliases (`--color-surface`, `--color-accent`, `--ktv-*`) must map back 
 
 1. Keep Tailwind v4 entry + `@theme inline`.
 2. Prefer flat industrial recipes over glass/skeuo leftovers.
-3. Keep JetBrains Mono / Nanum Gothic Coding as the UI stack (Codrops demo 4).
+3. Keep the system-first sans stack as the UI default; mono is a technical accent, not the product voice.
 4. Do not reintroduce backdrop-blur glass or plastic gradients on Studio controls.
 5. Do not force every corner to 0 — use the radius hierarchy.
+
+Converted in the current experience pass:
+
+- Add flow: replaced the multi-instrument capture console with a single composer, a visible recommended plan, and progressive disclosure for three common choices plus expert parameters.
+- Recovery: desktop Auto mode tries platform captions first, then continues with local transcription without asking the user to restart the job.
+- Karaoke Stage: replaced the stacked control wall with a lyrics-first canvas, centered transport, persistent Original / Backing switch, and origin-aware popovers for mixer, text style, queue, and room settings.
+- Room tools: the four dock actions share one controlled popover surface; only one tool can be open, and settings use hairline sections instead of nested cards.
+- History: completed packages live in Library / Room setlist surfaces, never in a persistent processing side rail. The capture workspace only shows its inline job progress.
 
 ## Decisions Log
 
@@ -120,3 +128,7 @@ Renderer aliases (`--color-surface`, `--color-accent`, `--ktv-*`) must map back 
 | 2026-07-15 | Codrops fonts + visible film texture   | UI uses JetBrains Mono / Nanum Gothic Coding; `noise.png` as fixed overlay (demo-4 style, no CRT scanlines); most keys are borderless with south-fill hover. |
 | 2026-07-15 | Room = ink/sage instrument             | Room lobby + Stage follow alarm-instrument reference: ink canvas, barcode tuner + red needle; panel hue follows Settings accent (sage/slate/ink/clay). |
 | 2026-07-15 | Radius hierarchy (not all-square)      | Soft panel / pill / circle radii restore instrument-reference hierarchy; sharp corners only on meters and tick marks. |
+| 2026-07-15 | Default-first import + lyrics-first Stage | The main path now advances with one recommended plan; expert choices are progressively disclosed. Stage chrome keeps only track, transport, and four compact tool entry points visible so lyrics remain dominant. |
+| 2026-07-15 | System-first typography | Replaced the all-mono UI voice with native system sans fallbacks for cleaner Latin/CJK rendering; mono remains limited to technical values and logs. |
+| 2026-07-15 | Automatic caption fallback in desktop Auto mode | Missing platform captions are recoverable, so the normal path continues with local Whisper; strict Platform mode remains an explicit expert choice. |
+| 2026-07-15 | One Room tool surface + no History rail | Mutually exclusive dock tools prevent stacked popovers; completed work belongs to the Library instead of competing with the active capture task. |

@@ -35,6 +35,7 @@ const REASON_RULES: ReasonRule[] = [
     reason: "no_captions",
     actionId: "enableLocalFallback",
     patterns: [
+      /no platform subtitles/i,
       /no subtitles/i,
       /requested subtitles not available/i,
       /unable to download subtitles/i,
