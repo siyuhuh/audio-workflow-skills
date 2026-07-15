@@ -39,7 +39,7 @@
     "kicker": "Karaoke studio for creators",
     "addKicker": "Add a new song",
     "addTitle": "Bring another track into VocalFlow.",
-    "addSubtitle": "Paste a link, search YouTube or Bilibili, or choose a local file. This is the capture desk; the Home view stays focused on singing.",
+    "addSubtitle": "Paste a link, type a song name to search YouTube and Bilibili, or choose a local file. This is the capture desk; the Home view stays focused on singing.",
     "established": "Est. 2026",
     "navCapture": "Capture",
     "navPractice": "Album"
@@ -50,6 +50,7 @@
     "subtitle": "Reorder songs here. Tap Start singing when you’re ready — Home never dumps you straight onto the Stage.",
     "setlistLabel": "Setlist order",
     "setlistHint": "Move songs up or down, then play one to start.",
+    "nextCue": "{{count}} READY · NEXT {{title}}",
     "startSinging": "Start singing",
     "reviewLyrics": "Review lyrics",
     "singThis": "Sing this",
@@ -62,6 +63,7 @@
   },
   "actions": {
     "run": "Run",
+    "addSong": "Add song",
     "stop": "Stop",
     "cancel": "Cancel",
     "open": "Open",
@@ -73,6 +75,12 @@
     "searching": "Searching…",
     "enterKaraoke": "Enter Karaoke",
     "tryInKaraoke": "Try in Karaoke Room"
+  },
+  "intro": {
+    "aria": "VocalFlow intro",
+    "kicker": "Private karaoke studio",
+    "subtitle": "Paste a link. Get backing and lyrics locally. Click anywhere to continue.",
+    "skip": "Click or press Enter to skip"
   },
   "errors": {
     "ytDlp": "yt-dlp is missing. Prepare the runtime environment, then try again.",

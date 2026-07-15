@@ -37,9 +37,9 @@ Existing renderer aliases map to these tokens:
 
 ## Typography
 
-- `--font-family-sans`: Poppins + system/CJK fallbacks.
+- `--font-family-sans`: JetBrains Mono + Nanum Gothic Coding (+ CJK fallbacks).
 - `--font-family-display`: same as sans.
-- `--font-family-mono`: Roboto Mono + platform monospace fallbacks.
+- `--font-family-mono`: same mono stack as Codrops Line TextHover demo 4.
 
 ## Radius And Shadow
 

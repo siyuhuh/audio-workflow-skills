@@ -243,34 +243,19 @@ export function KaraokeRoomScene({
       animate={{ opacity: 1 }}
       transition={{ duration: motionDuration.base, ease: motionEase }}
       data-theme="dark"
-      className="karaokeSceneShell relative grid grid-rows-[auto_minmax(0,1fr)] bg-ktv-bg text-white"
+      className="karaokeSceneShell relative grid grid-rows-[auto_minmax(0,1fr)] bg-ktv-bg text-[var(--room-panel)]"
     >
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-ktv-line bg-ktv-bg/85 px-6 py-4 backdrop-blur-xl">
+      <header className="karaokeSceneHeader">
         <div className="grid min-w-0 gap-1">
-          <Eyebrow className="text-white/60">{t("room:title")}</Eyebrow>
-          <h1 className="m-0 truncate text-xl font-semibold text-white">{reviewTitle}</h1>
+          <Eyebrow className="text-[color-mix(in_oklch,var(--room-panel)_62%,transparent)]">{t("room:title")}</Eyebrow>
+          <h1>{reviewTitle}</h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={onBackHome}
-            className="border-ktv-line bg-transparent text-white/85 hover:enabled:border-white/30 hover:enabled:bg-white/10"
-          >
-            {t("common:nav.home")}
-          </Button>
+          <Button onClick={onBackHome}>{t("common:nav.home")}</Button>
           {activeReview.sourceUrl ? (
-            <Button
-              onClick={onOpenOriginalVideo}
-              className="border-ktv-line bg-transparent text-white/85 hover:enabled:border-white/30 hover:enabled:bg-white/10"
-            >
-              {t("package:openOriginal")}
-            </Button>
+            <Button onClick={onOpenOriginalVideo}>{t("package:openOriginal")}</Button>
           ) : null}
-          <Button
-            onClick={onBackToLyrics}
-            className="border-ktv-line bg-transparent text-white/85 hover:enabled:border-white/30 hover:enabled:bg-white/10"
-          >
-            {t("room:editLyrics")}
-          </Button>
+          <Button onClick={onBackToLyrics}>{t("room:editLyrics")}</Button>
         </div>
       </header>
 
@@ -357,7 +342,7 @@ export function KaraokeRoomScene({
         </div>
 
         {/* Transport dock */}
-        <aside className="relative z-[2] grid gap-3 bg-ktv-bg/90 px-6 pb-4 pt-4 backdrop-blur-xl">
+        <aside className="karaokeSceneDock">
           <div
             ref={progressRef}
             role="slider"
@@ -397,22 +382,20 @@ export function KaraokeRoomScene({
               {formatClock(progressValue)} / {progressMax > 0 ? formatClock(progressMax) : "--:--"}
             </span>
           </div>
+          <div className="karaokeSceneDockNow">
+            <div className="karaokeSceneDockNowMark" aria-hidden="true">
+              {reviewTitle.slice(0, 2).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="karaokeSceneDockNowTitle">{reviewTitle}</p>
+              <p className="karaokeSceneDockNowMeta">
+                {trackRoleLabel} · {selectedMediaName}
+              </p>
+            </div>
+          </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
-            <div className="flex min-w-0 items-center gap-3">
-              <div
-                className="grid size-10 place-items-center rounded-md bg-ktv-accent text-base font-semibold text-black"
-                aria-hidden="true"
-              >
-                {reviewTitle.slice(0, 2).toUpperCase()}
-              </div>
-              <div className="grid min-w-0 gap-0.5">
-                <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-white">
-                  {reviewTitle}
-                </strong>
-                <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs font-normal text-ktv-text-muted">
-                  {trackRoleLabel} · {selectedMediaName}
-                </span>
-              </div>
+            <div className="hidden min-w-0 lg:block" aria-hidden="true">
+              <div className="roomInstrumentDial max-w-[220px]" />
             </div>
 
             <div className="flex flex-wrap items-end justify-center gap-3 lg:justify-self-center">
@@ -436,7 +419,7 @@ export function KaraokeRoomScene({
                 }
                 aria-label={playbackController.isPlaying ? t("room:transport.pause") : t("room:transport.play")}
                 title={playbackController.isPlaying ? t("room:transport.pause") : t("room:transport.play")}
-                className={cn(transportIconBtnClasses, "bg-ktv-accent text-black hover:enabled:bg-ktv-accent/90")}
+                className={cn(transportIconBtnClasses, "bg-ktv-accent text-[var(--room-panel-fg)] hover:enabled:brightness-95")}
               >
                 <Icon name={playbackController.isPlaying ? "pause" : "play"} />
               </button>
@@ -508,19 +491,19 @@ export function KaraokeRoomScene({
                   <Icon name="sliders" />
                   {t("room:style")}
                 </summary>
-                <div className="absolute bottom-full right-[calc(100%+10px)] z-10 mb-2 grid w-[min(380px,calc(100vw-32px))] gap-4 rounded-xl border border-ktv-line bg-ktv-surface p-4 shadow-[var(--shadow-overlay)]">
+                <div className="absolute bottom-full right-[calc(100%+10px)] z-10 mb-2 grid w-[min(380px,calc(100vw-32px))] gap-4 border border-ktv-line bg-ktv-surface p-4">
                   <header className="flex items-start justify-between gap-3">
                     <div className="grid gap-1">
-                      <strong className="text-sm font-semibold text-white">{t("room:stylePanel")}</strong>
+                      <strong className="text-sm font-semibold text-[var(--room-panel)]">{t("room:stylePanel")}</strong>
                       <span className="text-xs font-medium text-ktv-text-muted">{t("room:styleHint")}</span>
                     </div>
-                    <span className="rounded-full border border-ktv-line bg-ktv-surface-strong px-2 py-1 text-[11px] font-medium text-ktv-text-muted">
+                    <span className="border border-ktv-line bg-ktv-surface-strong px-2 py-1 text-[11px] font-medium text-ktv-text-muted">
                       {t("room:styleLive")}
                     </span>
                   </header>
 
                   <div
-                    className="rounded-lg border border-ktv-line bg-ktv-surface-strong px-4 py-3"
+                    className="border border-ktv-line bg-ktv-surface-strong px-4 py-3"
                     data-effect={lyricEffect}
                     data-font={lyricFont}
                   >
@@ -1082,7 +1065,7 @@ function RoomQuickVolumes({
 }
 
 const transportBtnClasses =
-  "inline-flex min-h-9 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-ktv-line bg-transparent px-4 text-sm font-medium text-white/85 transition-colors duration-150 ease-out hover:enabled:border-white/30 hover:enabled:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]";
+  "uiKey inline-flex min-h-9 items-center justify-center gap-2 whitespace-nowrap border-0 bg-transparent px-4 text-sm font-medium uppercase tracking-[0.06em] text-[var(--room-panel)] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]";
 
 const transportIconBtnClasses =
-  "inline-grid size-9 place-items-center rounded-full border border-ktv-line bg-transparent text-white/85 transition-colors duration-150 ease-out hover:enabled:border-white/30 hover:enabled:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]";
+  "uiKey inline-grid size-11 place-items-center !rounded-full border-0 bg-transparent text-[var(--room-panel)] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]";

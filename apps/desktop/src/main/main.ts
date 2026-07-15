@@ -71,8 +71,8 @@ let savedHistory: SavedJobHistory[] = [];
 let hiddenSampleIds = new Set<string>();
 const DEFAULT_USER_SETTINGS: UserSettings = {
   locale: null,
-  themeMode: "dark",
-  accentColor: "green",
+  themeMode: "light",
+  accentColor: "sage",
   hfToken: null,
   hfEndpoint: null,
   separatorModelDir: null
@@ -86,7 +86,16 @@ let roomNowPlaying: RoomQueueItem | null = null;
 const jobProgressClients = new Set<Electron.WebContents>();
 
 function isAccentColor(value: unknown): value is UserSettings["accentColor"] {
-  return value === "green" || value === "lime" || value === "mint" || value === "teal";
+  return value === "sage" || value === "slate" || value === "ink" || value === "clay";
+}
+
+function normalizeAccentColor(value: unknown): UserSettings["accentColor"] {
+  if (isAccentColor(value)) return value;
+  if (value === "green") return "sage";
+  if (value === "lime") return "slate";
+  if (value === "mint") return "ink";
+  if (value === "teal") return "clay";
+  return "sage";
 }
 
 function desktopIconPath(): string {
@@ -711,7 +720,7 @@ function mergeUserSettings(current: UserSettings, patch: Partial<UserSettings> |
   }
   if ("accentColor" in patch) {
     const accentColor = patch.accentColor;
-    next.accentColor = isAccentColor(accentColor) ? accentColor : current.accentColor;
+    next.accentColor = normalizeAccentColor(accentColor ?? current.accentColor);
   }
   if ("hfToken" in patch) {
     const token = patch.hfToken;
@@ -2991,9 +3000,11 @@ function parseMediaSearchStdout(stdout: string, platform: "youtube" | "bilibili"
     const channel =
       (typeof j.channel === "string" && j.channel) || (typeof j.uploader === "string" && j.uploader) || "";
     let durationLabel = "";
+    let durationSec: number | null = null;
     const durationRaw = j.duration;
-    if (typeof durationRaw === "number" && Number.isFinite(durationRaw)) {
+    if (typeof durationRaw === "number" && Number.isFinite(durationRaw) && durationRaw >= 0) {
       const seconds = Math.floor(durationRaw);
+      durationSec = seconds;
       durationLabel = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
     }
     results.push({
@@ -3002,6 +3013,7 @@ function parseMediaSearchStdout(stdout: string, platform: "youtube" | "bilibili"
       url: platform === "bilibili" ? normalizeBilibiliWatchUrl(j, idRaw) : normalizeYoutubeWatchUrl(j, idRaw),
       channel,
       durationLabel,
+      durationSec,
       platform,
       thumbnailUrl: entryThumbnail(j)
     });
@@ -3138,16 +3150,32 @@ async function runBilibiliWebSearch(query: string, appendKaraoke: boolean): Prom
     .map((item) => {
       const videoId = item.bvid || `av${item.aid}`;
       const title = stripHtmlTags(item.title || "Untitled");
+      const durationLabel = item.duration || "";
       return {
         videoId,
         title,
         url: `https://www.bilibili.com/video/${videoId}`,
         channel: item.author || "",
-        durationLabel: item.duration || "",
+        durationLabel,
+        durationSec: parseBilibiliDurationLabel(durationLabel),
         platform: "bilibili" as const,
         thumbnailUrl: proxiedBilibiliThumbnailUrl(normalizeMaybeProtocolRelativeUrl(item.pic))
       };
     });
+}
+
+function parseBilibiliDurationLabel(label: string): number | null {
+  const parts = label
+    .trim()
+    .split(":")
+    .map((part) => Number(part));
+  if (parts.length < 2 || parts.length > 3 || parts.some((n) => !Number.isFinite(n) || n < 0)) {
+    return null;
+  }
+  if (parts.length === 2) {
+    return Math.floor(parts[0]! * 60 + parts[1]!);
+  }
+  return Math.floor(parts[0]! * 3600 + parts[1]! * 60 + parts[2]!);
 }
 
 function proxiedBilibiliThumbnailUrl(value: string | undefined): string | undefined {

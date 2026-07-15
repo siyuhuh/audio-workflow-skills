@@ -67,7 +67,7 @@ export function HoverFillGroup<T extends string>({
       role="group"
       aria-label={ariaLabel}
       className={cn(
-        "hoverFillGroup relative inline-flex items-stretch rounded-full border border-ktv-line bg-ktv-surface p-0.5",
+        "hoverFillGroup relative inline-flex items-stretch border-0 bg-transparent p-0.5",
         className
       )}
       onMouseLeave={() => {

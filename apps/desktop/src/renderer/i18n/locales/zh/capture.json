@@ -1,9 +1,13 @@
 {
   "heroTitle": "贴入一首歌的链接",
   "heroSubtitle": "卡拉 OK / 字幕 / 本地包",
-  "inputLabel": "YouTube、Bilibili 或本地媒体",
-  "inputPlaceholder": "粘贴 URL，或拖入文件 / 文件夹",
+  "inputLabel": "歌曲链接、搜索或本地媒体",
+  "inputPlaceholder": "粘贴 URL，或输入歌名搜索",
   "selectFile": "选择文件",
+  "options": {
+    "toggle": "采集选项",
+    "hint": "模式、语言、本地文件"
+  },
   "advanced": {
     "show": "桌面选项",
     "hide": "隐藏桌面选项",
@@ -64,13 +68,20 @@
     "youtube": "YouTube",
     "bilibili": "Bilibili",
     "placeholder": "歌手、歌名或关键词",
+    "unifiedHint": "看起来像歌名 —— 将同时搜索 YouTube 和 Bilibili。",
+    "resultsTitle": "搜索结果",
+    "resultsHint": "YouTube + Bilibili · 优先展示 {{minutes}} 分钟以内的结果",
+    "searchingBoth": "正在搜索 YouTube 和 Bilibili…",
     "appendKaraoke": "偏向伴奏版",
     "splitVocalsDefault": "生成伴奏",
     "karaokeSplitWarning": "卡拉 OK 版本通常已经去掉主唱。如果再生成伴奏，可能得不到更好的结果；需要原唱转写时建议关闭“偏向伴奏版”。",
     "useThisLink": "使用此链接",
+    "addAndProcess": "添加并处理",
+    "moreOptions": "更多搜索选项",
     "openInBrowser": "在浏览器打开",
     "noResults": "没有匹配的视频，试试换个关键词。",
-    "failed": "{{platform}} 搜索失败。"
+    "failed": "{{platform}} 搜索失败。",
+    "failedBoth": "YouTube 和 Bilibili 搜索都失败了。"
   },
   "stages": {
     "prepare": "准备",
@@ -181,7 +192,8 @@
     "successBody": "下载、转写、字幕都完成了。",
     "skippedSuffix": "已跳过：{{stages}}",
     "viewAction": "查看包",
-    "enterKaraokeAction": "进入卡拉 OK"
+    "enterKaraokeAction": "进入卡拉 OK",
+    "roomAction": "加入歌房"
   },
   "jobStream": {
     "stage": {

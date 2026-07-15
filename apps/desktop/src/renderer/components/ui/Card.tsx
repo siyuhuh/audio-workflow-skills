@@ -13,7 +13,7 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
 
 const surfaceClasses: Record<CardSurface, string> = {
   card: "bg-card",
-  elevated: "bg-elevated",
+  elevated: "bg-card",
   muted: "bg-muted",
   overlay: "bg-overlay"
 };
@@ -36,11 +36,10 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-lg",
-        surfaceClasses[surface],
+        "rounded-[var(--radius-lg)]",
+        elevated ? "uiChassis border-0" : surfaceClasses[surface],
         paddingClasses[padding],
-        bordered && "border border-border",
-        elevated && "shadow-sm",
+        !elevated && bordered && "border border-[var(--rule)]",
         className
       )}
       {...props}

@@ -2,14 +2,14 @@
 
 > Always read this file before making any visual or UI change in `apps/desktop`. It is the source of truth for color, typography, spacing, motion, and the Studio/Stage surface model. When changing a design rule, add a Decisions Log entry.
 
-VocalFlow Studio now uses a **dark-first Tailwind v4 OKLCH style-token system**: near-black surfaces, Poppins typography, a single vivid green accent, compact radius, and small tactile shadows. The goal is friendly creator software that feels focused and slightly technical, closer to the supplied dark dashboard reference.
+VocalFlow Studio uses a **sage industrial flat** token system for Studio capture/home, and a dedicated **Room instrument** language (ink canvas + accent-tinted panels, barcode tuner, digital mono readouts) inspired by precision clock/alarm UIs. Studio keeps terracotta-led sage by default; Room panel hue follows the Settings accent. **Corners use a radius hierarchy** — soft panels and circular actions where the instrument reference asks for them; sharp only on technical meters/hairlines.
 
 ## Product Context
 
 - **What this is:** A desktop + CLI toolkit that turns YouTube/Bilibili links or local media into karaoke and subtitle packages: synced lyrics, optional stems, mic monitoring, and SRT/VTT/LRC/JSON/ASS exports.
 - **Who it's for:** Singers, creators, video editors, and language learners.
 - **Core flow:** Capture → Process → Review → Enter Room → Export.
-- **UI promise:** Keep the current package, progress state, and next action obvious without making the interface feel clinical.
+- **UI promise:** Keep the current package, progress state, and next action obvious without visual clutter.
 
 ## Tailwind Entry
 
@@ -25,103 +25,98 @@ The app still uses existing CSS class names, but Tailwind theme variables are av
 
 ## Aesthetic Direction
 
-- **Direction:** dark dashboard utility. Near-black canvas, dark cards, green active state, and subtle physical shadows.
-- **Mood:** focused, modern, creative, lightly musical.
-- **Shape:** `0.5rem` radius as the default. Larger radii are allowed only for floating docks and pills.
-- **Depth:** Use the supplied small shadow tokens. Avoid the previous flat Linear look and avoid huge blurred hero shadows.
-- **Color behavior:** Green is the primary action, active state, and high-energy highlight. Avoid pink/purple as the main accent.
-- **Accent variants:** Users may switch between approved green-family accents in Settings. Variants must stay within the green/teal range. Changing accent only sets `--primary`; all tinted roles (`--accent`, `--ring`, `--ktv-accent`, `--color-success`, charts, sidebar accents) must derive from `--primary` so nothing stays stuck on the default green.
-- **Default theme:** Dark Mode is the product default. Light mode remains available as an explicit setting.
+- **Direction:** industrial neo-minimal. Flat color blocks, thin hairline rules, barcode/vertical-line texture for meters and empty instrument fields.
+- **Mood:** cool, precise, organized — not glassy, not skeuomorphic plastic.
+- **Shape hierarchy (use radius to show level):**
+  - `--radius-panel` / `--radius-2xl` (~28px): hero instrument blocks (selected track panel, Room chrome frame).
+  - `--radius-lg` / `--radius-xl` (~16–24px): cards, capture deck, docks.
+  - `--radius-md` (~12px): wells, list rows, quiet chips — **not** text action buttons.
+  - `--radius-pill`: circular icon/play actions, nav capsule, footer dial rail.
+  - `0`: text action buttons (`.uiKey` / primary CTAs), barcode/tuner lines, progress needles.
+- **Depth:** Color-block hierarchy (ink void vs accent panel) + 1px `--rule` dividers. Tiled **noise.png** film grain overlay — not glass blur stacks.
+- **Color behavior:** Four Studio palettes via Settings (`sage` / `slate` / `ink` / `clay`). Terracotta-led sage is default for Studio. **Room lobby + Stage** keep instrument layout; `--room-panel` follows accent (never force green onto blue).
+- **Interaction:** Line hover uses south-growing fill (`--hover-fill`) and optional glyph scramble on Room setlist titles.
+- **Default theme:** Light mode + **Sage** palette (Studio). Room surfaces are always dark instrument.
 
 ## Core Tokens
 
-Use these exact token families in `styles.css`.
 
+| Token | Light (sage) | Dark (olive) | Role |
+| --- | --- | --- | --- |
+| `--background` | `oklch(0.72 0.028 128)` | `oklch(0.28 0.02 135)` | App canvas |
+| `--foreground` | `oklch(0.28 0.018 135)` | `oklch(0.92 0.012 128)` | Primary text |
+| `--card` | `oklch(0.78 0.024 128)` | `oklch(0.34 0.02 135)` | Panels |
+| `--primary` | `oklch(0.70 0.125 42)` | `oklch(0.72 0.125 42)` | Terracotta action |
+| `--secondary` | `oklch(0.42 0.022 135)` | same family | Dark olive blocks |
+| `--muted` | softer sage | darker olive | Secondary fills |
+| `--rule` | charcoal @ ~35% | light @ ~20% | 1px dividers / card edges (not button outlines) |
+| `--panel-dark` | olive charcoal | deeper olive | LCD / instrument wells |
+| `--barcode` | repeating 1px vertical lines | same idea | Texture / meter field |
+| `--room-panel` | accent-tinted | same | Room instrument fill / readout |
 
-| Token                  | Light value                     | Dark value                      | Role                          |
-| ---------------------- | ------------------------------- | ------------------------------- | ----------------------------- |
-| `--background`         | `oklch(0.9809 0.0025 228.7836)` | `oklch(0.1450 0.0120 264.2926)` | App canvas                    |
-| `--foreground`         | `oklch(0.3211 0 0)`             | `oklch(0.9219 0 0)`             | Primary text                  |
-| `--card`               | `oklch(1 0 0)`                  | `oklch(0.2050 0.0100 264.2926)` | Cards and panels              |
-| `--primary`            | `oklch(0.7395 0.2268 142.8504)` | `oklch(0.7395 0.2268 142.8504)` | Primary action / green accent |
-| `--secondary`          | `oklch(0.8148 0.0819 225.7537)` | `oklch(0.2700 0.0120 264.2926)` | Secondary surfaces            |
-| `--muted`              | `oklch(0.8828 0.0285 98.1033)`  | `oklch(0.2600 0.0080 264.2926)` | Muted blocks                  |
-| `--accent`             | `oklch(0.7395 0.2268 142.8504)` | `oklch(0.7395 0.2268 142.8504)` | High-energy green highlight   |
-| `--destructive`        | `oklch(0.6368 0.2078 25.3313)`  | same                            | Destructive state             |
-| `--border` / `--input` | `oklch(0.8699 0 0)`             | `oklch(0.3100 0.0060 264.2926)` | Borders and inputs            |
-| `--ring`               | primary                         | dark primary                    | Focus ring                    |
-
-
-Renderer aliases such as `--color-surface`, `--color-text`, `--color-accent`, and `--ktv-`* must map back to these tokens. Do not create independent palettes unless a new token is added here first.
+Renderer aliases (`--color-surface`, `--color-accent`, `--ktv-*`) must map back to these tokens.
 
 ## Typography
 
-- **Sans:** Poppins, then system sans and CJK fallbacks.
-- **Mono:** Roboto Mono, then platform monospace fallbacks.
-- **Serif:** Available as a token, but not used for core chrome.
-- **Weights:** 400/500/600 for UI, 700 allowed for Stage lyrics only.
-- **Tone:** Rounded, friendly, readable. Avoid the previous editorial/Swiss feeling.
+- **Sans / UI:** JetBrains Mono (+ Nanum Gothic Coding), matching [Codrops Line TextHover demo 4](https://github.com/codrops/LineTextHoverAnimations).
+- **Mono:** Same stack for readouts and technical labels.
+- **Weight:** Prefer 300–500 for body; 600–700 for emphasis.
+- **Hierarchy:** Large mono figures for key readouts; tiny tracked uppercase labels for metadata.
 
 ## Layout And Surfaces
 
-- **Studio:** dark by default with near-black canvas, dark cards, and green action states. Light mode keeps soft surfaces for explicit preference only.
-- **Shell composition:** Prefer a quiet split layout — dark hero chrome at the top, solid card deck below — over decorative shaders, contour meshes, or competing background patterns.
-- **Stage:** darker token surface with green lyric progress. It can feel more expressive than Studio, but controls must stay readable.
-- **Desktop chrome:** The app owns its top chrome visually. On macOS, use hidden inset window chrome so the white native title bar does not sit above the dark Studio surface. Primary Studio navigation belongs in the header (centered pill tabs): **选歌 / Album** browses packages, **添加 / Add** captures media, **歌房 / Room** opens the setlist lobby (reorder + start). Header Room must not dump the user straight onto Stage; Stage is entered only via Start singing / sing-this / package enter actions. Floating docks are for Stage/Karaoke only.
-- **Max width:** 1200px for Studio body; 1280px for Stage lyric line.
-- **Spacing:** 4px rhythm via `--spacing: 0.25rem`.
-- **Density:** Keep workflow controls compact, but allow more breathing room than the Linear pass. Gallery and metric-style cards should read as one clear grid, not stacked translucent panels.
+- Quiet sage canvas; cards use `--radius-lg` and 1px rules.
+- Capture desk: soft-rounded card; scope uses barcode texture; LCD is a flat `--panel-dark` block; circular GO/STOP keys.
+- Header: opaque surface, 1px bottom rule — no frosted blur.
+- **Room lobby / Stage:** ink canvas + soft `--radius-panel` accent blocks; barcode tuner + red needle; circular play/icon actions; pill-shaped dock rail with dial ticks.
 
 ## Components
 
-- **Primary button:** `--primary` fill, `--primary-foreground`, radius `--radius-md`, small shadow.
-- **Secondary button:** `--card`/`--secondary` depending on emphasis, 1px border, small shadow only when it helps affordance.
-- **Cards:** `--card`, 1px `--border`, radius `--radius-lg`, `--shadow-sm`.
-- **Inputs:** `--card` or dark `--card`, 1px `--input`, focus ring from `--ring`.
-- **Status chips:** Use status colors only for state. Do not decorate random labels as success/warn/error.
-- **Stage dock:** Dark card token, small border, pill radius, no oversized glass blur. Keep backing + vocal (mic) volume as always-visible vertical faders next to transport — not buried only in Room settings.
-- **Scrollbars:** Quiet by default, theme-tinted on interaction. Thumbs use low-opacity `--foreground`, then mix in `--primary` on hover/active. Page scroll (`.studioScrollRegion`) uses a soft `--scrollbar-track-page` from `--card`; nested scrollers use a fainter `--scrollbar-track`. Never hard-code gray. The primary page scrollbar lives under the fixed header — never flush through chrome.
+- **Primary button (Studio):** solid terracotta `--primary`, **square** (`border-radius: 0`), borderless; hover south-fill.
+- **Primary button (Room):** solid `--room-panel`; **square** for text keys; circular only for icon play/confirm.
+- **Secondary button:** borderless transparent text; hover south-fill (`--hover-fill`).
+- **Cards:** `--card` + optional `--rule`, `--radius-lg`, no elevation shadow.
+- **Inputs:** quiet rule + `--radius-md`; action keys stay borderless.
 
 ## Stage Lyrics
 
-- Active lyric fill should use the green primary/accent, not pink, cyan, or Linear purple.
-- Keep text stroke/shadow enough for video preview contrast.
-- Supported effects remain `outline`, `sweep`, `neon`, and `impact`; each must stay inside the token palette.
-- The dock, side drawer, and queue must never cover the active lyric line.
+- Active lyric fill uses `--ktv-accent` / `--room-panel` for contrast on ink video; avoid neon cyan/pink.
 
 ## Accessibility
 
-- Preserve visible `:focus-visible` everywhere.
-- Keep 40px minimum targets in Studio and 32px compact controls in Stage.
-- Long song titles, paths, and filenames must truncate or wrap safely.
-- Body text contrast must remain readable on `--background`, `--card`, and dark Stage surfaces.
+- Preserve `:focus-visible`.
+- Keep 40px Studio targets / 32px Stage compact controls.
+- Body text must stay readable on sage and olive panels.
 
 ## Refactor Budget
 
-1. Keep Tailwind v4 active through `@import "tailwindcss"` and `@theme inline`.
-2. Replace pink/purple main accents with the green primary/accent token system.
-3. Keep Poppins/Roboto Mono mapped into renderer font aliases.
-4. Reintroduce small tactile shadows from the supplied shadow tokens, not large blurred cards.
-5. Convert Stage lyric and remote-room colors to the new dark token palette.
-6. Remove stale references to Linear editorial minimalism from skills, docs, and UI copy.
+1. Keep Tailwind v4 entry + `@theme inline`.
+2. Prefer flat industrial recipes over glass/skeuo leftovers.
+3. Keep JetBrains Mono / Nanum Gothic Coding as the UI stack (Codrops demo 4).
+4. Do not reintroduce backdrop-blur glass or plastic gradients on Studio controls.
+5. Do not force every corner to 0 — use the radius hierarchy.
 
 ## Decisions Log
 
-
-| Date       | Decision                                        | Rationale                                                                                                                                                      |
-| ---------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-04-28 | Adopted Studio Paper + Warm Stage               | Initial direction reduced neon karaoke tropes and clarified Studio vs Stage.                                                                                   |
-| 2026-04-29 | Tried Linear Editorial Minimalism               | Helped simplify the UI but felt too restrained for the desired product mood.                                                                                   |
-| 2026-04-29 | Adopted supplied Tailwind v4 OKLCH style tokens | User preferred the provided pastel token set with Poppins, subtle shadows, soft surfaces, and more expressive color.                                           |
-| 2026-04-29 | Switched to dark-first green accent             | User clarified the current accent felt pink and wanted the green from the dark dashboard reference, with a darker default background and Dark Mode by default. |
-| 2026-04-30 | Added green-family accent variants              | Settings now allows controlled green/teal accent switching while preserving the product's green-led brand direction.                                           |
-| 2026-05-03 | Standardized transparent thin scrollbars        | Scrollbars should feel native and unobtrusive, with transparent tracks and theme-aware thumb contrast in both light and dark modes.                             |
-| 2026-05-03 | Hid native macOS title bar for Studio chrome    | The native white title bar clashed with the dark brand surface; the app should visually own the top chrome while preserving macOS traffic lights.               |
-| 2026-07-12 | Meevis-inspired Studio shell cleanup            | Topology contour background felt noisy; Studio now uses a quiet split shell (dark hero chrome + solid card deck), centered pill nav, and denser card grid inspired by the Meevis dashboard while keeping VocalFlow green tokens. |
-| 2026-07-12 | Scroll region lives below fixed header          | Page scroll and custom scrollbar now belong to `.studioScrollRegion` under `--studio-chrome-height`, so the thumb never runs through the fixed brand header. |
-| 2026-07-12 | Theme-tinted refined scrollbars                 | Scrollbar thumbs stay quiet with `--foreground`, then pick up `--primary` on hover/active; page track uses soft `--card` mix so the bar matches light/dark accents. |
-| 2026-07-13 | Room dock exposes backing + vocal volumes       | Karaoke Room needs one-tap mix control: backing track volume and mic monitor level sit next to transport as always-visible vertical faders. |
-| 2026-07-13 | Header Room is setlist lobby, not Stage         | 选歌 → browse, 添加 → capture, 歌房 → reorder tonight’s setlist then Start singing. Header must never skip the lobby and jump onto Stage. |
-| 2026-07-13 | Accent cascade is primary-driven                | Settings accent (green/lime/mint/teal) must retint primary, ring, ktv, success, charts, and sidebar together — no leftover hardcoded default-green utilities. |
-
-
+| Date | Decision | Rationale |
+| --- | --- | --- |
+| 2026-04-28 | Adopted Studio Paper + Warm Stage | Initial direction reduced neon karaoke tropes and clarified Studio vs Stage. |
+| 2026-04-29 | Tried Linear Editorial Minimalism | Helped simplify the UI but felt too restrained for the desired product mood. |
+| 2026-04-29 | Adopted supplied Tailwind v4 OKLCH style tokens | User preferred the provided pastel token set with Poppins, subtle shadows, soft surfaces, and more expressive color. |
+| 2026-04-29 | Switched to dark-first green accent | User clarified the current accent felt pink and wanted the green from the dark dashboard reference, with a darker default background and Dark Mode by default. |
+| 2026-04-30 | Added green-family accent variants | Settings now allows controlled green/teal accent switching while preserving the product's green-led brand direction. |
+| 2026-05-03 | Standardized transparent thin scrollbars | Scrollbars should feel native and unobtrusive, with transparent tracks and theme-aware thumb contrast in both light and dark modes. |
+| 2026-05-03 | Hid native macOS title bar for Studio chrome | The native white title bar clashed with the dark brand surface; the app should visually own the top chrome while preserving macOS traffic lights. |
+| 2026-07-12 | Meevis-inspired Studio shell cleanup | Topology contour background felt noisy; Studio now uses a quiet split shell, centered pill nav, and denser card grid. |
+| 2026-07-12 | Scroll region lives below fixed header | Page scroll and custom scrollbar belong to `.studioScrollRegion` under `--studio-chrome-height`. |
+| 2026-07-13 | Room dock exposes backing + vocal volumes | Karaoke Room needs always-visible vertical faders next to transport. |
+| 2026-07-13 | Header Room is setlist lobby, not Stage | Header must never skip the lobby and jump onto Stage. |
+| 2026-07-13 | Accent cascade is primary-driven | Settings accent retints primary-driven roles together. |
+| 2026-07-13 | First-launch intro splash | Cold start shows a short brand splash (localStorage-gated). |
+| 2026-07-14 | Unified capture + media search input | Add desk: URL/path processes; plain text dual-searches YT+Bili, short clips first. |
+| 2026-07-15 | Sage industrial flat (reference UI) | Dropped glass/skeuo clutter for sage canvas, olive panels, terracotta actions, 1px rules, barcode texture; default theme light sage. |
+| 2026-07-15 | Four palettes + Codrops texture/hover | Settings exposes sage/slate/ink/clay full palettes; canvas uses Codrops `noise.png` film grain; Room setlist uses demo-4 south-fill hover + scramble. |
+| 2026-07-15 | Braun hard-square corners              | All Studio/Stage radii forced to 0 (tokens + global override); no pills/soft rounds — Dieter Rams / Braun geometry. |
+| 2026-07-15 | Codrops fonts + visible film texture   | UI uses JetBrains Mono / Nanum Gothic Coding; `noise.png` as fixed overlay (demo-4 style, no CRT scanlines); most keys are borderless with south-fill hover. |
+| 2026-07-15 | Room = ink/sage instrument             | Room lobby + Stage follow alarm-instrument reference: ink canvas, barcode tuner + red needle; panel hue follows Settings accent (sage/slate/ink/clay). |
+| 2026-07-15 | Radius hierarchy (not all-square)      | Soft panel / pill / circle radii restore instrument-reference hierarchy; sharp corners only on meters and tick marks. |

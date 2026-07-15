@@ -9,7 +9,7 @@ import { Eyebrow } from "./ui/Eyebrow";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
 const THEME_MODES: readonly ThemeMode[] = ["system", "light", "dark"] as const;
-const ACCENT_COLORS: readonly AccentColor[] = ["green", "lime", "mint", "teal"] as const;
+const ACCENT_COLORS: readonly AccentColor[] = ["sage", "slate", "ink", "clay"] as const;
 
 const HF_TOKEN_DOCS_URL = "https://huggingface.co/settings/tokens";
 /**
@@ -195,7 +195,7 @@ export function SettingsPanel({
                       )}
                     >
                       <span
-                        className="block size-3.5 rounded-full bg-primary"
+                        className="block size-3.5 rounded-none bg-primary"
                         data-accent-swatch={color}
                         style={{ boxShadow: "0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent)" }}
                       />

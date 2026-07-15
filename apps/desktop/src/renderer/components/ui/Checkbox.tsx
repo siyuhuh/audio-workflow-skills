@@ -12,9 +12,9 @@ export function Checkbox({ label, checked, disabled = false, onChange, className
   return (
     <label
       className={cn(
-        "flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold text-foreground transition-colors",
-        "hover:border-line-strong",
-        disabled && "cursor-not-allowed opacity-45",
+        "captureCheck",
+        checked && "captureCheck--on",
+        disabled && "captureCheck--disabled",
         className
       )}
     >
@@ -23,9 +23,10 @@ export function Checkbox({ label, checked, disabled = false, onChange, className
         checked={checked}
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
-        className="size-4 cursor-pointer accent-primary"
+        className="captureCheckInput"
       />
-      <span className="whitespace-nowrap">{label}</span>
+      <span className="captureCheckBox" aria-hidden="true" />
+      <span className="captureCheckLabel">{label}</span>
     </label>
   );
 }

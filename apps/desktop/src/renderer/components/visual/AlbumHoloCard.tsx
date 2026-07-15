@@ -90,7 +90,7 @@ function createFallbackTexture(title: string): THREE.CanvasTexture {
     }
 
     context.fillStyle = "rgba(255,255,255,0.86)";
-    context.font = "900 128px Poppins, sans-serif";
+    context.font = "600 128px \"JetBrains Mono\", monospace";
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(title.slice(0, 2).toUpperCase(), canvas.width / 2, canvas.height / 2);

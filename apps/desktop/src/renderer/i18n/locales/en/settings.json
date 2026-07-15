@@ -4,19 +4,19 @@
   "title": "Settings",
   "appearance": {
     "title": "Appearance",
-    "description": "Dark Mode is the default. VocalFlow uses one green accent for controls and highlights.",
+    "description": "Pick light/dark mode and one of four industrial color palettes. Each palette retints the whole Studio shell.",
     "modeLabel": "Theme mode",
-    "accentLabel": "Style token",
+    "accentLabel": "Color palette",
     "modes": {
       "system": "System",
       "light": "Light",
       "dark": "Dark"
     },
     "accents": {
-      "green": "Dashboard",
-      "lime": "Lime",
-      "mint": "Mint",
-      "teal": "Teal"
+      "sage": "Sage",
+      "slate": "Slate",
+      "ink": "Ink",
+      "clay": "Clay"
     }
   },
   "language": {

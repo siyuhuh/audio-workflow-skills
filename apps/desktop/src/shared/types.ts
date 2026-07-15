@@ -162,6 +162,8 @@ export interface YoutubeSearchResult {
   url: string;
   channel: string;
   durationLabel: string;
+  /** Duration in seconds when known; used to prefer clips under 15 minutes. */
+  durationSec?: number | null;
   platform?: "youtube" | "bilibili";
   thumbnailUrl?: string;
 }
@@ -210,7 +212,8 @@ export type AppLocale = "en" | "zh";
 
 export type ThemeMode = "system" | "light" | "dark";
 
-export type AccentColor = "green" | "lime" | "mint" | "teal";
+/** Four full studio palettes (settings “color theme”). Legacy green/lime/mint/teal map to these. */
+export type AccentColor = "sage" | "slate" | "ink" | "clay";
 
 export interface UserSettings {
   locale: AppLocale | null;

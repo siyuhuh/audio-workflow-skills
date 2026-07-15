@@ -39,7 +39,7 @@
     "kicker": "为创作者准备的卡拉 OK 工作室",
     "addKicker": "添加新歌曲",
     "addTitle": "把另一首歌带进 VocalFlow。",
-    "addSubtitle": "粘贴链接、搜索 YouTube / Bilibili，或选择本地文件。这里专门负责采集；首页只专注于选歌和演唱。",
+    "addSubtitle": "粘贴链接、输入歌名同时搜 YouTube / Bilibili，或选择本地文件。这里专门负责采集；首页只专注于选歌和演唱。",
     "established": "Est. 2026",
     "navCapture": "采集",
     "navPractice": "选歌"
@@ -50,6 +50,7 @@
     "subtitle": "在这里调整演唱顺序。准备好后点「开始演唱」进入舞台；首页选歌不会直接跳进演唱。",
     "setlistLabel": "演唱顺序",
     "setlistHint": "上移 / 下移调整顺序，点播放直接开唱。",
+    "nextCue": "{{count}} 首就绪 · 下一首 {{title}}",
     "startSinging": "开始演唱",
     "reviewLyrics": "核对歌词",
     "singThis": "演唱这首",
@@ -62,6 +63,7 @@
   },
   "actions": {
     "run": "运行",
+    "addSong": "添加歌曲",
     "stop": "停止",
     "cancel": "取消",
     "open": "打开",
@@ -73,6 +75,12 @@
     "searching": "搜索中…",
     "enterKaraoke": "进入卡拉 OK",
     "tryInKaraoke": "在卡拉 OK 试听"
+  },
+  "intro": {
+    "aria": "VocalFlow 开场",
+    "kicker": "私人练唱工作室",
+    "subtitle": "链接进，伴奏与歌词打包本地。点任意处继续。",
+    "skip": "点击或按 Enter 跳过"
   },
   "errors": {
     "ytDlp": "缺少 yt-dlp。请先准备运行环境，然后重试。",

@@ -1,9 +1,13 @@
 {
   "heroTitle": "Paste a song link",
   "heroSubtitle": "Karaoke / Subtitle / Local package",
-  "inputLabel": "YouTube, Bilibili, or local media",
-  "inputPlaceholder": "Paste URL or drop a file/folder",
+  "inputLabel": "Song link, search, or local media",
+  "inputPlaceholder": "Paste a URL, or type a song name to search",
   "selectFile": "Select file",
+  "options": {
+    "toggle": "Capture options",
+    "hint": "Mode, language, file"
+  },
   "advanced": {
     "show": "Desktop options",
     "hide": "Hide desktop options",
@@ -64,13 +68,20 @@
     "youtube": "YouTube",
     "bilibili": "Bilibili",
     "placeholder": "Artist, song title, or keywords",
+    "unifiedHint": "Looks like a song name — searching YouTube and Bilibili together.",
+    "resultsTitle": "Search results",
+    "resultsHint": "YouTube + Bilibili · clips under {{minutes}} min ranked first",
+    "searchingBoth": "Searching YouTube and Bilibili…",
     "appendKaraoke": "Backing version",
     "splitVocalsDefault": "Create backing",
     "karaokeSplitWarning": "Karaoke uploads often already remove the lead vocal. Creating backing again may not improve the result; turn off backing bias when you need the original vocal for transcription.",
     "useThisLink": "Use this link",
+    "addAndProcess": "Add & process",
+    "moreOptions": "More search options",
     "openInBrowser": "Open in browser",
     "noResults": "No videos matched. Try different keywords.",
-    "failed": "{{platform}} search failed."
+    "failed": "{{platform}} search failed.",
+    "failedBoth": "YouTube and Bilibili search both failed."
   },
   "stages": {
     "prepare": "Prepare",
@@ -181,7 +192,8 @@
     "successBody": "Download, transcription and subtitles are ready.",
     "skippedSuffix": "Skipped: {{stages}}",
     "viewAction": "View package",
-    "enterKaraokeAction": "Enter karaoke"
+    "enterKaraokeAction": "Enter karaoke",
+    "roomAction": "Add to room"
   },
   "jobStream": {
     "stage": {

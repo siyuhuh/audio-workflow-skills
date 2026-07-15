@@ -5,7 +5,7 @@ interface SegmentedControlProps<T extends string> {
   options: [T, string][];
   onChange: (value: T) => void;
   className?: string;
-  /** `pill` matches Meevis-style header tabs; `default` is a bordered grid. */
+  /** `pill` = header nav capsule; `default` = soft-rounded grid. */
   variant?: "default" | "pill";
   size?: "md" | "sm";
 }
@@ -22,10 +22,7 @@ export function SegmentedControl<T extends string>({
     return (
       <div
         role="tablist"
-        className={cn(
-          "inline-flex items-center gap-1 rounded-full border border-border bg-card/80 p-1 shadow-2xs backdrop-blur-md",
-          className
-        )}
+        className={cn("segControl segControl--pill", className)}
       >
         {options.map(([optionValue, label]) => {
           const selected = value === optionValue;
@@ -38,12 +35,9 @@ export function SegmentedControl<T extends string>({
               data-selected={selected}
               onClick={() => onChange(optionValue)}
               className={cn(
-                "rounded-full border-0 px-4 text-sm font-medium transition-colors duration-150 ease-out",
-                size === "sm" ? "min-h-8" : "min-h-9",
-                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
-                selected
-                  ? "bg-muted text-foreground shadow-2xs"
-                  : "bg-transparent text-muted-foreground hover:text-foreground"
+                "segControlItem",
+                size === "sm" ? "segControlItem--sm" : "segControlItem--md",
+                selected && "segControlItem--active"
               )}
             >
               {label}
@@ -56,13 +50,10 @@ export function SegmentedControl<T extends string>({
 
   return (
     <div
-      className={cn(
-        "grid overflow-hidden rounded-md border border-border shadow-2xs",
-        className
-      )}
+      className={cn("segControl segControl--grid", className)}
       style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}
     >
-      {options.map(([optionValue, label], index) => {
+      {options.map(([optionValue, label]) => {
         const selected = value === optionValue;
         return (
           <button
@@ -71,12 +62,8 @@ export function SegmentedControl<T extends string>({
             data-selected={selected}
             onClick={() => onChange(optionValue)}
             className={cn(
-              "min-h-10 border-0 text-sm font-medium transition-colors duration-150 ease-out",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
-              index < options.length - 1 && "border-r border-border",
-              selected
-                ? "bg-primary text-primary-foreground"
-                : "bg-card text-foreground hover:bg-muted"
+              "segControlItem segControlItem--md",
+              selected && "segControlItem--active"
             )}
           >
             {label}

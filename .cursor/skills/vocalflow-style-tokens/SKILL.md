@@ -1,6 +1,6 @@
 ---
 name: vocalflow-style-tokens
-description: Applies VocalFlow Studio's dark-first Tailwind v4 OKLCH style-token design system. Use when editing DESIGN.md, renderer CSS, desktop UI components, Stage/Karaoke visuals, or any interface work that should follow the green-accent dark dashboard palette, Poppins typography, compact radius, and subtle shadows.
+description: Applies VocalFlow Studio's sage industrial flat design system. Use when editing DESIGN.md, renderer CSS, desktop UI components, Stage/Karaoke visuals, or any interface work that should follow the sage canvas, charcoal-olive panels, terracotta accent, radius hierarchy, and no-glass controls.
 ---
 
 # VocalFlow Style Tokens
@@ -28,26 +28,25 @@ Expose theme variables through `@theme inline`. Keep compatibility with the exis
 
 ## Visual Direction
 
-- Use the supplied OKLCH token palette, not Linear purple.
-- The product default is Dark Mode with a vivid green primary/accent. Avoid pink or purple as the main action color.
-- Use Poppins for UI and Roboto Mono for timecodes, logs, and command previews.
-- Use `0.5rem` radius as the default; use pill radius only for docks, chips, and transport groups.
-- Reintroduce small tactile shadows from the token set. Avoid large blurred shadows.
-- Keep Stage expressive but readable: darker token surfaces, green lyric progress, compact controls.
+- Room lobby + Stage: ink canvas + instrument layout; `--room-panel` hue follows Settings accent.
+- Radius hierarchy: soft panels (`--radius-panel`), cards (`--radius-lg`), keys (`--radius-md`), circular actions (`--radius-pill`); sharp only on barcode/needles.
+- JetBrains Mono (+ Nanum Gothic Coding) for UI — Codrops Line TextHover demo 4.
+- Fixed film grain (`noise.png`) over the shell so texture always reads.
+- Most keys are borderless; hover uses south-fill wash (`--hover-fill`), not outline borders.
 
 ## Component Defaults
 
-- Primary button: `--primary` fill, `--primary-foreground`, small shadow.
-- Secondary button: `--card` or `--secondary`, 1px `--border`, compact radius.
-- Card: `--card`, 1px `--border`, `--radius-lg`, `--shadow-sm-token`.
-- Input: `--card`, 1px `--input`, focus ring from `--ring`.
-- Status chip: use semantic colors only for actual status.
+- Primary button (Studio): solid terracotta `--primary`, **square corners**, borderless, south-fill hover.
+- Primary button (Room): solid `--room-panel`; square for text CTAs; circular only for icon play/confirm.
+- Secondary / ghost: transparent text, borderless, south-fill hover (`--hover-fill`).
+- Card: `--card`, optional 1px `--rule`, `--radius-lg`, no elevation shadow.
+- Input: quiet rule + `--radius-md`; action keys stay borderless.
 
 ## Reject
 
-- Single-purple Linear look.
-- Pink primary action states.
-- Pure cyan karaoke glow from the old UI.
-- Warm coral paper-stage palette from the earlier design.
-- Huge marketing hero shadows.
-- New color literals when an existing token can express the same role.
+- Forcing every corner to 0 (Braun hard-square everywhere).
+- Glassmorphism / backdrop-blur control shells.
+- Skeuomorphic plastic button stacks.
+- Neon green / purple / pink as the main accent.
+- Decorative gradient meshes on the Studio canvas.
+- Forcing sage green into Room when accent is slate/clay.
