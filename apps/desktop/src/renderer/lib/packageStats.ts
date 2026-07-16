@@ -18,10 +18,10 @@ export interface PackageStats {
  * Single source of truth for package grouping, counting, shelf order, and
  * the featured pick.
  *
- * Grouping key resolution mirrors the legacy logic in App.tsx exactly:
- *  - normalized sourceUrl when present
+ * Grouping key resolution favors what the user sees as one resource:
  *  - sample id when entry is a bundled sample
- *  - normalized title fallback otherwise
+ *  - normalized local media family when generated assets are available
+ *  - normalized source URL, then title, as fallbacks
  */
 export function derivePackageStats(history: SavedJobHistory[]): PackageStats {
   const karaokeEntries = history.filter((entry) => entry.workflowMode === "karaoke");
@@ -70,19 +70,23 @@ export function isSampleHistoryEntry(entry: SavedJobHistory): boolean {
 }
 
 export function resolvePackageKey(entry: SavedJobHistory): string {
-  const sourceUrl = entry.sourceUrl || sourceUrlForKey(entry.input);
-  if (sourceUrl) {
-    return `url:${normalizeSourceUrlForKey(sourceUrl)}`;
-  }
-
   const input = entry.input.trim();
   if (input.startsWith("sample:")) {
     return input.toLowerCase();
   }
 
+  // Prefer the resolved media family over the original URL. A single song can
+  // be processed more than once (or from more than one platform URL), while
+  // still producing the same local resource. The shelf should show that as one
+  // expandable package rather than repeating the same generated title.
   const mediaKey = reviewMediaFamilyKey(entry);
   if (mediaKey) {
     return `media:${mediaKey}`;
+  }
+
+  const sourceUrl = entry.sourceUrl || sourceUrlForKey(entry.input);
+  if (sourceUrl) {
+    return `url:${normalizeSourceUrlForKey(sourceUrl)}`;
   }
 
   const titleKey = mediaFamilyKeyFromName(reviewDisplayTitle(entry));
@@ -149,8 +153,9 @@ export function normalizeSourceUrlForKey(value: string): string {
 }
 
 export function reviewDisplayTitle(entry: SavedJobHistory): string {
-  if (entry.title?.trim()) {
-    return entry.title.trim();
+  const explicitTitle = meaningfulDisplayTitle(entry.title);
+  if (explicitTitle) {
+    return explicitTitle;
   }
 
   const assetTitle = titleFromAssets(entry.assets);
@@ -171,6 +176,14 @@ export function reviewDisplayTitle(entry: SavedJobHistory): string {
 
   const sourceLabel = sourceHostLabel(entry.sourceUrl || entry.input);
   return sourceLabel ?? shortInputLabel(entry.input);
+}
+
+function meaningfulDisplayTitle(value: string | undefined): string | null {
+  const title = value?.trim() ?? "";
+  if (!title || sourceUrlForKey(title) || /^(?:url:|(?:youtube|bilibili):)[^\s]+$/i.test(title)) {
+    return null;
+  }
+  return cleanMediaTitle(title);
 }
 
 export function titleFromAssets(assets: GeneratedAsset[]): string | null {
@@ -204,11 +217,19 @@ export function titleFromPath(filePath: string): string | null {
 export function cleanMediaTitle(name: string): string | null {
   const withoutExtension = name.replace(/\.[a-z0-9]{2,5}$/i, "");
   const withoutModelSuffix = withoutExtension.replace(/[_\s-]+model[_-].*$/i, "");
-  const withoutRoleSuffix = withoutModelSuffix
+  const withoutSeparatorSuffix = withoutModelSuffix.replace(
+    /[_\s-]*\((?:instrumental|vocals?|voice|acapella|no vocals)[^)]*\)[_\s-]*(?:uvr|mdx|bs[-_\s]?roformer|htdemucs|demucs).*$/i,
+    ""
+  );
+  const withoutRoleSuffix = withoutSeparatorSuffix
     .replace(/[_\s-]*\((?:instrumental|vocals?|voice|acapella|no vocals)[^)]*\)\s*$/i, "")
     .replace(/[_\s-]+(?:instrumental|vocals?|voice|acapella|preview|transcribe|subtitle|audio|video)$/i, "");
-  const withoutPlatformId = withoutRoleSuffix.replace(/\s*\[[^\]]{6,}\]\s*$/i, "");
-  const normalized = withoutPlatformId.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  const withoutPlatformId = withoutRoleSuffix.replace(/\s*\[[a-z0-9_-]{6,16}\]\s*$/i, "");
+  const normalized = withoutPlatformId
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(.+?)\s+-\s+\1\s+-\s+(.+)$/i, "$1 - $2");
   return normalized || null;
 }
 
@@ -299,15 +320,20 @@ export function isPreviewVideoPath(filePath: string): boolean {
 
 function mergeClientHistoryEntries(entries: SavedJobHistory[]): SavedJobHistory {
   const best = entries.reduce((current, entry) => (resourceEntryScore(entry) > resourceEntryScore(current) ? entry : current));
+  const newest = entries.reduce((current, entry) => (historyTimestamp(entry) > historyTimestamp(current) ? entry : current));
   const assets = uniqueClientAssets(entries.flatMap((entry) => entry.assets));
   const generatedFiles = uniqueStrings(entries.flatMap((entry) => entry.generatedFiles));
   const bestPlaybackBundle = entries.map((entry) => entry.playbackBundle).sort((left, right) => playbackBundleScore(right) - playbackBundleScore(left))[0] ?? best.playbackBundle;
+  const preferredTitle = [newest, best, ...entries]
+    .map((entry) => meaningfulDisplayTitle(entry.title))
+    .find((title): title is string => Boolean(title));
 
   return {
     ...best,
+    createdAt: newest.createdAt,
     assets,
     generatedFiles,
-    title: best.title ?? entries.find((entry) => entry.title)?.title,
+    title: preferredTitle ?? best.title ?? entries.find((entry) => entry.title)?.title,
     sourceUrl: best.sourceUrl ?? entries.find((entry) => entry.sourceUrl)?.sourceUrl ?? null,
     primarySubtitle: best.primarySubtitle ?? assets.find((asset) => asset.exists && asset.type === "subtitle")?.path ?? null,
     primaryMedia: best.primaryMedia ?? assets.find((asset) => asset.exists && (asset.type === "media" || asset.type === "stem") && !isPreviewVideoPath(asset.path))?.path ?? null,
@@ -340,19 +366,10 @@ function playbackBundleScore(bundle: PlaybackBundle): number {
 }
 
 function comparePackageGroups(left: PackageGroup, right: PackageGroup): number {
-  const yesterdayDelta = Number(isYesterdayPackage(right.entry)) - Number(isYesterdayPackage(left.entry));
-  if (yesterdayDelta !== 0) {
-    return yesterdayDelta;
-  }
-
-  const sampleDelta = Number(right.entry.input.startsWith("sample:")) - Number(left.entry.input.startsWith("sample:"));
-  if (sampleDelta !== 0) {
-    return sampleDelta;
-  }
-
-  return Date.parse(right.entry.createdAt) - Date.parse(left.entry.createdAt);
+  return historyTimestamp(right.entry) - historyTimestamp(left.entry);
 }
 
-function isYesterdayPackage(entry: SavedJobHistory): boolean {
-  return entry.input.toLowerCase() === "sample:yesterday" || mediaFamilyKeyFromName(reviewDisplayTitle(entry)) === "yesterday";
+function historyTimestamp(entry: SavedJobHistory): number {
+  const timestamp = Date.parse(entry.createdAt);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }

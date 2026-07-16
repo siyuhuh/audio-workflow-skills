@@ -133,3 +133,4 @@ Converted in the current experience pass:
 | 2026-07-15 | Automatic caption fallback in desktop Auto mode | Missing platform captions are recoverable, so the normal path continues with local Whisper; strict Platform mode remains an explicit expert choice. |
 | 2026-07-15 | One Room tool surface + no History rail | Mutually exclusive dock tools prevent stacked popovers; completed work belongs to the Library instead of competing with the active capture task. |
 | 2026-07-15 | Texture belongs below content | A single tiled noise layer now lives on the scroll canvas; transparent Studio bands reveal it while controls and text remain clean, replacing duplicated high-z overlays. |
+| 2026-07-16 | Brand mark from Foundations SVG | App icon uses rounded `Frame 3.svg` (olive tile `rx=100` + gradient monogram); in-app mark layers `Union.svg` as soft silhouette backdrop behind the main logo. |

@@ -13,6 +13,12 @@
     "english": "English",
     "chinese": "中文"
   },
+  "source": {
+    "youtube": "YouTube",
+    "bilibili": "B站",
+    "local": "本地文件",
+    "sample": "示例"
+  },
   "nav": {
     "label": "主导航",
     "home": "选歌",

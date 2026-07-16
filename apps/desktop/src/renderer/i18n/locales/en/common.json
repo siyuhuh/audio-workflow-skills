@@ -13,6 +13,12 @@
     "english": "English",
     "chinese": "中文"
   },
+  "source": {
+    "youtube": "YouTube",
+    "bilibili": "Bilibili",
+    "local": "Local file",
+    "sample": "Sample"
+  },
   "nav": {
     "label": "Primary navigation",
     "home": "Album",

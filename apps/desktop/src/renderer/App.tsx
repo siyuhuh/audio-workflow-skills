@@ -61,6 +61,7 @@ import { useNotifications, type NotificationAction } from "./lib/notifications";
 import { RoomRemoteDrawer } from "./components/RoomRemoteDrawer";
 import { RoomSetlistPanel } from "./components/RoomSetlistPanel";
 import { IntroSplash, shouldShowIntroSplash } from "./components/IntroSplash";
+import { BrandMark } from "./components/BrandMark";
 import {
   classifyCaptureInput,
   isHttpInput,
@@ -169,6 +170,7 @@ declare global {
 type JobStatus = "idle" | "running" | "complete" | "failed" | "canceled";
 type ReviewTab = "karaoke" | "script" | "files";
 type AppScene = "workspace" | "lyrics-review" | "karaoke-room";
+const SETLIST_ORDER_STORAGE_KEY = "vocalflow.setlistOrder.v2";
 
 type TrackRole = "original" | "backing" | "vocal" | "custom";
 
@@ -263,7 +265,7 @@ function normalizeAccentColor(value: unknown): AccentColor {
   if (value === "lime") return "slate";
   if (value === "mint") return "ink";
   if (value === "teal") return "clay";
-  return "sage";
+  return "ink";
 }
 
 function reasonToCamelCase(reason: JobErrorReason): string {
@@ -335,7 +337,7 @@ function createHttpAudioWorkflowApi(): AudioWorkflowApi {
       return {
         locale: null,
         themeMode: "light",
-        accentColor: "sage",
+        accentColor: "ink",
         hfToken: null,
         hfEndpoint: null,
         separatorModelDir: null
@@ -432,7 +434,7 @@ export default function App() {
   const liveJob = useActiveJobStream();
   const currentLocale = (i18n.resolvedLanguage ?? i18n.language ?? "en") as AppLocale;
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
-  const [accentColor, setAccentColor] = useState<AccentColor>("sage");
+  const [accentColor, setAccentColor] = useState<AccentColor>("ink");
   const [systemPrefersDark, setSystemPrefersDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hfToken, setHfToken] = useState<string | null>(null);
@@ -464,7 +466,7 @@ export default function App() {
   const [workspaceMode, setWorkspaceMode] = useState<"home" | "add" | "karaoke">("home");
   const [setlistOrder, setSetlistOrder] = useState<string[]>(() => {
     try {
-      const raw = window.localStorage.getItem("vocalflow.setlistOrder");
+      const raw = window.localStorage.getItem(SETLIST_ORDER_STORAGE_KEY);
       const parsed = raw ? (JSON.parse(raw) as unknown) : [];
       return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
     } catch {
@@ -565,20 +567,18 @@ export default function App() {
   );
   const orderedKaraokePackages = useMemo(() => {
     const byId = new Map(karaokePackages.map((entry) => [entry.id, entry]));
-    const ordered: SavedJobHistory[] = [];
+    const manuallyOrdered: SavedJobHistory[] = [];
     for (const id of setlistOrder) {
       const entry = byId.get(id);
       if (entry) {
-        ordered.push(entry);
+        manuallyOrdered.push(entry);
         byId.delete(id);
       }
     }
-    for (const entry of karaokePackages) {
-      if (byId.has(entry.id)) {
-        ordered.push(entry);
-      }
-    }
-    return ordered;
+    // Newly processed resources are not in a previously saved manual order.
+    // Keep them at the front in their default newest-first order.
+    const newestUnordered = karaokePackages.filter((entry) => byId.has(entry.id));
+    return [...newestUnordered, ...manuallyOrdered];
   }, [karaokePackages, setlistOrder]);
   const roomSetlistItems = useMemo(
     () =>
@@ -621,7 +621,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem("vocalflow.setlistOrder", JSON.stringify(setlistOrder));
+      window.localStorage.setItem(SETLIST_ORDER_STORAGE_KEY, JSON.stringify(setlistOrder));
     } catch {
       // ignore quota / private mode failures
     }
@@ -809,12 +809,12 @@ export default function App() {
     }
     QRCode.toDataURL(roomStatus.remoteUrl, {
       color: {
-        dark: "#11120e",
-        light: "#ffffff"
+        dark: "#252b22",
+        light: "#eef1ea"
       },
       errorCorrectionLevel: "M",
-      margin: 1,
-      width: 220
+      margin: 0,
+      width: 180
     })
       .then((url) => {
         if (!ignore) {
@@ -1483,6 +1483,7 @@ export default function App() {
     <header className="brandHeader">
       <div className="brandLogo" aria-label={t("common:appName")}>
         <span className="brandLogoLine">
+          <BrandMark size="sm" />
           <span className="brandLogoStrong">Vocal</span>
           <span className="brandLogoLight">Flow</span>
         </span>

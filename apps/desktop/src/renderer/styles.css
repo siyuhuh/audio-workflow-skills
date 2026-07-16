@@ -927,11 +927,72 @@ html[data-platform="darwin"] :is(.brandLogo, .brandHeaderActions, .brandIconButt
 .brandLogoLine {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 15px;
   line-height: 1;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.brandMark {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+.brandMarkBg,
+.brandMarkFg {
+  grid-area: 1 / 1;
+  display: block;
+  border-radius: inherit;
+}
+
+.brandMarkBg {
+  width: 118%;
+  height: 118%;
+  object-fit: contain;
+  opacity: 0.42;
+  filter: blur(0.4px);
+  transform: scale(1.08);
+}
+
+.brandMarkFg {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  /* Frame 3 already has rounded corners (rx) — don't clip again. */
+  object-fit: contain;
+  border-radius: 0;
+}
+
+.brandMark--sm {
+  width: 22px;
+  height: 22px;
+}
+
+.brandMark--sm .brandMarkBg {
+  opacity: 0.28;
+  transform: scale(1.12);
+}
+
+.brandMark--md {
+  width: 28px;
+  height: 28px;
+}
+
+.brandMark--lg {
+  width: 72px;
+  height: 72px;
+}
+
+.brandMark--lg .brandMarkBg {
+  opacity: 0.55;
+  transform: scale(1.18);
+  filter: blur(0.8px);
 }
 
 .brandLogoStrong {
@@ -2423,54 +2484,134 @@ button.uiKey::after {
 }
 
 .roomSetlistItem {
+  margin: 0;
+}
+
+.resourceListCard {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px 18px;
-  padding: 14px 12px;
-  border-bottom: 1px solid var(--rule);
+  min-width: 0;
   border-radius: var(--radius-md);
+  color: inherit;
+  transition: background-color 180ms var(--motion-ease-out);
+}
+
+.roomSetlist .resourceListCard {
+  padding: 13px 12px;
+  border-bottom: 1px solid var(--rule);
   font-family: var(--font-family-sans);
   letter-spacing: 0;
   color: var(--room-panel);
 }
 
-.roomSetlistIndex {
+.resourceListCardIndex {
   font-family: var(--font-family-mono);
   font-size: 0.72rem;
   font-weight: 500;
-  color: color-mix(in oklch, var(--room-panel) 55%, transparent);
+  color: color-mix(in oklch, currentColor 55%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
-.roomSetlistMain {
+.resourceListCardMain {
   display: grid;
-  gap: 4px;
+  gap: 7px;
   min-width: 0;
   border: 0;
   padding: 0;
   background: transparent;
   text-align: left;
   color: inherit;
-  cursor: pointer;
 }
 
-.roomSetlistTitle {
+button.resourceListCardMain {
+  cursor: pointer;
+  transform-origin: left center;
+  transition: transform 140ms var(--motion-ease-out);
+}
+
+button.resourceListCardMain:active {
+  transform: scale(0.985);
+}
+
+.resourceListCardTitle {
+  display: block;
+  min-width: 0;
   font-size: clamp(0.95rem, 1.6vw, 1.25rem);
   font-weight: 500;
-  color: var(--room-panel);
+  line-height: 1.25;
+  color: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.roomSetlistMeta {
+.resourceListCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 7px;
+  min-width: 0;
+}
+
+.resourceListCardBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in oklch, currentColor 20%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, currentColor 8%, transparent);
+  color: color-mix(in oklch, currentColor 72%, transparent);
+  font-family: var(--font-family-sans);
+  font-size: 0.64rem;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.resourceListCardBadge[data-tone="youtube"] {
+  border-color: color-mix(in oklch, oklch(0.67 0.2 27) 42%, transparent);
+  background: color-mix(in oklch, oklch(0.67 0.2 27) 14%, transparent);
+  color: oklch(0.78 0.14 25);
+}
+
+.resourceListCardBadge[data-tone="bilibili"] {
+  border-color: color-mix(in oklch, oklch(0.74 0.12 221) 42%, transparent);
+  background: color-mix(in oklch, oklch(0.74 0.12 221) 14%, transparent);
+  color: oklch(0.83 0.1 220);
+}
+
+.resourceListCardBadge[data-tone="sample"] {
+  border-color: color-mix(in oklch, var(--room-needle, var(--primary)) 40%, transparent);
+  background: color-mix(in oklch, var(--room-needle, var(--primary)) 12%, transparent);
+  color: color-mix(in oklch, var(--room-needle, var(--primary)) 82%, white);
+}
+
+.resourceListCardBadge[data-tone="ready"] {
+  color: color-mix(in oklch, currentColor 72%, transparent);
+}
+
+.resourceListCardBadge[data-tone="warning"] {
+  border-color: color-mix(in oklch, var(--destructive) 36%, transparent);
+  color: color-mix(in oklch, var(--destructive) 58%, white);
+}
+
+.resourceListCardMetadata {
   font-size: 0.68rem;
   font-weight: 400;
   letter-spacing: 0;
-  color: color-mix(in oklch, var(--room-panel) 55%, transparent);
+  color: color-mix(in oklch, currentColor 55%, transparent);
+  white-space: nowrap;
 }
 
-.roomSetlistActions {
+.resourceListCardBadge + .resourceListCardMetadata::before {
+  margin-right: 7px;
+  content: "·";
+}
+
+.resourceListCardActions {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2529,7 +2670,7 @@ button.uiKey::after {
   border-radius: var(--radius-pill);
 }
 
-.roomSetlistItem[data-selected="true"] {
+.roomSetlist .resourceListCard[data-selected="true"] {
   background: color-mix(in oklch, var(--room-panel) 14%, transparent);
   border-bottom-color: transparent;
 }
@@ -2541,6 +2682,45 @@ button.uiKey::after {
   padding: 22px 20px 16px;
   box-shadow: none;
   color: var(--room-panel);
+}
+
+@media (max-width: 720px) {
+  .roomSetlistPanel {
+    padding-inline: 12px;
+  }
+
+  .roomSetlist .resourceListCard {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px 12px;
+  }
+
+  .roomSetlist .resourceListCardActions {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+/* Room remote drawer — square sage QR tile (no pill corners). */
+.roomQrCode {
+  display: block;
+  width: 180px;
+  height: 180px;
+  padding: 10px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: color-mix(in oklch, var(--card) 90%, var(--background));
+  box-shadow: none;
+  image-rendering: pixelated;
+}
+
+.roomQrCode--empty {
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
 }
 
 .roomLobbyHero {
@@ -3355,6 +3535,12 @@ select:focus-visible {
   gap: 12px;
   text-align: center;
   max-width: 28rem;
+}
+
+.introSplashMark {
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
 }
 
 .introSplashKicker {

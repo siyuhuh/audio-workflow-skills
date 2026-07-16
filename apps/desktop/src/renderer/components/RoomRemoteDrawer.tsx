@@ -85,10 +85,10 @@ export function RoomRemoteDrawer({
                   <img
                     src={roomQrDataUrl}
                     alt={t("room:drawerToggle")}
-                    className="h-[180px] w-[180px] rounded-xl border border-border bg-card"
+                    className="roomQrCode"
                   />
                 ) : (
-                  <div className="grid h-[180px] w-[180px] place-items-center rounded-xl border border-border bg-card font-semibold text-faint">
+                  <div className="roomQrCode roomQrCode--empty" aria-hidden="true">
                     QR
                   </div>
                 )}

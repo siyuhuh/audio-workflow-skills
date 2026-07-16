@@ -1,6 +1,6 @@
 {
   "name": "@vocalflow/desktop",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Desktop app for generating vocal stems, karaoke assets, and subtitles with audio-subtitles.",
   "private": true,
   "type": "module",

@@ -6,19 +6,17 @@ VocalFlow Studio 是一个面向唱歌练习、视频字幕和人声分离的桌
 
 ## 下载
 
-最新版本：[v0.1.4](https://github.com/gottaegbert/audio-workflow-skills/releases/tag/v0.1.4)
+最新版本：[v0.1.8](https://github.com/gottaegbert/audio-workflow-skills/releases/tag/v0.1.8)
 
-- [下载 macOS Apple Silicon 版 (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow-0.1.4-mac-arm64.dmg)
-- [下载 Windows x64 版 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.4/VocalFlow-0.1.4-win-x64.exe)
+- [下载 macOS Apple Silicon 版 (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.8/VocalFlow-0.1.8-mac-arm64.dmg)
+- [下载 Windows x64 版 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.8/VocalFlow-0.1.8-win-x64.exe)
 
 桌面 app 已内置 `audio-subtitles` 脚本、Python runtime 和 ffmpeg。首次使用时，它会在用户的 app data 目录创建本地 runtime，并按需安装 URL 下载、本地识别和可选人声分离需要的 Python packages。首次运行需要联网。
 
-## v0.1.4 更新内容
+## v0.1.8 更新内容
 
-- 首页改成更偏品牌展示的专辑浏览体验，加入动态地形线背景和 3D 全息专辑卡片。
-- 添加流程更清楚：媒体搜索独立成卡片，语言改为下拉选择，卡拉 OK 版本和人声分离选项分开，并默认开启人声分离。
-- 歌房加入纯图标播放控制、上一首/下一首、播放列表续播、顶部进度分界线、移动端扫码入口和歌词时间编辑弹窗。
-- 增加可切换的绿色系主题色，并优化滚动条、语言切换和歌房控制按钮的可读性。
+- 使用 Foundations 品牌标更新项目 Logo / 应用图标（橄榄底 + sage 几何标记），并应用到 macOS/Windows 安装包以及应用内顶栏与启动闪屏。
+- Room 歌单 / Library 资源卡片继续沿用 sage industrial 仪器语言与更紧凑的列表样式。
 
 ## 使用场景
 
@@ -179,8 +177,8 @@ media-mp3 --browser chrome "https://www.bilibili.com/video/BV..."
 维护者推送版本 tag 后，GitHub Actions 会自动构建桌面安装包并上传到 GitHub Release：
 
 ```bash
-git tag v0.1.4
-git push origin v0.1.4
+git tag v0.1.8
+git push origin v0.1.8
 ```
 
 Release 产物：

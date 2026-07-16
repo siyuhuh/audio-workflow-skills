@@ -72,7 +72,7 @@ let hiddenSampleIds = new Set<string>();
 const DEFAULT_USER_SETTINGS: UserSettings = {
   locale: null,
   themeMode: "light",
-  accentColor: "sage",
+  accentColor: "ink",
   hfToken: null,
   hfEndpoint: null,
   separatorModelDir: null
@@ -95,7 +95,7 @@ function normalizeAccentColor(value: unknown): UserSettings["accentColor"] {
   if (value === "lime") return "slate";
   if (value === "mint") return "ink";
   if (value === "teal") return "clay";
-  return "sage";
+  return "ink";
 }
 
 function desktopIconPath(): string {

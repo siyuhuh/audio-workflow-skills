@@ -57,8 +57,8 @@ For packaged users, Python packages are installed automatically into the user's 
 This project uses GitHub Actions to build release installers from version tags:
 
 ```bash
-git tag v0.1.4
-git push origin v0.1.4
+git tag v0.1.8
+git push origin v0.1.8
 ```
 
 The workflow uploads:

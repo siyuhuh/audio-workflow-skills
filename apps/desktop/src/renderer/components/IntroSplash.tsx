@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { motionDuration, motionEase } from "../lib/motion";
+import { BrandMark } from "./BrandMark";
 
 const INTRO_STORAGE_KEY = "vocalflow.introSeen";
 const INTRO_HOLD_MS = 2200;
@@ -78,6 +79,14 @@ export function IntroSplash({ open, onDone }: IntroSplashProps) {
             transition={{ duration: reduceMotion ? 0 : 0.7, ease: motionEase }}
           />
           <div className="introSplashContent">
+            <motion.div
+              className="introSplashMark"
+              initial={{ opacity: 0, scale: reduceMotion ? 1 : 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: reduceMotion ? 0 : 0.08, duration: 0.42, ease: motionEase }}
+            >
+              <BrandMark size="lg" />
+            </motion.div>
             <motion.p
               className="introSplashKicker"
               initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }}
