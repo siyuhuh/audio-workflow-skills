@@ -19,6 +19,12 @@
   "noPlayableMedia": "No playable media in package",
   "noLocalMedia": "No local media available for this review.",
   "playToFollow": "Play media to follow the lyric line.",
+  "playback": {
+    "progress": "Playback position",
+    "volume": "Volume",
+    "mute": "Mute",
+    "unmute": "Unmute"
+  },
   "split": {
     "ready": "Backing track ready",
     "missing": "No backing track in this package",

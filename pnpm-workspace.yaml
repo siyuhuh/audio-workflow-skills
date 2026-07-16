@@ -1,5 +1,6 @@
 packages:
   - "apps/desktop"
+  - "apps/promo"
 
 # pnpm v10+ blocks dependency lifecycle scripts unless allowlisted here.
 onlyBuiltDependencies:

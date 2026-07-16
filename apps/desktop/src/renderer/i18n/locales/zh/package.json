@@ -19,6 +19,12 @@
   "noPlayableMedia": "歌曲包里没有可播放媒体",
   "noLocalMedia": "当前 review 没有可用的本地媒体。",
   "playToFollow": "播放媒体后可跟随当前歌词。",
+  "playback": {
+    "progress": "播放进度",
+    "volume": "音量",
+    "mute": "静音",
+    "unmute": "取消静音"
+  },
   "split": {
     "ready": "伴奏已就绪",
     "missing": "这个歌曲包还没有伴奏",

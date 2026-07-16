@@ -2511,80 +2511,75 @@ export default function App() {
         ) : null}
 
       {showWorkspace ? (
-        <section className="grid gap-4">
-          <section className="grid gap-4">
-            {activeReview ? (
-              <section className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-border bg-muted p-4">
-                <div className="grid min-w-0 gap-1">
-                  <Eyebrow>{t("package:current")}</Eyebrow>
-                  <h2 className="m-0 max-w-[720px] truncate text-lg font-semibold leading-snug text-foreground">
-                    {activeReviewTitle}
-                  </h2>
-                  <p className="m-0 text-sm font-medium text-muted-foreground">
-                    {playbackSummary(activeReview.playbackBundle)}
-                  </p>
-                  <PackageBadges
-                    playbackBundle={activeReview.playbackBundle}
-                    trackAssets={trackAssets}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {activeReview.workflowMode === "karaoke" ? (
-                    <>
-                      <Button onClick={() => setAppScene("lyrics-review")}>
-                        {t("package:openPackage")}
-                      </Button>
-                      <Button
-                        onClick={splitActiveReview}
-                        disabled={isRunning || Boolean(trackAssets.backing)}
-                      >
-                        {t("package:splitVocals")}
-                      </Button>
-                      <Button
-                        variant="primary"
-                        onClick={() => setAppScene("karaoke-room")}
-                        disabled={
-                          !selectedSubtitlePath || !activeReview.playbackBundle.controllable
-                        }
-                      >
-                        {t("package:enterKaraoke")}
-                      </Button>
-                    </>
-                  ) : null}
-                  {activeReview.sourceUrl ? (
-                    <Button
-                      onClick={() => audioWorkflow.openExternalUrl(activeReview.sourceUrl!)}
-                    >
-                      {t("package:openOriginal")}
+        <section className="packageWorkspace">
+          {activeReview ? (
+            <section className="packageCurrentCard">
+              <div className="packageCurrentMain">
+                <Eyebrow>{t("package:current")}</Eyebrow>
+                <h2>{activeReviewTitle}</h2>
+                <p>{playbackSummary(activeReview.playbackBundle)}</p>
+                <PackageBadges
+                  playbackBundle={activeReview.playbackBundle}
+                  trackAssets={trackAssets}
+                />
+              </div>
+              <div className="packageCurrentActions">
+                {activeReview.workflowMode === "karaoke" ? (
+                  <>
+                    <Button onClick={() => setAppScene("lyrics-review")}>
+                      {t("package:openPackage")}
                     </Button>
-                  ) : null}
+                    <Button
+                      onClick={splitActiveReview}
+                      disabled={isRunning || Boolean(trackAssets.backing)}
+                    >
+                      {t("package:splitVocals")}
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => setAppScene("karaoke-room")}
+                      disabled={
+                        !selectedSubtitlePath || !activeReview.playbackBundle.controllable
+                      }
+                    >
+                      {t("package:enterKaraoke")}
+                    </Button>
+                  </>
+                ) : null}
+                {activeReview.sourceUrl ? (
                   <Button
-                    disabled={!activeReview.outputDir}
-                    onClick={() =>
-                      activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)
-                    }
+                    onClick={() => audioWorkflow.openExternalUrl(activeReview.sourceUrl!)}
                   >
-                    {t("package:openFolder")}
+                    {t("package:openOriginal")}
                   </Button>
-                </div>
-              </section>
-            ) : null}
+                ) : null}
+                <Button
+                  disabled={!activeReview.outputDir}
+                  onClick={() =>
+                    activeReview.outputDir && audioWorkflow.openPath(activeReview.outputDir)
+                  }
+                >
+                  {t("package:openFolder")}
+                </Button>
+              </div>
+            </section>
+          ) : null}
 
-            {activeReview ? (
-              <section className="grid gap-3">
-                <div className="flex flex-wrap gap-2">
-                  {(["karaoke", "script", "files"] as ReviewTab[]).map((tab) => (
-                    <Button
-                      key={tab}
-                      data-selected={reviewTab === tab}
-                      selected={reviewTab === tab}
-                      onClick={() => setReviewTab(tab)}
-                    >
-                      {t(`package:tabs.${tab}`)}
-                    </Button>
-                  ))}
-                </div>
+          {activeReview ? (
+            <section className="packageReviewShell">
+              <div className="packageReviewTabs">
+                <SegmentedControl
+                  value={reviewTab}
+                  options={(["karaoke", "script", "files"] as ReviewTab[]).map((tab) => [
+                    tab,
+                    t(`package:tabs.${tab}`)
+                  ])}
+                  onChange={setReviewTab}
+                  size="sm"
+                />
+              </div>
 
+              <div className="packageReviewPanel">
                 <AnimatePresence mode="wait">
                   {reviewTab === "karaoke" ? (
                     <motion.div key="karaoke" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: motionDuration.fast, ease: motionEase }}>
@@ -2635,8 +2630,9 @@ export default function App() {
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
-              </section>
-            ) : null}
+              </div>
+            </section>
+          ) : null}
 
           <AnimatePresence initial={false}>
             {advancedOpen ? (
@@ -2779,8 +2775,6 @@ export default function App() {
               </motion.section>
             ) : null}
           </AnimatePresence>
-          </section>
-
         </section>
       ) : null}
         </div>

@@ -1,0 +1,54 @@
+<svg width="1200" height="1200" viewBox="0 0 1200 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logoGradient" x1="374.947" y1="241" x2="374.947" y2="574.117" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#92A688"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.2"/>
+    </linearGradient>
+    <pattern id="barcode" width="13" height="13" patternUnits="userSpaceOnUse">
+      <rect width="1" height="13" fill="#92A688" fill-opacity="0.28"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="1200" fill="#C7CCBC"/>
+  <rect x="48" y="48" width="1104" height="1104" rx="44" fill="#252C27"/>
+  <rect x="48.5" y="48.5" width="1103" height="1103" rx="43.5" stroke="#141916" stroke-opacity="0.5"/>
+
+  <rect x="82" y="82" width="1036" height="32" fill="url(#barcode)"/>
+  <rect x="82" y="1086" width="1036" height="32" fill="url(#barcode)"/>
+
+  <text x="96" y="153" fill="#A8B99D" font-family="SFMono-Regular, SF Mono, Cascadia Mono, monospace" font-size="19" letter-spacing="4.5">VOCALFLOW / DESKTOP + CLI</text>
+  <text x="1104" y="153" fill="#A8B99D" font-family="SFMono-Regular, SF Mono, Cascadia Mono, monospace" font-size="19" letter-spacing="3" text-anchor="end">VF—01</text>
+
+  <g transform="translate(96 190) scale(0.344)">
+    <rect width="750" height="750" rx="100" fill="#55624E"/>
+    <path d="M259.976 375.507L335.811 241H647.27L685.895 304.671L646.905 375.507H493.175L570.675 509.231L532.938 574.117H455.587L376.836 441.223L300.109 574.117H222.618L184.44 509.231H184.734L64 304.671L108.203 241H184.588L259.976 375.507Z" fill="url(#logoGradient)"/>
+    <path d="M259.976 375.507L335.811 241H647.27L685.895 304.671L646.905 375.507H493.175L570.675 509.231L532.938 574.117H455.587L376.836 441.223L300.109 574.117H222.618L184.44 509.231H184.734L64 304.671L108.203 241H184.588L259.976 375.507Z" stroke="#FFFFFF" stroke-width="3"/>
+  </g>
+
+  <text x="398" y="297" fill="#F1F1E9" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="92" font-weight="600" letter-spacing="-4">VocalFlow</text>
+  <text x="398" y="397" fill="#92A688" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="92" font-weight="500" letter-spacing="-4">Studio</text>
+  <rect x="398" y="437" width="706" height="2" fill="#D7DDCE" fill-opacity="0.35"/>
+
+  <text x="96" y="575" fill="#F1F1E9" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="69" font-weight="600" letter-spacing="-2.5">TURN MEDIA INTO</text>
+  <text x="96" y="657" fill="#D9DFD2" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="69" font-weight="500" letter-spacing="-2.5">LYRICS, SUBTITLES</text>
+  <text x="96" y="739" fill="#D9DFD2" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="69" font-weight="500" letter-spacing="-2.5">&amp; SING-ALONG STEMS.</text>
+
+  <rect x="96" y="801" width="1008" height="2" fill="#D7DDCE" fill-opacity="0.35"/>
+
+  <g font-family="SFMono-Regular, SF Mono, Cascadia Mono, monospace" font-size="18" letter-spacing="2.6">
+    <text x="96" y="851" fill="#C4CEC0">INPUT</text>
+    <text x="232" y="851" fill="#F1F1E9">YOUTUBE / BILIBILI / LOCAL MEDIA</text>
+    <text x="96" y="904" fill="#C4CEC0">OUTPUT</text>
+    <text x="232" y="904" fill="#F1F1E9">LRC / SRT / VTT / ASS / JSON / STEMS</text>
+  </g>
+
+  <g transform="translate(96 963)">
+    <rect width="250" height="74" fill="#B66D4E"/>
+    <text x="26" y="47" fill="#201E1B" font-family="SFMono-Regular, SF Mono, Cascadia Mono, monospace" font-size="20" font-weight="600" letter-spacing="2.6">LOCAL-FIRST</text>
+  </g>
+
+  <g transform="translate(395 982)" stroke-linecap="square">
+    <path d="M0 18H59L80 0L108 36L139 9L173 27L206 5L235 31L267 14L298 23L328 2L356 34L389 11L425 26L457 7L486 18H709" stroke="#92A688" stroke-width="4"/>
+    <path d="M0 18H709" stroke="#F1F1E9" stroke-opacity="0.18" stroke-width="2"/>
+  </g>
+</svg>

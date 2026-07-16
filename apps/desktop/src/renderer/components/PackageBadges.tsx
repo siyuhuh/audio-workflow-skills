@@ -19,7 +19,7 @@ export function PackageBadges({ playbackBundle, trackAssets }: PackageBadgesProp
   ].filter((badge): badge is string => Boolean(badge));
 
   return (
-    <div className="mt-2.5 flex flex-wrap gap-1.5" aria-label={t("package:contents")}>
+    <div className="mt-2 flex flex-wrap gap-1.5" aria-label={t("package:contents")}>
       {badges.map((badge) => (
         <span
           key={badge}

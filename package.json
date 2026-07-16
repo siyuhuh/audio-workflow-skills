@@ -9,6 +9,8 @@
     "dist": "pnpm --filter @vocalflow/desktop dist",
     "dist:mac": "pnpm --filter @vocalflow/desktop dist:mac",
     "dist:win": "pnpm --filter @vocalflow/desktop dist:win",
-    "start": "pnpm --filter @vocalflow/desktop start"
+    "start": "pnpm --filter @vocalflow/desktop start",
+    "promo": "pnpm --filter @vocalflow/promo dev",
+    "promo:render": "pnpm --filter @vocalflow/promo render"
   }
 }
