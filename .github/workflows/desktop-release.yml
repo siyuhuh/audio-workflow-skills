@@ -94,7 +94,17 @@ jobs:
           ./scripts/fetch-bundled-models.sh
 
       - name: Build installer
-        run: ${{ matrix.command }}
+        shell: bash
+        env:
+          # This prerelease has no repository signing certificate yet. Explicitly
+          # skip electron-builder's deep ad-hoc pass over the bundled Python
+          # tree; the signed/notarized path is documented in RELEASING.md.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            ulimit -n 65536 || true
+          fi
+          ${{ matrix.command }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -164,7 +174,9 @@ jobs:
         env:
           REQUIRE_BUNDLED_RUNTIME: "1"
           VOCALFLOW_VERSION: "0.8.0"
-        run: apps/mac/VocalFlowMini/scripts/build-dmg.sh release
+        run: |
+          ulimit -n 65536 || true
+          apps/mac/VocalFlowMini/scripts/build-dmg.sh release
 
       - name: Upload native installer artifact
         uses: actions/upload-artifact@v4

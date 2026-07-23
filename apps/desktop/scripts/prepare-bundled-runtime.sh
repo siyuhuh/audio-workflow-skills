@@ -7,6 +7,7 @@
 
 set -euo pipefail
 export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -40,6 +41,22 @@ echo "[runtime] Python: $python_bin"
   "audio-separator[cpu]" \
   "zhconv"
 
+# Wheels include development headers and bytecode caches that are not used by
+# VocalFlow at runtime. Removing them keeps the installer smaller and avoids
+# macOS code-signing exhausting its per-process file descriptor budget.
+site_packages="$("$python_bin" - <<'PY'
+import site
+
+print(site.getsitepackages()[0])
+PY
+)"
+rm -rf \
+  "$site_packages/torch/include" \
+  "$site_packages/torch/share/cmake" \
+  "$site_packages/torchvision/include"
+find "$site_packages" -type d -name __pycache__ -prune -exec rm -rf {} +
+find "$site_packages" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+
 "$python_bin" - <<'PY'
 import importlib.util
 import sys
@@ -50,3 +67,5 @@ if missing:
     raise SystemExit(f"Bundled runtime verification failed: {', '.join(missing)}")
 print(f"[runtime] Verified Python {sys.version.split()[0]} with {len(required)} required packages.")
 PY
+
+echo "[runtime] Packaged size: $(du -sh "$runtime_root" | cut -f1)"
