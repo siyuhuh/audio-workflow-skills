@@ -8,7 +8,7 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "VocalFlowMini", targets: ["VocalFlowMini"])
+        .executable(name: "VocalFlow", targets: ["VocalFlowMini"])
     ],
     targets: [
         .executableTarget(

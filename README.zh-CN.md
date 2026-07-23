@@ -1,217 +1,145 @@
-# VocalFlow Studio
+# VocalFlow
 
-中文 | [English](README.md)
+[English](README.md) | 中文
 
-VocalFlow Studio 是一个面向唱歌练习、视频字幕和人声分离的桌面工具和 CLI 工具集。它可以处理 YouTube、Bilibili 等 `yt-dlp` 支持的网站链接，也可以处理本地音频、视频和 UVR 人声 stem。
+VocalFlow 可以把 YouTube、Bilibili、本地视频/音频或已有的人声 stem 制作成可携带的 K 歌包：MV、原唱、伴奏、人声和逐词同步歌词。同一首歌可以在 Mac 原生 Room、Electron Studio 和 iPhone 客户端中播放。
 
 ## 下载
 
-最新版本：[v0.1.8](https://github.com/gottaegbert/audio-workflow-skills/releases/tag/v0.1.8)
+当前测试版：[v0.8.0-beta.1 Releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.1)
 
-- [下载 macOS Apple Silicon 版 (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.8/VocalFlow-0.1.8-mac-arm64.dmg)
-- [下载 Windows x64 版 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.8/VocalFlow-0.1.8-win-x64.exe)
+| 客户端 | 适合什么场景 | 交付方式 |
+| --- | --- | --- |
+| **VocalFlow for Mac** | 推荐的 Apple Silicon 客户端：原生 Room、沉浸式全屏、录音、Mac mini Agent | 一个 `.dmg` |
+| **VocalFlow Studio** | Electron 跨平台制作/检查流程和 Room | macOS `.dmg`、Windows `.exe` |
+| **VocalFlow for iPhone** | 车上或离开 Mac 后离线播放；本地导入、从私有 Agent 下载 | TestFlight 工作流 / Xcode 测试版 |
+| **VocalFlow Agent** | 用自己的 Mac mini 给 iPhone 私有处理歌曲 | 已内置在原生 Mac App |
 
-桌面 app 已内置 `audio-subtitles` 脚本、Python runtime 和 ffmpeg。首次使用时，它会在用户的 app data 目录创建本地 runtime，并按需安装 URL 下载、本地识别和可选人声分离需要的 Python packages。首次运行需要联网。
+如果没有配置 Apple 发布证书，beta 工作流会先生成 ad-hoc/未签名的测试安装包。要让公开下载的 macOS App 不出现 Gatekeeper 警告，还需要 Developer ID Application 证书和 notarization；TestFlight 需要 Apple Distribution 与 App Store Connect 配置。
 
-## v0.1.8 更新内容
+## 用户还要另外下载模型吗？
 
-- 使用 Foundations 品牌标更新项目 Logo / 应用图标（橄榄底 + sage 几何标记），并应用到 macOS/Windows 安装包以及应用内顶栏与启动闪屏。
-- Room 歌单 / Library 资源卡片继续沿用 sage industrial 仪器语言与更紧凑的列表样式。
+默认桌面流程不需要额外安装。Release 安装包会内置：
 
-## 使用场景
+- 独立 Python 3.12 和需要的 Python packages。
+- `ffmpeg`、`yt-dlp`。
+- 用于本地歌词识别的 `faster-whisper-small`。
+- 用于人声/伴奏分离的 `UVR-MDX-NET-Inst_HQ_3.onnx`。
+- `audio-subtitles` 处理脚本。
 
-### 1. 卡拉 OK / 练歌素材包
+第一次识别或分离时，App 可能会把只读安装包里的模型复制到可写的应用数据目录，但不会再次联网下载。更大的 Whisper 或 separator 模型仍是可选下载。处理网站链接当然仍需联网获取原始视频/音频。
 
-适合：复制 YouTube、Bilibili 或其他媒体网站链接，生成一套练歌素材。
+iPhone 不会打包 Whisper、PyTorch 或分离模型。它可以：
 
-```bash
-audio-subtitles --separate --separator-format MP3 "https://www.bilibili.com/video/BV..."
-audio-subtitles --separate --separator-format MP3 "https://www.youtube.com/watch?v=..."
-```
+- 把已经下载/导入的 K 歌包完全离线播放。
+- 从“文件”、AirDrop、iCloud Drive 或 Finder 导入。
+- 让自己的 Mac mini Agent 处理链接，再把结果下载到手机。
 
-输出通常包括：
+因此不必使用公共云服务器。
 
-- `stems/` 里的人声 stem。
-- `stems/` 里的伴奏 / no-vocals stem。
-- `.lrc` 同步歌词。
-- `.srt` / `.vtt` 视频字幕。
-- `.txt` / `.json` 方便检查和后续处理。
+## K 歌 Room
 
-说明：
+两个桌面 Room 都支持 MV、自适应比例、上一句/当前句/下一句、逐词扫色歌词、播放队列、原唱/伴奏切换以及沉浸式舞台。
 
-- `--separate` 会先做人声/伴奏分离，再转写人声。
-- `--separator-format MP3` 会让分离出来的 stem 保存为 MP3；默认是 WAV。
-- YouTube 通常会优先使用平台字幕或自动字幕。
-- Bilibili 如果没有可用的平台字幕，`auto` 模式会默认下载音频并用本地 Whisper 识别。
+Mac 原生版和 Electron 都已经支持演唱录音：
 
-### 2. 视频字幕提取
+- 3 秒倒数。
+- 麦克风原始人声保存为 WAV。
+- 输出可分享的音乐 + 人声混音（原生 Mac 为 `M4A`；Studio 可选 `M4A`、`MP3`、`WAV`）。
+- 录音 metadata 会关联回歌曲包。
+- 文件保存在 `~/Music/VocalFlow/Recordings`。
 
-适合：给剪映、Premiere、DaVinci Resolve、Final Cut 或网页播放器准备字幕。
+录音时会锁定拖动进度、切换音源和换歌，防止导出的混音与人声错位。
 
-本地视频：
+## Mac mini + iPhone 私有流程
 
-```bash
-audio-subtitles "/path/to/video.mp4"
-```
+1. 在 Mac mini 安装 VocalFlow，打开 **Remote**。
+2. 点击 **Install Agent**。
+3. iPhone 使用六位配对码连接：同一 Wi-Fi 走 Bonjour，外出可走私有 Tailscale URL。
+4. 在 iPhone 提交 YouTube/Bilibili 链接。
+5. Mac 在后台制作，手机可以锁屏或暂时断开。
+6. 完成后下载到 iPhone，之后可离线唱歌。
 
-网站视频：
+Agent 一次只跑一个重任务，重启后队列仍会保留。结果位于 `~/Movies/VocalFlow/Remote`。
 
-```bash
-audio-subtitles "https://www.bilibili.com/video/BV..."
-audio-subtitles "https://www.youtube.com/watch?v=..."
-```
+## CLI
 
-默认策略：
-
-- 如果 `yt-dlp` 能读到平台字幕，先下载并转换字幕。
-- 如果是 Bilibili 且没有平台字幕，默认 fallback 到本地 Whisper。
-- 其他网站如果没有平台字幕，可以显式加 `--local-fallback`。
-
-```bash
-audio-subtitles --local-fallback "https://example.com/video"
-```
-
-### 3. 已有人声 stem / UVR 输出
-
-适合：你已经用 Ultimate Vocal Remover GUI 或其他工具分离好人声。
+需要自动化或自定义大模型时仍可使用 CLI：
 
 ```bash
-audio-subtitles "/path/to/uvr-output-folder"
-audio-subtitles "/path/to/vocals.wav"
-```
-
-工具会优先选择文件名包含 `vocals`、`vocal`、`voice`、`acapella` 的音频来生成歌词和字幕。
-
-### 4. 只下载 MP3
-
-`media-mp3` 可以下载 `yt-dlp` 支持的网站音频，例如 YouTube 或 Bilibili。
-
-```bash
-media-mp3 "https://www.bilibili.com/video/BV..."
-media-mp3 "https://www.youtube.com/watch?v=..."
-```
-
-旧命令 `youtube-mp3` 仍然保留，作为兼容别名。
-
-## CLI 安装
-
-```bash
-git clone https://github.com/gottaegbert/audio-workflow-skills.git
+git clone https://github.com/siyuhuh/audio-workflow-skills.git
 cd audio-workflow-skills
 ./install.sh
 ```
 
-安装运行依赖：
+示例：
 
 ```bash
-# macOS
-HOMEBREW_NO_AUTO_UPDATE=1 brew install ffmpeg yt-dlp
-
-# 本地字幕/歌词识别
-setup-audio-subtitles
-
-# 可选：人声/伴奏分离
-setup-audio-separator
+audio-subtitles --separate --separator-format MP3 "https://www.bilibili.com/video/BV..."
+audio-subtitles --separate --separator-format MP3 "https://www.youtube.com/watch?v=..."
+audio-subtitles --subtitle-source local "/path/to/video.mp4"
+media-mp3 "https://www.youtube.com/watch?v=..."
 ```
 
-`setup-audio-separator` 会安装 PyTorch 和 source separation 相关依赖，体积比转写依赖大。只在需要 `audio-subtitles --separate` 时安装。
+常见输出包括 `stems/`、`.lrc`、`.json`、`.srt`、`.vtt` 和 `.ass`。
 
-## 桌面 App
+## 开发
 
-在仓库根目录（pnpm workspace）执行：
+Electron：
 
 ```bash
-./install.sh
 pnpm install
 pnpm dev
 ```
 
-也可以先 `cd apps/desktop` 再执行同样的 `pnpm` 命令。
-
-桌面 app 已内置 `audio-subtitles` 脚本、Python 和 ffmpeg。它会在首次使用时自动安装 Python packages，不需要普通用户手动运行 CLI setup 命令。它支持：
-
-- 粘贴 YouTube / Bilibili URL。
-- 选择本地音频、视频或 UVR 输出文件夹。
-- 平台字幕优先、本地 Whisper、Bilibili 默认本地识别 fallback。
-- 可选人声/伴奏分离。
-- 输出目录、模型、语言、cookies、输出格式配置。
-- 命令预览、日志、打开输出文件。
-
-## 常用参数
-
-选择字幕语言：
+Mac 原生：
 
 ```bash
-audio-subtitles --sub-langs "zh.*,en.*" "https://www.bilibili.com/video/BV..."
-audio-subtitles --language zh "/path/to/video.mp4"
+cd apps/mac/VocalFlowMini
+swift run VocalFlow
 ```
 
-强制本地识别：
+iPhone：
 
 ```bash
-audio-subtitles --subtitle-source local "https://www.bilibili.com/video/BV..."
-audio-subtitles --force-local "https://www.youtube.com/watch?v=..."
+cd apps/ios/VocalFlowMobile
+xcodegen generate
+open VocalFlowMobile.xcodeproj
 ```
 
-只用平台字幕，不做本地 fallback：
+构建本地原生 DMG：
 
 ```bash
-audio-subtitles --subtitle-source platform "https://www.youtube.com/watch?v=..."
+apps/mac/VocalFlowMini/scripts/build-dmg.sh release
 ```
 
-保存到指定目录：
+发布维护者在打包前准备独立运行时和模型：
 
 ```bash
-audio-subtitles --output-dir "/path/to/output" "/path/to/video.mp4"
+cd apps/desktop
+./scripts/prepare-bundled-runtime.sh
+./scripts/fetch-bundled-models.sh
 ```
 
-需要登录态时使用浏览器 cookies：
+推送 `v*` tag 会同时构建原生 Mac DMG 和 Electron macOS/Windows 安装包。手动 `iOS TestFlight` 工作流需要的 Apple secrets 记录在 [RELEASING.md](RELEASING.md)。
 
-```bash
-audio-subtitles --browser chrome "https://www.bilibili.com/video/BV..."
-media-mp3 --browser chrome "https://www.bilibili.com/video/BV..."
-```
+## K 歌包兼容
 
-## 发布 DMG / EXE
+- Electron 写入 `manifest.json`。
+- Mac 原生写入 `vocalflow-package.json`。
+- Mac 原生与 iPhone 都会识别两种清单，老文件夹或松散素材则安全回退到媒体扫描。
+- 录音统一使用 `recording.json` 数据结构。
 
-维护者推送版本 tag 后，GitHub Actions 会自动构建桌面安装包并上传到 GitHub Release：
+## 注意
 
-```bash
-git tag v0.1.8
-git push origin v0.1.8
-```
-
-Release 产物：
-
-- macOS: `.dmg`
-- Windows: `.exe`
-
-注意：桌面 app 已内置 `audio-subtitles` 脚本、Python runtime 和 ffmpeg。首次使用时会把 `yt-dlp`、`faster-whisper` 和可选的 `audio-separator[cpu]` 安装到本地 app runtime。
-
-## 输出文件
-
-- `.lrc`：同步歌词。
-- `.srt`：视频剪辑和字幕工具。
-- `.vtt`：网页播放。
-- `.txt`：带时间戳的文本检查。
-- `.json`：机器可读的分段时间数据。
-- `stems/`：启用 `--separate` 后的人声和伴奏文件。
-
-## 注意事项
-
-- 歌曲转写比普通讲话更难，副歌、和声、混响、重叠人声都可能需要人工修正。
-- 干净的人声 stem 通常比单纯换更大的模型更能提升歌词准确度。
-- 只处理你有权下载或处理的媒体。
-- 浏览器 cookies 等同于登录凭据，不要提交到仓库或分享给别人。
+- 歌曲比普通语音更难识别；干净的人声 stem 往往比更大的模型更能改善歌词。
+- 麦克风监听请使用耳机，避免啸叫。
+- 只处理你有权下载或使用的媒体。
+- 浏览器 cookies 等同于登录凭据，不要提交或分享。
+- 驾驶员不要在行车中操作 App。请提前准备队列，或交给乘客控制。
 
 ## 协议
 
-代码从当前版本开始使用 `AGPL-3.0-or-later`。之前已经按 MIT 发布的版本不受这个变更影响，别人仍可按当时的 MIT 条款使用那些版本。
+代码使用 `AGPL-3.0-or-later`。VocalFlow 名称、Logo、图标和产品标识不包含在代码协议授权中。
 
-`VocalFlow` 和 `VocalFlow Studio` 名称、Logo、图标、产品标识和发布素材不随代码协议授权。商业授权、闭源分发、白标版本或企业使用可以单独联系项目所有者。
-
-## 更多
-
-- 工作流说明：[docs/flow.md](docs/flow.md)
-- 桌面 app 产品说明：[docs/desktop-app-prd.md](docs/desktop-app-prd.md)
-- 上游工具：[yt-dlp](https://github.com/yt-dlp/yt-dlp)、[faster-whisper](https://github.com/SYSTRAN/faster-whisper)、[audio-separator](https://pypi.org/project/audio-separator/)、[Ultimate Vocal Remover GUI](https://github.com/Anjok07/ultimatevocalremovergui)
+更多：[Mac 原生](apps/mac/VocalFlowMini/README.md) · [iPhone](apps/ios/VocalFlowMobile/README.md) · [Electron](apps/desktop/README.md) · [Agent](apps/mac/VocalFlowAgent/README.md)

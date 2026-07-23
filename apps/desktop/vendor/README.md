@@ -10,17 +10,18 @@ falls back to the regular UVR-detect / HuggingFace download flow.
 
 ```
 vendor/
-├── python-runtime/        # Pre-built Python venv (long-standing)
-├── separator-models/      # NEW — bundled vocal-separator weights
-└── whisper-cache/         # NEW — bundled HF Hub cache for faster-whisper
+├── python-runtime/        # Relocatable standalone Python + production packages
+├── separator-models/      # Bundled vocal-separator weights
+└── whisper-cache/         # Bundled HF Hub cache for faster-whisper
     └── hub/models--<org>--<repo>/...
 ```
 
 ## Populating the bundles
 
-Run once before `pnpm dist:mac` / `pnpm dist:win`:
+After extracting python-build-standalone into `python-runtime/`, run:
 
 ```bash
+./scripts/prepare-bundled-runtime.sh
 ./scripts/fetch-bundled-models.sh
 ```
 
@@ -52,4 +53,5 @@ version control:
 ```
 apps/desktop/vendor/separator-models/
 apps/desktop/vendor/whisper-cache/
+apps/desktop/vendor/python-runtime/*
 ```

@@ -17,7 +17,8 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Iterable
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 
 # Force line-buffered text I/O so the desktop main process sees progress lines
@@ -436,6 +437,8 @@ def require_binary(name: str) -> None:
 
 
 def is_url(value: str) -> bool:
+    if value.startswith("ytsearch") and ":" in value:
+        return True
     parsed = urlparse(value)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
@@ -448,6 +451,155 @@ def is_bilibili_url(value: str) -> bool:
     parsed = urlparse(value)
     host = parsed.netloc.lower()
     return host == "b23.tv" or host.endswith(".bilibili.com") or host == "bilibili.com"
+
+
+BILIBILI_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"
+)
+
+
+def fetch_bilibili_video_info(value: str) -> dict:
+    canonical_url = resolve_bilibili_page_url(value)
+    identifier = bilibili_video_identifier(canonical_url)
+    if identifier is None:
+        raise RuntimeError("Unsupported Bilibili video URL.")
+    key, video_id = identifier
+    payload = bilibili_api_json(
+        "https://api.bilibili.com/x/web-interface/view",
+        {key: video_id},
+        canonical_url,
+    )
+    data = payload.get("data") or {}
+    if payload.get("code") != 0 or not data.get("bvid") or not data.get("cid"):
+        raise RuntimeError(payload.get("message") or "Could not load Bilibili video information.")
+    return {
+        "id": str(data["bvid"]),
+        "title": str(data.get("title") or data["bvid"]),
+        "duration": data.get("duration"),
+        "thumbnail": data.get("pic"),
+        "webpage_url": f"https://www.bilibili.com/video/{data['bvid']}",
+        "uploader": (data.get("owner") or {}).get("name"),
+        "cid": int(data["cid"]),
+        "subtitles": {},
+        "automatic_captions": {},
+    }
+
+
+def resolve_bilibili_page_url(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.netloc.lower() != "b23.tv":
+        return value
+    request = Request(value, headers={"User-Agent": BILIBILI_USER_AGENT})
+    with urlopen(request, timeout=20) as response:
+        return response.geturl()
+
+
+def bilibili_video_identifier(value: str) -> tuple[str, str] | None:
+    match = re.search(r"/video/(BV[0-9A-Za-z]+|av[0-9]+)", urlparse(value).path, re.IGNORECASE)
+    if match is None:
+        return None
+    video_id = match.group(1)
+    if video_id.lower().startswith("bv"):
+        return "bvid", video_id
+    return "aid", video_id[2:]
+
+
+def bilibili_api_json(endpoint: str, params: dict[str, object], referer: str) -> dict:
+    url = f"{endpoint}?{urlencode(params)}"
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/json, text/plain, */*",
+            "Referer": referer,
+            "User-Agent": BILIBILI_USER_AGENT,
+        },
+    )
+    with urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def resolve_bilibili_stream(info: dict) -> str:
+    payload = bilibili_api_json(
+        "https://api.bilibili.com/x/player/playurl",
+        {
+            "bvid": info["id"],
+            "cid": info["cid"],
+            "qn": 64,
+            "fnval": 0,
+            "fourk": 0,
+        },
+        info["webpage_url"],
+    )
+    data = payload.get("data") or {}
+    streams = data.get("durl") or []
+    if payload.get("code") != 0 or not streams or not streams[0].get("url"):
+        raise RuntimeError(payload.get("message") or "No Bilibili preview stream is available.")
+    return str(streams[0]["url"])
+
+
+def download_bilibili_stream(stream_url: str, destination: Path, referer: str) -> None:
+    request = Request(
+        stream_url,
+        headers={
+            "Referer": referer,
+            "User-Agent": BILIBILI_USER_AGENT,
+        },
+    )
+    with urlopen(request, timeout=30) as response, destination.open("wb") as output:
+        while chunk := response.read(1024 * 1024):
+            output.write(chunk)
+
+
+def download_bilibili_audio(url: str, output_dir: Path, args: argparse.Namespace) -> tuple[Path, Callable[[], None]]:
+    require_binary("ffmpeg")
+    if args.save_audio:
+        download_dir = output_dir
+        cleanup = lambda: None
+    else:
+        temp_dir = tempfile.TemporaryDirectory(prefix="audio-subtitles-bilibili-")
+        download_dir = Path(temp_dir.name)
+        cleanup = temp_dir.cleanup
+
+    audio_path: Path | None = None
+    try:
+        info = fetch_bilibili_video_info(url)
+        base_name = safe_name(f"{info['title']} [{info['id']}]")
+        video_path = download_dir / f"{base_name}.source.mp4"
+        audio_path = download_dir / f"{base_name}.wav"
+        download_bilibili_stream(resolve_bilibili_stream(info), video_path, info["webpage_url"])
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(video_path),
+                    "-vn",
+                    "-acodec",
+                    "pcm_s16le",
+                    str(audio_path),
+                ],
+                check=True,
+            )
+        finally:
+            video_path.unlink(missing_ok=True)
+        return audio_path, cleanup
+    except Exception:
+        if audio_path is not None:
+            audio_path.unlink(missing_ok=True)
+        cleanup()
+        raise
+
+
+def download_bilibili_video_preview(url: str, output_dir: Path) -> Path:
+    info = fetch_bilibili_video_info(url)
+    destination = output_dir / f"{safe_name(info['title'])} [{info['id']}].preview.mp4"
+    download_bilibili_stream(resolve_bilibili_stream(info), destination, info["webpage_url"])
+    return destination
 
 
 def _tee_stderr_to_real_stderr(proc: "subprocess.Popen[str]") -> tuple[list[str], threading.Thread]:
@@ -510,7 +662,43 @@ def _run_with_live_stderr(cmd: list[str], *, check: bool = True) -> "subprocess.
     return subprocess.CompletedProcess(cmd, returncode, stdout_text, stderr_text)
 
 
+def yt_dlp_failure_message(error: subprocess.CalledProcessError, *, browser: str | None = None) -> str:
+    output = error.stderr or error.stdout or str(error)
+    detail = last_error_line(output)
+    normalized = output.lower()
+
+    if "older than 90 days" in normalized or "http error 403" in normalized or "403: forbidden" in normalized:
+        advice = "Update yt-dlp with `brew upgrade yt-dlp`"
+        if browser:
+            advice += ", then confirm the selected browser is signed in to the media site"
+        else:
+            advice += ", then retry; if the site still blocks the request, select Chrome or Safari cookies in VocalFlow"
+        return f"Media download was rejected by the site. {advice}. Details: {detail}"
+
+    if "sign in to confirm" in normalized or "not a bot" in normalized or "cookies-from-browser" in normalized:
+        return (
+            "The media site requires an authenticated browser session. "
+            "Select Chrome or Safari cookies in VocalFlow and retry. "
+            f"Details: {detail}"
+        )
+
+    if "javascript runtime" in normalized or "challenge" in normalized and "failed" in normalized:
+        return (
+            "YouTube challenge solving failed. Install or update Deno with `brew install deno` "
+            "and update yt-dlp with `brew upgrade yt-dlp`, then retry. "
+            f"Details: {detail}"
+        )
+
+    return f"yt-dlp could not download the media. Details: {detail}"
+
+
 def download_url_audio(url: str, output_dir: Path, args: argparse.Namespace) -> tuple[Path, Callable[[], None]]:
+    if is_bilibili_url(url):
+        try:
+            return download_bilibili_audio(url, output_dir, args)
+        except Exception as exc:
+            print(f"Native Bilibili audio download failed; trying yt-dlp: {exc}", file=sys.stderr)
+
     require_binary("yt-dlp")
     if args.save_audio:
         download_dir = output_dir
@@ -541,7 +729,11 @@ def download_url_audio(url: str, output_dir: Path, args: argparse.Namespace) -> 
         cmd[1:1] = ["--cookies-from-browser", args.browser]
     if args.cookies:
         cmd[1:1] = ["--cookies", args.cookies]
-    result = subprocess.run(cmd, check=True, text=True, stdout=subprocess.PIPE)
+    try:
+        result = _run_with_live_stderr(cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        cleanup()
+        raise SystemExit(yt_dlp_failure_message(exc, browser=args.browser)) from None
     paths = [Path(line.strip()) for line in result.stdout.splitlines() if line.strip()]
     for path in reversed(paths):
         if path.exists():
@@ -566,13 +758,19 @@ def maybe_download_url_video_preview(url: str, output_dir: Path, args: argparse.
 
 
 def download_url_video_preview(url: str, output_dir: Path, args: argparse.Namespace) -> Path:
+    if is_bilibili_url(url):
+        try:
+            return download_bilibili_video_preview(url, output_dir)
+        except Exception as exc:
+            print(f"Native Bilibili preview download failed; trying yt-dlp: {exc}", file=sys.stderr)
+
     require_binary("yt-dlp")
     cmd = [
         "yt-dlp",
         "--no-playlist",
         "--newline",
         "-f",
-        "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720][ext=mp4]/b[height<=720]/best[height<=720]",
+        "b[height<=720][ext=mp4]/b[height<=720]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/best[height<=720]/best",
         "--merge-output-format",
         "mp4",
         "-P",
@@ -680,6 +878,12 @@ def download_url_subtitles(url: str, output_dir: Path, args: argparse.Namespace)
 
 
 def fetch_url_info(url: str, args: argparse.Namespace) -> dict:
+    if is_bilibili_url(url):
+        try:
+            return fetch_bilibili_video_info(url)
+        except Exception as exc:
+            print(f"Native Bilibili metadata failed; trying yt-dlp: {exc}", file=sys.stderr)
+
     cmd = ["yt-dlp", "--skip-download", "--no-playlist", "--newline", "--dump-single-json", url]
     if args.browser:
         cmd[1:1] = ["--cookies-from-browser", args.browser]

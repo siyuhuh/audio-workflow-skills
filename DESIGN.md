@@ -103,6 +103,7 @@ Converted in the current experience pass:
 - Karaoke Stage: replaced the stacked control wall with a lyrics-first canvas, centered transport, persistent Original / Backing switch, and origin-aware popovers for mixer, text style, queue, and room settings.
 - Room tools: the four dock actions share one controlled popover surface; only one tool can be open, and settings use hairline sections instead of nested cards.
 - History: completed packages live in Library / Room setlist surfaces, never in a persistent processing side rail. The capture workspace only shows its inline job progress.
+- Native Studio: outer cards use translucent material again; the final unpaired package option spans the full two-column row rather than leaving an empty cell.
 
 ## Decisions Log
 
@@ -134,3 +135,4 @@ Converted in the current experience pass:
 | 2026-07-15 | One Room tool surface + no History rail | Mutually exclusive dock tools prevent stacked popovers; completed work belongs to the Library instead of competing with the active capture task. |
 | 2026-07-15 | Texture belongs below content | A single tiled noise layer now lives on the scroll canvas; transparent Studio bands reveal it while controls and text remain clean, replacing duplicated high-z overlays. |
 | 2026-07-16 | Brand mark from Foundations SVG | App icon uses rounded `Frame 3.svg` (olive tile `rx=100` + gradient monogram); in-app mark layers `Union.svg` as soft silhouette backdrop behind the main logo. |
+| 2026-07-23 | Restore translucent Native Studio cards | The solid outer-card fill was masking the material treatment; the remaining unpaired toggle now spans both grid columns for a balanced layout. |

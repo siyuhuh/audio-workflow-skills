@@ -1,74 +1,47 @@
-# VocalFlow Studio Desktop
+# VocalFlow Studio (Electron)
 
-Prototype Electron app for the `audio-subtitles` CLI.
+VocalFlow Studio is the cross-platform Electron creation and karaoke client. For the product overview and downloads, see the [root README](../../README.md).
 
-For bilingual, scenario-based usage docs, see the root [README](../../README.md).
+## Current scope
 
-The app is intentionally a thin shell:
+- YouTube and Bilibili search, URL metadata, and local file/folder import.
+- Platform captions with local `faster-whisper` fallback.
+- Vocal/backing separation and portable package manifests.
+- MV Room with queue, synced lyrics, original/backing mix, and mobile remote page.
+- Three-second recording count-in, microphone WAV take, and M4A/MP3/WAV mix export.
+- Recordings saved under `~/Music/VocalFlow/Recordings`.
 
-- UI handles input, settings, queue, logs, and output discovery.
-- Processing stays in `audio-subtitles`.
-- Platform captions are still the first path for supported media URLs.
-- In Auto mode, any supported media URL falls back to local Whisper when platform subtitles are unavailable.
-- Local Whisper and source separation are configurable from the UI.
+## Run locally
 
-## Run Locally
-
-Install the root CLI first (optional for dev; the packaged app bundles its own script):
-
-```bash
-cd ../..
-./install.sh
-```
-
-From the **repository root**, install dependencies and start the desktop app:
+From the repository root:
 
 ```bash
-cd ../..
 pnpm install
 pnpm dev
 ```
 
-If you are already in `apps/desktop`, run `pnpm install` and `pnpm dev` there instead; the workspace resolves to the same install.
+Development can reuse a system CLI/runtime. Release installers instead contain standalone Python, ffmpeg, yt-dlp, faster-whisper, audio-separator, zhconv, and the default model weights.
 
-The packaged app includes the `audio-subtitles` script, a bundled Python runtime, and bundled ffmpeg. During local development, the main process also prefers a user-installed CLI at:
-
-```text
-~/.local/bin/audio-subtitles
-```
-
-For packaged users, Python packages are installed automatically into the user's app data directory on first use. First-run setup needs internet access because `yt-dlp`, `faster-whisper`, `whisper-timestamped`, optional `audio-separator[cpu]`, and Whisper models are downloaded on demand. `whisper-timestamped` is used as the preferred word-alignment engine for karaoke JSON/ASS output and is distributed through the runtime environment under its upstream license.
-
-## Current Scope
-
-- Browse processed songs in the album-style home screen.
-- Paste YouTube/Bilibili URL or select a local file/folder.
-- Search media from a separate add-flow card.
-- Choose subtitle source: Auto, Platform, or Local Whisper.
-- Optional local fallback.
-- Vocal/instrumental source separation, enabled by default for new karaoke jobs.
-- Configure model, language, subtitle language selector, browser cookies, output folder, and output formats.
-- Run one job at a time with live logs.
-- Open output folder or generated files.
-- Practice in the room with playlist continuation, previous/next playback, mobile QR access, and lyrics timing edits.
-
-## Release Installers
-
-This project uses GitHub Actions to build release installers from version tags:
+## Build
 
 ```bash
-git tag v0.1.8
-git push origin v0.1.8
+pnpm --filter @vocalflow/desktop build
+pnpm --filter @vocalflow/desktop dist:mac
+pnpm --filter @vocalflow/desktop dist:win
 ```
 
-The workflow uploads:
+To build the complete offline installer, populate the release-only runtime first:
 
-- macOS `.dmg`
-- Windows `.exe`
+```bash
+cd apps/desktop
+./scripts/prepare-bundled-runtime.sh
+./scripts/fetch-bundled-models.sh
+```
 
-The packaged app includes the `audio-subtitles` script, bundled Python, and bundled ffmpeg. Runtime Python packages are prepared automatically on first use.
+The app id is `com.gottaegbert.vocalflow.studio`, so it can coexist with the native `com.gottaegbert.vocalflow` app.
 
-## Not Included Yet
+## Known beta gaps
 
-- Batch queue execution.
-- Auto-update.
+- No auto-update yet.
+- One processing job runs at a time.
+- Public macOS distribution needs Developer ID signing and notarization.

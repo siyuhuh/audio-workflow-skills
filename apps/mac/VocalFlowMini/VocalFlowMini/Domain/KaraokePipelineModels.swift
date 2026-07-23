@@ -20,6 +20,9 @@ enum KaraokeSource: Codable, Equatable {
     var suggestedTitle: String {
         switch self {
         case .url(let value):
+            if value.hasPrefix("ytsearch1:") {
+                return String(value.dropFirst("ytsearch1:".count)).nonEmpty ?? "YouTube Search"
+            }
             return URL(string: value)?.lastPathComponent.nonEmpty ?? "Web Media"
         case .localFile(let url):
             return url.deletingPathExtension().lastPathComponent.nonEmpty ?? "Local Media"
@@ -59,18 +62,56 @@ enum SubtitleSource: String, CaseIterable, Codable, Identifiable {
 
 struct ProcessingOptions: Codable, Equatable {
     var separateVocals = true
-    var saveVideoPreview = false
+    var saveVideoPreview = true
     var saveAudio = false
     var exportMp3 = true
     var localFallback = true
     var subtitleSource: SubtitleSource = .auto
-    var model = "medium"
+    var model = "small"
     var language = ""
-    var formats: [String] = ["lrc", "json"]
+    var browser: String? = nil
+    var simplifiedChinese = false
+    var formats: [String] = ["lrc", "json", "srt", "ass"]
 
     var normalizedLanguage: String? {
         let trimmed = language.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var normalizedBrowser: String? {
+        let trimmed = browser?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case separateVocals
+        case saveVideoPreview
+        case saveAudio
+        case exportMp3
+        case localFallback
+        case subtitleSource
+        case model
+        case language
+        case browser
+        case simplifiedChinese
+        case formats
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        separateVocals = try container.decodeIfPresent(Bool.self, forKey: .separateVocals) ?? true
+        saveVideoPreview = try container.decodeIfPresent(Bool.self, forKey: .saveVideoPreview) ?? true
+        saveAudio = try container.decodeIfPresent(Bool.self, forKey: .saveAudio) ?? false
+        exportMp3 = try container.decodeIfPresent(Bool.self, forKey: .exportMp3) ?? true
+        localFallback = try container.decodeIfPresent(Bool.self, forKey: .localFallback) ?? true
+        subtitleSource = try container.decodeIfPresent(SubtitleSource.self, forKey: .subtitleSource) ?? .auto
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? "small"
+        language = try container.decodeIfPresent(String.self, forKey: .language) ?? ""
+        browser = try container.decodeIfPresent(String.self, forKey: .browser)
+        simplifiedChinese = try container.decodeIfPresent(Bool.self, forKey: .simplifiedChinese) ?? false
+        formats = try container.decodeIfPresent([String].self, forKey: .formats) ?? ["lrc", "json", "srt", "ass"]
     }
 }
 
@@ -227,6 +268,53 @@ struct KaraokePackage: Identifiable, Codable, Equatable {
     let assets: [PackageAsset]
     let playback: PlaybackBundle
     let createdAt: Date
+    var recordings: [KaraokeRecordingPackage]? = nil
+}
+
+struct KaraokeRecordingTake: Identifiable, Codable, Equatable {
+    let id: String
+    let recordingPackageId: String
+    let sourceSongPackageId: String
+    let createdAt: String
+    let updatedAt: String
+    let title: String
+    let path: String
+    let mimeType: String
+    let duration: TimeInterval?
+    let deviceId: String?
+    let deviceLabel: String?
+    let status: String
+}
+
+struct KaraokeRecordingMixSettings: Codable, Equatable {
+    let activeTakeId: String?
+    let vocalGain: Float
+    let musicGain: Float
+    let preferBackingTrack: Bool
+    let exportFormat: String
+}
+
+struct KaraokeRecordingExport: Identifiable, Codable, Equatable {
+    let id: String
+    let recordingPackageId: String
+    let takeId: String
+    let createdAt: String
+    let path: String
+    let format: String
+    let duration: TimeInterval?
+}
+
+struct KaraokeRecordingPackage: Identifiable, Codable, Equatable {
+    let id: String
+    let packageType: String
+    let sourceSongPackageId: String
+    let title: String
+    let createdAt: String
+    let updatedAt: String
+    let outputDir: String
+    let takes: [KaraokeRecordingTake]
+    let mix: KaraokeRecordingMixSettings
+    let exports: [KaraokeRecordingExport]
 }
 
 private extension String {

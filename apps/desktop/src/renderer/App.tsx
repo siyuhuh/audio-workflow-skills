@@ -12,8 +12,10 @@ import type {
   JobResult,
   OutputFormat,
   PlaybackBundle,
+  RecordingSaveResult,
   RoomQueueItem,
   RoomStatus,
+  SaveRecordingTakeRequest,
   SavedJobHistory,
   ThemeMode,
   UrlMetadataPreview,
@@ -2083,6 +2085,13 @@ export default function App() {
           onSaveLyrics={() => {
             void saveScript();
           }}
+          onSaveRecording={(request: SaveRecordingTakeRequest): Promise<RecordingSaveResult> => {
+            if (!audioWorkflow.saveRecordingTake) {
+              return Promise.reject(new Error("Recording persistence is available in the installed desktop app."));
+            }
+            return audioWorkflow.saveRecordingTake(request);
+          }}
+          onOpenRecordingFolder={(targetPath) => audioWorkflow.openPath(targetPath)}
           onSplitVocals={splitActiveReview}
           onTrackRoleChange={setTrackRole}
           isRunning={isRunning}

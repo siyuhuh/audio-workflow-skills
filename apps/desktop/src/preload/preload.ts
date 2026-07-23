@@ -5,6 +5,9 @@ import type {
   JobLog,
   JobOptions,
   JobProgressStage,
+  RecordingPackage,
+  RecordingSaveResult,
+  SaveRecordingTakeRequest,
   UrlMetadataPreview,
   UserSettings,
   UvrDetectionResult,
@@ -26,6 +29,10 @@ const api: AudioWorkflowApi = {
   getMediaUrl: (targetPath: string) => ipcRenderer.invoke("file:media-url", targetPath),
   listHistory: () => ipcRenderer.invoke("history:list"),
   removeHistory: (historyId: string) => ipcRenderer.invoke("history:remove", historyId),
+  saveRecordingTake: (request: SaveRecordingTakeRequest) =>
+    ipcRenderer.invoke("recording:save-take", request) as Promise<RecordingSaveResult>,
+  listRecordings: (sourceSongPackageId?: string) =>
+    ipcRenderer.invoke("recording:list", sourceSongPackageId) as Promise<RecordingPackage[]>,
   onJobLog: (callback: (log: JobLog) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, log: JobLog) => callback(log);
     ipcRenderer.on("job:log", listener);

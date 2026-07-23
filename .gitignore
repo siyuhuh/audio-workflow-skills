@@ -31,3 +31,6 @@ build/
 cookies.txt
 apps/desktop/vendor/separator-models/
 apps/desktop/vendor/whisper-cache/
+apps/desktop/vendor/python-runtime/*
+!apps/desktop/vendor/python-runtime/.gitkeep
+apps/desktop/release/

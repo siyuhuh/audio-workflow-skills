@@ -28,7 +28,7 @@ final class PackageLibraryService: ObservableObject {
 
     init(storeURL: URL = PackageLibraryService.defaultStoreURL()) {
         self.storeURL = storeURL
-        loadFromDisk()
+        loadFromDisk(fallbackURL: PackageLibraryService.legacyStoreURL())
         refresh()
     }
 
@@ -110,7 +110,10 @@ final class PackageLibraryService: ObservableObject {
     }
 
     private func scanRoots() -> [URL] {
-        var roots = [PackageCreationService.defaultOutputRoot()]
+        var roots = [
+            PackageCreationService.defaultOutputRoot(),
+            PackageCreationService.legacyOutputRoot()
+        ]
         roots.append(contentsOf: packages.map(\.folderURL))
         return uniqueURLs(roots)
     }
@@ -125,12 +128,21 @@ final class PackageLibraryService: ObservableObject {
         }
     }
 
-    private func loadFromDisk() {
-        guard let data = try? Data(contentsOf: storeURL) else {
+    private func loadFromDisk(fallbackURL: URL? = nil) {
+        let sourceURL: URL
+        if FileManager.default.fileExists(atPath: storeURL.path) {
+            sourceURL = storeURL
+        } else if let fallbackURL, FileManager.default.fileExists(atPath: fallbackURL.path) {
+            sourceURL = fallbackURL
+        } else {
             packages = []
             return
         }
 
+        guard let data = try? Data(contentsOf: sourceURL) else {
+            packages = []
+            return
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         packages = (try? decoder.decode([KaraokePackage].self, from: data)) ?? []
@@ -202,6 +214,15 @@ final class PackageLibraryService: ObservableObject {
     }
 
     nonisolated private static func defaultStoreURL() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+
+        return appSupport
+            .appendingPathComponent("VocalFlow", isDirectory: true)
+            .appendingPathComponent("library.json")
+    }
+
+    nonisolated private static func legacyStoreURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
 

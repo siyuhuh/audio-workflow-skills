@@ -1,0 +1,413 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		04ED05E58DD88E262FEE5CD2 /* KaraokeStageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFC628E40E3C91ECAE29620 /* KaraokeStageView.swift */; };
+		0C8AC3AAEEA13C7C88132D57 /* KaraokePlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E7C5BD0FF6831C698FA71 /* KaraokePlaybackController.swift */; };
+		0EB5103B429150F33155647B /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A674355DED536F6332ACDF /* AppTheme.swift */; };
+		17A750680E36814984CA9F75 /* VocalFlowMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEF7993025E9AD25484AAB5 /* VocalFlowMobileApp.swift */; };
+		3106D0E38E2C116601FC3314 /* MicrophoneMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6874320548AF9305B6510518 /* MicrophoneMonitor.swift */; };
+		3AC2E4113188F31E807B6674 /* LyricParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F3BB1364D75E74097BC117 /* LyricParser.swift */; };
+		46CF426DF6C7D79081B147A7 /* VideoSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB68528B2FD7110310CF70B3 /* VideoSurface.swift */; };
+		64517BE5D507429EEDA8A71F /* KaraokeLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDDA8EFC0C04EBADEE69986 /* KaraokeLibrary.swift */; };
+		694B57A837F4109AC881567A /* RemoteStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABCEA4831BF57598C83D216 /* RemoteStudioView.swift */; };
+		7CDA255AA1ABD67138EB6318 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12E6B142826F281B1CF5DACA /* LibraryView.swift */; };
+		89538B230F7AD07F52D9A9ED /* MixerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92EFFC80AFC44876D8D386BD /* MixerSheet.swift */; };
+		93EE1E6995BB4F140C3E4902 /* RemoteAgentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 860440AC5EADD6499DE33C42 /* RemoteAgentService.swift */; };
+		96D63EE0C5029B63123D9CFC /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E749AAED39F5B204B12A5E /* RootView.swift */; };
+		98349D54F78CF2C10868A996 /* BonjourAgentBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06624FDCD7A94ECB1276368F /* BonjourAgentBrowser.swift */; };
+		9D05BBD85786EE6473BA983F /* RemoteAgentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF7DDC66E6A00C31D163A3C /* RemoteAgentModels.swift */; };
+		9E9CEB8E770ED145BCCBC418 /* KaraokePackageScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AC8AF81DBA081C9C901AD42 /* KaraokePackageScanner.swift */; };
+		AEAF0857EB0AC2B9B1CDD862 /* KaraokeQueueStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F51423B4DCDA5744145C497 /* KaraokeQueueStore.swift */; };
+		D7C527ADAA8F2538CD534BD7 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CFC08C9FEA60FE5AC87116 /* KeychainStore.swift */; };
+		DDF946FF76653B5BF848B8B7 /* MobileKaraokePackage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8185BD33B730E7B1DF905100 /* MobileKaraokePackage.swift */; };
+		EE3F82DEB9BF61E5E142DCC9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 752B864970E342670392273A /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		03C07BF32ACF1828D832858F /* VocalFlowMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VocalFlowMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		06624FDCD7A94ECB1276368F /* BonjourAgentBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourAgentBrowser.swift; sourceTree = "<group>"; };
+		12E6B142826F281B1CF5DACA /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		141E7C5BD0FF6831C698FA71 /* KaraokePlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KaraokePlaybackController.swift; sourceTree = "<group>"; };
+		1AC8AF81DBA081C9C901AD42 /* KaraokePackageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KaraokePackageScanner.swift; sourceTree = "<group>"; };
+		45A674355DED536F6332ACDF /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		46CFC08C9FEA60FE5AC87116 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		4ABCEA4831BF57598C83D216 /* RemoteStudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteStudioView.swift; sourceTree = "<group>"; };
+		4CDDA8EFC0C04EBADEE69986 /* KaraokeLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KaraokeLibrary.swift; sourceTree = "<group>"; };
+		6874320548AF9305B6510518 /* MicrophoneMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneMonitor.swift; sourceTree = "<group>"; };
+		6F51423B4DCDA5744145C497 /* KaraokeQueueStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KaraokeQueueStore.swift; sourceTree = "<group>"; };
+		752B864970E342670392273A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8185BD33B730E7B1DF905100 /* MobileKaraokePackage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileKaraokePackage.swift; sourceTree = "<group>"; };
+		860440AC5EADD6499DE33C42 /* RemoteAgentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAgentService.swift; sourceTree = "<group>"; };
+		8CFC628E40E3C91ECAE29620 /* KaraokeStageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KaraokeStageView.swift; sourceTree = "<group>"; };
+		92EFFC80AFC44876D8D386BD /* MixerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixerSheet.swift; sourceTree = "<group>"; };
+		92F3BB1364D75E74097BC117 /* LyricParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricParser.swift; sourceTree = "<group>"; };
+		CB68528B2FD7110310CF70B3 /* VideoSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoSurface.swift; sourceTree = "<group>"; };
+		DDF7DDC66E6A00C31D163A3C /* RemoteAgentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAgentModels.swift; sourceTree = "<group>"; };
+		E2AA59447566584362E14590 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		F0E749AAED39F5B204B12A5E /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		FEEF7993025E9AD25484AAB5 /* VocalFlowMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocalFlowMobileApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		26FA29269F35518C2B436634 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				03C07BF32ACF1828D832858F /* VocalFlowMobile.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		34BBAA2B3DB8A2412E4F3FAF = {
+			isa = PBXGroup;
+			children = (
+				AEBFA7592CDF7B6E3F7845DD /* VocalFlowMobile */,
+				26FA29269F35518C2B436634 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		468004CBF62AFFB9F4FDF4E4 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				8185BD33B730E7B1DF905100 /* MobileKaraokePackage.swift */,
+				DDF7DDC66E6A00C31D163A3C /* RemoteAgentModels.swift */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		53167248D31062920530F61C /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				8CFC628E40E3C91ECAE29620 /* KaraokeStageView.swift */,
+				12E6B142826F281B1CF5DACA /* LibraryView.swift */,
+				92EFFC80AFC44876D8D386BD /* MixerSheet.swift */,
+				4ABCEA4831BF57598C83D216 /* RemoteStudioView.swift */,
+				F0E749AAED39F5B204B12A5E /* RootView.swift */,
+				CB68528B2FD7110310CF70B3 /* VideoSurface.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		AEBFA7592CDF7B6E3F7845DD /* VocalFlowMobile */ = {
+			isa = PBXGroup;
+			children = (
+				45A674355DED536F6332ACDF /* AppTheme.swift */,
+				752B864970E342670392273A /* Assets.xcassets */,
+				E2AA59447566584362E14590 /* Info.plist */,
+				FEEF7993025E9AD25484AAB5 /* VocalFlowMobileApp.swift */,
+				468004CBF62AFFB9F4FDF4E4 /* Domain */,
+				F1E9DD8F8E7B9D716109B958 /* Services */,
+				53167248D31062920530F61C /* Views */,
+			);
+			path = VocalFlowMobile;
+			sourceTree = "<group>";
+		};
+		F1E9DD8F8E7B9D716109B958 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				06624FDCD7A94ECB1276368F /* BonjourAgentBrowser.swift */,
+				4CDDA8EFC0C04EBADEE69986 /* KaraokeLibrary.swift */,
+				1AC8AF81DBA081C9C901AD42 /* KaraokePackageScanner.swift */,
+				141E7C5BD0FF6831C698FA71 /* KaraokePlaybackController.swift */,
+				6F51423B4DCDA5744145C497 /* KaraokeQueueStore.swift */,
+				46CFC08C9FEA60FE5AC87116 /* KeychainStore.swift */,
+				92F3BB1364D75E74097BC117 /* LyricParser.swift */,
+				6874320548AF9305B6510518 /* MicrophoneMonitor.swift */,
+				860440AC5EADD6499DE33C42 /* RemoteAgentService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		ED03C6B5AAAD91C369518F95 /* VocalFlowMobile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F03AA03441B337CE490A3EC8 /* Build configuration list for PBXNativeTarget "VocalFlowMobile" */;
+			buildPhases = (
+				48B89F5F4C3277CFC706BA0F /* Sources */,
+				37B21AF1526032810DB4EDB4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VocalFlowMobile;
+			packageProductDependencies = (
+			);
+			productName = VocalFlowMobile;
+			productReference = 03C07BF32ACF1828D832858F /* VocalFlowMobile.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F4E330CB312B1C94827C58A5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					ED03C6B5AAAD91C369518F95 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = F4C92B83E4FDF9ABF84D5479 /* Build configuration list for PBXProject "VocalFlowMobile" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 34BBAA2B3DB8A2412E4F3FAF;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 26FA29269F35518C2B436634 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				ED03C6B5AAAD91C369518F95 /* VocalFlowMobile */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		37B21AF1526032810DB4EDB4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EE3F82DEB9BF61E5E142DCC9 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		48B89F5F4C3277CFC706BA0F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0EB5103B429150F33155647B /* AppTheme.swift in Sources */,
+				98349D54F78CF2C10868A996 /* BonjourAgentBrowser.swift in Sources */,
+				64517BE5D507429EEDA8A71F /* KaraokeLibrary.swift in Sources */,
+				9E9CEB8E770ED145BCCBC418 /* KaraokePackageScanner.swift in Sources */,
+				0C8AC3AAEEA13C7C88132D57 /* KaraokePlaybackController.swift in Sources */,
+				AEAF0857EB0AC2B9B1CDD862 /* KaraokeQueueStore.swift in Sources */,
+				04ED05E58DD88E262FEE5CD2 /* KaraokeStageView.swift in Sources */,
+				D7C527ADAA8F2538CD534BD7 /* KeychainStore.swift in Sources */,
+				7CDA255AA1ABD67138EB6318 /* LibraryView.swift in Sources */,
+				3AC2E4113188F31E807B6674 /* LyricParser.swift in Sources */,
+				3106D0E38E2C116601FC3314 /* MicrophoneMonitor.swift in Sources */,
+				89538B230F7AD07F52D9A9ED /* MixerSheet.swift in Sources */,
+				DDF946FF76653B5BF848B8B7 /* MobileKaraokePackage.swift in Sources */,
+				9D05BBD85786EE6473BA983F /* RemoteAgentModels.swift in Sources */,
+				93EE1E6995BB4F140C3E4902 /* RemoteAgentService.swift in Sources */,
+				694B57A837F4109AC881567A /* RemoteStudioView.swift in Sources */,
+				96D63EE0C5029B63123D9CFC /* RootView.swift in Sources */,
+				46CF426DF6C7D79081B147A7 /* VideoSurface.swift in Sources */,
+				17A750680E36814984CA9F75 /* VocalFlowMobileApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0AA09F522480B3E94C6FCA36 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VocalFlowMobile/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.8.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gottaegbert.vocalflow.mobile;
+				PRODUCT_NAME = VocalFlow;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		52C69446566B2C1E0C3DD18B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VocalFlowMobile/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.8.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gottaegbert.vocalflow.mobile;
+				PRODUCT_NAME = VocalFlow;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		CF1E32214014288D3A66CBA5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		ED88CAD4684AF79FFA2AF61B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F03AA03441B337CE490A3EC8 /* Build configuration list for PBXNativeTarget "VocalFlowMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0AA09F522480B3E94C6FCA36 /* Debug */,
+				52C69446566B2C1E0C3DD18B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F4C92B83E4FDF9ABF84D5479 /* Build configuration list for PBXProject "VocalFlowMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ED88CAD4684AF79FFA2AF61B /* Debug */,
+				CF1E32214014288D3A66CBA5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F4E330CB312B1C94827C58A5 /* Project object */;
+}

@@ -107,6 +107,23 @@
     "autoNext": "自动下一首",
     "phoneRequest": "手机点歌"
   },
+  "recording": {
+    "record": "录音",
+    "start": "开始录音",
+    "stop": "停止并保存录音",
+    "startHint": "倒计时三秒后从头播放，并录制你的麦克风。",
+    "getReady": "准备演唱",
+    "cancel": "取消",
+    "preparing": "正在准备麦克风…",
+    "live": "正在录音",
+    "saving": "正在保存…",
+    "savedMix": "已保存人声 WAV 和伴奏混音。",
+    "savedVocal": "已保存人声 WAV。",
+    "openFolder": "打开录音文件夹",
+    "unavailable": "当前环境无法使用麦克风录音。",
+    "captureFailed": "麦克风录制失败。",
+    "saveFailed": "无法保存这次录音。"
+  },
   "lyricsEditor": {
     "button": "歌词",
     "title": "歌词同步",

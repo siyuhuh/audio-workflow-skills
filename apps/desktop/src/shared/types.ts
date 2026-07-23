@@ -81,7 +81,7 @@ export type PackageType = "songPackage" | "recordingPackage";
 
 export type RecordingTakeStatus = "recording" | "complete" | "failed";
 
-export type RecordingExportFormat = "wav" | "mp3";
+export type RecordingExportFormat = "wav" | "m4a" | "mp3";
 
 export interface RecordingTake {
   id: string;
@@ -132,6 +132,27 @@ export interface RecordingPackage {
   takes: RecordingTake[];
   mix: RecordingMixSettings;
   exports: RecordingExport[];
+}
+
+export interface SaveRecordingTakeRequest {
+  sourceSongPackageId: string;
+  /** Encoded microphone capture from MediaRecorder. */
+  data: Uint8Array;
+  mimeType: string;
+  duration: number;
+  deviceId?: string | null;
+  deviceLabel?: string | null;
+  vocalGain: number;
+  musicGain: number;
+  preferBackingTrack: boolean;
+  exportFormat: RecordingExportFormat;
+}
+
+export interface RecordingSaveResult {
+  recordingPackage: RecordingPackage;
+  take: RecordingTake;
+  mixExport: RecordingExport | null;
+  warning: string | null;
 }
 
 export interface SongPackageReference {
@@ -282,6 +303,10 @@ export interface AudioWorkflowApi {
   getMediaUrl: (targetPath: string) => Promise<string>;
   listHistory: () => Promise<SavedJobHistory[]>;
   removeHistory: (historyId: string) => Promise<SavedJobHistory[]>;
+  /** Persist a microphone take, convert it to WAV, and render a music mix when possible. */
+  saveRecordingTake?: (request: SaveRecordingTakeRequest) => Promise<RecordingSaveResult>;
+  /** Return persisted recording packages, optionally filtered to one source song package. */
+  listRecordings?: (sourceSongPackageId?: string) => Promise<RecordingPackage[]>;
   onJobLog: (callback: (log: JobLog) => void) => () => void;
   /** Subscribe to structured pipeline progress events from the CLI. */
   onJobProgress?: (callback: (event: JobProgressStage) => void) => () => void;

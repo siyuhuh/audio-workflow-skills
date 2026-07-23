@@ -1,8 +1,15 @@
+import CryptoKit
 import Foundation
 
-/// Resolves a media page URL (YouTube, Bilibili, ...) into a direct stream URL
-/// that AVPlayer can play, using yt-dlp. Stream URLs expire after a few hours,
-/// so resolution happens at playback time and is never persisted.
+struct ResolvedOnlineStream: Sendable {
+    let url: URL
+    let httpHeaders: [String: String]
+}
+
+/// Resolves a media page URL (YouTube, Bilibili, ...) into media AVPlayer can
+/// play. Remote video is cached locally because AVFoundation can reject some
+/// otherwise valid CDN connections when their TLS certificate does not match
+/// the rotating googlevideo host returned by yt-dlp.
 enum OnlineStreamResolver {
     enum ResolverError: LocalizedError {
         case ytDlpMissing
@@ -12,7 +19,7 @@ enum OnlineStreamResolver {
         var errorDescription: String? {
             switch self {
             case .ytDlpMissing:
-                return "yt-dlp not found. Install it with: brew install yt-dlp"
+                return "The bundled media downloader is missing. Reinstall VocalFlow and try again."
             case .resolutionFailed(let message):
                 return "Could not resolve online stream: \(message)"
             case .noStreamFound:
@@ -21,16 +28,38 @@ enum OnlineStreamResolver {
         }
     }
 
-    static func resolveStreamURL(for pageURL: String) async throws -> URL {
-        guard let ytDlp = findYtDlp() else {
+    static func resolveStream(for pageURL: String, browser: String? = nil) async throws -> ResolvedOnlineStream {
+        let environment = AudioSubtitlesRuntime.childProcessEnvironment()
+        guard let ytDlp = AudioSubtitlesRuntime.executableURL(named: "yt-dlp", environment: environment) else {
             throw ResolverError.ytDlpMissing
+        }
+
+        let cacheURL = try cachedMediaURL(for: pageURL)
+        if isUsableCacheFile(cacheURL) {
+            return ResolvedOnlineStream(url: cacheURL, httpHeaders: [:])
         }
 
         let process = Process()
         process.executableURL = ytDlp
-        // Progressive mp4 keeps audio+video in one stream AVPlayer can play
-        // directly; fall back to the best muxed format otherwise.
-        process.arguments = ["--no-playlist", "-f", "b[ext=mp4]/b", "-g", pageURL]
+        let isBilibili = MediaURLNormalizer.platform(for: pageURL) == .bilibili
+        let format = isBilibili
+            ? "b[height<=720][ext=mp4][vcodec^=avc1]/b[height<=720][ext=mp4]/bv*[height<=720][ext=mp4][vcodec^=avc1]+ba/bv*[height<=720][ext=mp4]+ba"
+            : "b[height<=720][ext=mp4][vcodec^=avc1]/b[ext=mp4][vcodec^=avc1]/b[height<=720][ext=mp4]/b[ext=mp4]"
+        var arguments = [
+            "--no-playlist",
+            "--socket-timeout", "20",
+            "-f", format,
+            "--no-progress",
+            "--no-warnings",
+            "--merge-output-format", "mp4",
+            "--output", cacheURL.path,
+            pageURL
+        ]
+        if let browser, !browser.isEmpty {
+            arguments.insert(contentsOf: ["--cookies-from-browser", browser], at: 0)
+        }
+        process.arguments = arguments
+        process.environment = environment
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -48,9 +77,7 @@ enum OnlineStreamResolver {
             }
         }
 
-        // Output is one or two short URL lines, far below the pipe buffer
-        // size, so reading after termination cannot deadlock.
-        let outData = stdout.fileHandleForReading.readDataToEndOfFile()
+        _ = stdout.fileHandleForReading.readDataToEndOfFile()
         let errData = stderr.fileHandleForReading.readDataToEndOfFile()
 
         guard status == 0 else {
@@ -62,28 +89,32 @@ enum OnlineStreamResolver {
             throw ResolverError.resolutionFailed(tail.isEmpty ? "yt-dlp exited with status \(status)" : tail)
         }
 
-        let firstLine = String(decoding: outData, as: UTF8.self)
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .first { !$0.isEmpty }
-
-        guard let firstLine, let url = URL(string: firstLine) else {
+        guard isUsableCacheFile(cacheURL) else {
             throw ResolverError.noStreamFound
         }
-        return url
+        return ResolvedOnlineStream(url: cacheURL, httpHeaders: [:])
     }
 
-    private static func findYtDlp() -> URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let candidates = [
-            "/opt/homebrew/bin/yt-dlp",
-            "/usr/local/bin/yt-dlp",
-            "\(home)/.local/bin/yt-dlp",
-            "\(home)/.local/share/audio-subtitles-venv/bin/yt-dlp"
-        ]
-        for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {
-            return URL(fileURLWithPath: candidate)
+    static func resolveStreamURL(for pageURL: String) async throws -> URL {
+        try await resolveStream(for: pageURL).url
+    }
+
+    private static func cachedMediaURL(for pageURL: String) throws -> URL {
+        let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("VocalFlow", isDirectory: true)
+            .appendingPathComponent("OnlineMedia", isDirectory: true)
+        try FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
+
+        let digest = SHA256.hash(data: Data(pageURL.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return baseURL.appendingPathComponent("\(digest).mp4")
+    }
+
+    private static func isUsableCacheFile(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]) else {
+            return false
         }
-        return nil
+        return values.isRegularFile == true && (values.fileSize ?? 0) > 100_000
     }
 }

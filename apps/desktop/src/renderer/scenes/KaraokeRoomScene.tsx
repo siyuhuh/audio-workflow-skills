@@ -2,6 +2,7 @@ import {
   type PointerEvent,
   type RefObject,
   type SyntheticEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,7 +10,14 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import type { GeneratedAsset, PlaybackBundle, RoomQueueItem, SavedJobHistory } from "../../shared/types";
+import type {
+  GeneratedAsset,
+  PlaybackBundle,
+  RecordingSaveResult,
+  RoomQueueItem,
+  SavedJobHistory,
+  SaveRecordingTakeRequest
+} from "../../shared/types";
 import {
   KaraokeLyricLine,
   type LyricEffect,
@@ -103,6 +111,8 @@ interface KaraokeRoomSceneProps {
   onPlayPrevious: () => void | Promise<void>;
   onScriptChange: (content: string) => void;
   onSaveLyrics: () => void | Promise<void>;
+  onSaveRecording: (request: SaveRecordingTakeRequest) => Promise<RecordingSaveResult>;
+  onOpenRecordingFolder: (targetPath: string) => void | Promise<void>;
   onSplitVocals: () => void;
   onTrackRoleChange: (role: TrackRole) => void;
   isRunning: boolean;
@@ -117,6 +127,24 @@ const lyricFontPreviewClasses: Record<LyricFont, string> = {
   serif: "font-serif font-semibold",
   mono: "font-mono font-semibold"
 };
+
+type RecordingPhase = "idle" | "preparing" | "countdown" | "recording" | "saving" | "complete" | "error";
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function preferredRecordingMimeType(): string | undefined {
+  if (typeof MediaRecorder === "undefined") {
+    return undefined;
+  }
+  return [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4"
+  ].find((mimeType) => MediaRecorder.isTypeSupported(mimeType));
+}
 
 function isVideoPath(filePath: string): boolean {
   return /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(filePath);
@@ -174,6 +202,8 @@ export function KaraokeRoomScene({
   onPlayPrevious,
   onScriptChange,
   onSaveLyrics,
+  onSaveRecording,
+  onOpenRecordingFolder,
   onSplitVocals,
   onTrackRoleChange,
   isRunning
@@ -182,8 +212,18 @@ export function KaraokeRoomScene({
   const [lyricsEditorOpen, setLyricsEditorOpen] = useState(false);
   const [lyricsOffsetSec, setLyricsOffsetSec] = useState(0);
   const [openTool, setOpenTool] = useState<RoomTool | null>(null);
+  const [recordingPhase, setRecordingPhase] = useState<RecordingPhase>("idle");
+  const [recordingCountdown, setRecordingCountdown] = useState(3);
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
+  const [recordingMessage, setRecordingMessage] = useState("");
+  const [lastRecording, setLastRecording] = useState<RecordingSaveResult | null>(null);
   const progressRef = useRef<HTMLDivElement | null>(null);
   const toolsRef = useRef<HTMLDivElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef(0);
+  const recordingGenerationRef = useRef(0);
 
   const previousCue = activeCueIndex > 0 ? cues[activeCueIndex - 1] : null;
   const nextCue = activeCueIndex >= 0 ? cues[activeCueIndex + 1] : cues[0] ?? null;
@@ -202,6 +242,11 @@ export function KaraokeRoomScene({
   const hasPlayableMedia = Boolean(playbackController.canControl);
   const hasBacking = Boolean(trackAssets.backing);
   const mainTrackRole = primaryTrackRole(trackRole, hasBacking);
+  const recordingLocked =
+    recordingPhase === "preparing" ||
+    recordingPhase === "countdown" ||
+    recordingPhase === "recording" ||
+    recordingPhase === "saving";
   const trackRoleLabel = translatedTrackRoleLabel(trackRole, t);
   const cueKey = activeCue ? `${activeCue.start}-${activeCue.end}-${activeCue.text}` : "empty-cue";
   const queuedItems = roomQueue.filter((item) => item.status === "queued" || item.status === "running");
@@ -229,6 +274,202 @@ export function KaraokeRoomScene({
         ? trackRoleLabel
         : null;
 
+  const releaseRecordingStream = useCallback(() => {
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+  }, []);
+
+  const stopAndSaveRecording = useCallback(async () => {
+    if (recordingPhase === "countdown") {
+      recordingGenerationRef.current += 1;
+      releaseRecordingStream();
+      setRecordingPhase("idle");
+      setRecordingMessage("");
+      return;
+    }
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive" || recordingPhase !== "recording") {
+      return;
+    }
+
+    setRecordingPhase("saving");
+    setRecordingMessage(t("room:recording.saving"));
+    playbackController.pause();
+    const duration = Math.max(0.1, (performance.now() - recordingStartedAtRef.current) / 1000);
+
+    try {
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        recorder.addEventListener(
+          "stop",
+          () => resolve(new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" })),
+          { once: true }
+        );
+        recorder.addEventListener(
+          "error",
+          () => reject(new Error(t("room:recording.captureFailed"))),
+          { once: true }
+        );
+        recorder.stop();
+      });
+      const data = new Uint8Array(await blob.arrayBuffer());
+      const device = microphoneMonitor.devices.find(
+        (candidate) => candidate.deviceId === microphoneMonitor.selectedDeviceId
+      );
+      const result = await onSaveRecording({
+        sourceSongPackageId: activeReview.id,
+        data,
+        mimeType: blob.type || recorder.mimeType || "audio/webm",
+        duration,
+        deviceId: microphoneMonitor.selectedDeviceId || null,
+        deviceLabel: device?.label ?? null,
+        vocalGain: 1,
+        musicGain: playbackController.muted ? 0 : playbackController.volume,
+        preferBackingTrack: mainTrackRole === "backing",
+        exportFormat: "m4a"
+      });
+      setLastRecording(result);
+      setRecordingMessage(
+        result.warning ??
+          (result.mixExport ? t("room:recording.savedMix") : t("room:recording.savedVocal"))
+      );
+      setRecordingPhase("complete");
+    } catch (error) {
+      setRecordingMessage(error instanceof Error ? error.message : t("room:recording.saveFailed"));
+      setRecordingPhase("error");
+    } finally {
+      releaseRecordingStream();
+    }
+  }, [
+    activeReview.id,
+    mainTrackRole,
+    microphoneMonitor.devices,
+    microphoneMonitor.selectedDeviceId,
+    onSaveRecording,
+    playbackController,
+    recordingPhase,
+    releaseRecordingStream,
+    t
+  ]);
+
+  const startRecording = useCallback(async () => {
+    if (!hasPlayableMedia || recordingLocked) {
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setRecordingMessage(t("room:recording.unavailable"));
+      setRecordingPhase("error");
+      return;
+    }
+
+    const generation = recordingGenerationRef.current + 1;
+    recordingGenerationRef.current = generation;
+    setLastRecording(null);
+    setRecordingMessage("");
+    setOpenTool(null);
+    setRecordingPhase("preparing");
+    setRecordingMessage(t("room:recording.preparing"));
+
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: microphoneMonitor.noiseReduction,
+      noiseSuppression: microphoneMonitor.noiseReduction,
+      autoGainControl: microphoneMonitor.noiseReduction,
+      channelCount: 1,
+      sampleRate: 48_000
+    };
+    if (microphoneMonitor.selectedDeviceId) {
+      audioConstraints.deviceId = { exact: microphoneMonitor.selectedDeviceId };
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      if (recordingGenerationRef.current !== generation) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const mimeType = preferredRecordingMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 192_000 })
+        : new MediaRecorder(stream, { audioBitsPerSecond: 192_000 });
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      });
+
+      playbackController.pause();
+      playbackController.seek(0, false);
+      setRecordingPhase("countdown");
+      for (let count = 3; count >= 1; count -= 1) {
+        if (recordingGenerationRef.current !== generation) {
+          return;
+        }
+        setRecordingCountdown(count);
+        await wait(900);
+      }
+      if (recordingGenerationRef.current !== generation) {
+        return;
+      }
+
+      recorder.start(1000);
+      recordingStartedAtRef.current = performance.now();
+      setRecordingElapsed(0);
+      setRecordingPhase("recording");
+      setRecordingMessage(t("room:recording.live"));
+      playbackController.seek(0, false);
+      playbackController.play();
+    } catch (error) {
+      releaseRecordingStream();
+      setRecordingMessage(error instanceof Error ? error.message : t("room:recording.captureFailed"));
+      setRecordingPhase("error");
+    }
+  }, [
+    hasPlayableMedia,
+    microphoneMonitor.noiseReduction,
+    microphoneMonitor.selectedDeviceId,
+    playbackController,
+    recordingLocked,
+    releaseRecordingStream,
+    t
+  ]);
+
+  useEffect(() => {
+    if (recordingPhase !== "recording") {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      setRecordingElapsed(Math.max(0, (performance.now() - recordingStartedAtRef.current) / 1000));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [recordingPhase]);
+
+  const endedCountRef = useRef(playbackController.endedCount);
+  useEffect(() => {
+    if (
+      playbackController.endedCount > endedCountRef.current &&
+      recordingPhase === "recording"
+    ) {
+      void stopAndSaveRecording();
+    }
+    endedCountRef.current = playbackController.endedCount;
+  }, [playbackController.endedCount, recordingPhase, stopAndSaveRecording]);
+
+  useEffect(() => {
+    return () => {
+      recordingGenerationRef.current += 1;
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      releaseRecordingStream();
+    };
+  }, [releaseRecordingStream]);
+
   useEffect(() => {
     if (!openTool) {
       return undefined;
@@ -255,7 +496,7 @@ export function KaraokeRoomScene({
   }, [openTool]);
 
   function seekFromProgressPointer(event: PointerEvent<HTMLDivElement>) {
-    if (!hasPlayableMedia || progressMax <= 0) {
+    if (!hasPlayableMedia || recordingLocked || progressMax <= 0) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
@@ -364,12 +605,34 @@ export function KaraokeRoomScene({
             type="button"
             className="roomStageExit"
             onClick={onBackHome}
+            disabled={recordingLocked}
             aria-label={t("room:leaveStage")}
             title={t("room:leaveStage")}
           >
             <Icon name="home" />
           </button>
         </header>
+
+        {recordingPhase === "countdown" ? (
+          <div className="roomRecordingCountdown" role="status" aria-live="assertive">
+            <span>{t("room:recording.getReady")}</span>
+            <strong>{recordingCountdown}</strong>
+            <button type="button" onClick={() => void stopAndSaveRecording()}>
+              {t("room:recording.cancel")}
+            </button>
+          </div>
+        ) : null}
+
+        {recordingPhase === "recording" || recordingPhase === "saving" ? (
+          <div className="roomRecordingLive" data-phase={recordingPhase} role="status" aria-live="polite">
+            <span aria-hidden="true" />
+            <strong>
+              {recordingPhase === "recording"
+                ? `${t("room:recording.live")} · ${formatClock(recordingElapsed)}`
+                : t("room:recording.saving")}
+            </strong>
+          </div>
+        ) : null}
 
         <div className="roomLyrics roomStageLyrics" data-effect={lyricEffect} data-font={lyricFont}>
           <p className="roomLyricContext">{previousCue?.text ?? ""}</p>
@@ -392,7 +655,7 @@ export function KaraokeRoomScene({
           aria-valuemax={Math.round(progressMax)}
           aria-valuenow={Math.round(progressValue)}
           aria-valuetext={`${formatClock(progressValue)} / ${progressMax > 0 ? formatClock(progressMax) : "--:--"}`}
-          data-disabled={!hasPlayableMedia}
+          data-disabled={!hasPlayableMedia || recordingLocked}
           className="roomProgress"
           onPointerDown={handleProgressPointerDown}
           onPointerMove={(event) => {
@@ -406,7 +669,7 @@ export function KaraokeRoomScene({
             }
           }}
           onKeyDown={(event) => {
-            if (!hasPlayableMedia || progressMax <= 0) {
+            if (!hasPlayableMedia || recordingLocked || progressMax <= 0) {
               return;
             }
             if (event.key === "ArrowLeft") {
@@ -418,7 +681,7 @@ export function KaraokeRoomScene({
               playbackController.seek(Math.min(progressMax, progressValue + 5), playbackController.isPlaying);
             }
           }}
-          tabIndex={hasPlayableMedia ? 0 : -1}
+          tabIndex={hasPlayableMedia && !recordingLocked ? 0 : -1}
         >
           <span className="roomProgressTrack" />
           <span className="roomProgressFill" style={{ transform: `scaleX(${progressPercent / 100})` }} />
@@ -433,8 +696,8 @@ export function KaraokeRoomScene({
               value={mainTrackRole}
               onChange={onTrackRoleChange}
               items={[
-                { value: "original", label: t("room:tracks.original"), disabled: !trackAssets.original },
-                { value: "backing", label: t("room:tracks.backing"), disabled: !trackAssets.backing }
+                { value: "original", label: t("room:tracks.original"), disabled: recordingLocked || !trackAssets.original },
+                { value: "backing", label: t("room:tracks.backing"), disabled: recordingLocked || !trackAssets.backing }
               ]}
             />
           </div>
@@ -443,7 +706,7 @@ export function KaraokeRoomScene({
             <span className="roomTransportTime">{formatClock(progressValue)}</span>
             <button
               type="button"
-              disabled={!hasPlayableMedia}
+              disabled={!hasPlayableMedia || recordingLocked}
               onClick={() => void onPlayPrevious()}
               aria-label={t("room:transport.previous")}
               title={t("room:transport.previous")}
@@ -453,7 +716,7 @@ export function KaraokeRoomScene({
             </button>
             <button
               type="button"
-              disabled={!hasPlayableMedia}
+              disabled={!hasPlayableMedia || recordingLocked}
               onClick={playbackController.isPlaying ? playbackController.pause : playbackController.play}
               aria-label={playbackController.isPlaying ? t("room:transport.pause") : t("room:transport.play")}
               title={playbackController.isPlaying ? t("room:transport.pause") : t("room:transport.play")}
@@ -463,7 +726,7 @@ export function KaraokeRoomScene({
             </button>
             <button
               type="button"
-              disabled={!hasPlayableMedia}
+              disabled={!hasPlayableMedia || recordingLocked}
               onClick={() => void onPlayNext()}
               aria-label={t("room:transport.next")}
               title={t("room:transport.next")}
@@ -477,6 +740,53 @@ export function KaraokeRoomScene({
           <div className="roomTools" ref={toolsRef}>
             <button
               type="button"
+              className="roomRecordButton"
+              data-phase={recordingPhase}
+              disabled={
+                !hasPlayableMedia ||
+                recordingPhase === "preparing" ||
+                recordingPhase === "saving"
+              }
+              onClick={() => {
+                if (recordingPhase === "recording" || recordingPhase === "countdown") {
+                  void stopAndSaveRecording();
+                } else {
+                  void startRecording();
+                }
+              }}
+              aria-label={
+                recordingPhase === "recording"
+                  ? t("room:recording.stop")
+                  : t("room:recording.start")
+              }
+              title={recordingMessage || t("room:recording.startHint")}
+            >
+              <span className="roomRecordGlyph" aria-hidden="true" />
+              <span>
+                {recordingPhase === "recording"
+                  ? formatClock(recordingElapsed)
+                  : recordingPhase === "preparing"
+                    ? t("room:recording.preparing")
+                  : recordingPhase === "saving"
+                    ? t("room:recording.saving")
+                    : t("room:recording.record")}
+              </span>
+            </button>
+
+            {lastRecording ? (
+              <button
+                type="button"
+                className="roomToolTrigger"
+                onClick={() => void onOpenRecordingFolder(lastRecording.recordingPackage.outputDir)}
+                aria-label={t("room:recording.openFolder")}
+                title={recordingMessage || t("room:recording.openFolder")}
+              >
+                <Icon name="folder" />
+              </button>
+            ) : null}
+
+            <button
+              type="button"
               className="roomToolTrigger"
               data-open={openTool === "mixer"}
               onClick={() => setOpenTool((current) => current === "mixer" ? null : "mixer")}
@@ -484,6 +794,7 @@ export function KaraokeRoomScene({
               title={t("room:volumes.title")}
               aria-expanded={openTool === "mixer"}
               aria-controls="roomToolPanel"
+              disabled={recordingLocked}
             >
               <Icon name={playbackController.muted ? "volumeMute" : "volume"} />
             </button>
@@ -510,6 +821,7 @@ export function KaraokeRoomScene({
               title={t("room:playlist.title")}
               aria-expanded={openTool === "queue"}
               aria-controls="roomToolPanel"
+              disabled={recordingLocked}
             >
               <Icon name="menu" />
               {queuedItems.length > 0 ? <span className="roomToolBadge">{queuedItems.length}</span> : null}
@@ -524,6 +836,7 @@ export function KaraokeRoomScene({
               title={t("room:settings")}
               aria-expanded={openTool === "settings"}
               aria-controls="roomToolPanel"
+              disabled={recordingLocked}
             >
               <Icon name="settings" />
             </button>
@@ -649,6 +962,7 @@ export function KaraokeRoomScene({
                         className="roomSongItem"
                         data-active={entry.id === activeReview.id}
                         onClick={() => onPackageChange(entry.id)}
+                        disabled={recordingLocked}
                       >
                         <span>{String(index + 1).padStart(2, "0")}</span>
                         <strong>{entry.title}</strong>

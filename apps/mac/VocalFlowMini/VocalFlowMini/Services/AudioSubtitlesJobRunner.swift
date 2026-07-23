@@ -16,8 +16,31 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
 
     /// Persistent cache so audio-separator does not re-download its model to
     /// /tmp on every run (the audio-separator default is wiped on reboot).
-    static let separatorModelDirectory = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/VocalFlowMini/separator-models", isDirectory: true)
+    static let separatorModelDirectory: URL = {
+        let fileManager = FileManager.default
+        let appSupport = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+        let current = appSupport.appendingPathComponent("VocalFlow/separator-models", isDirectory: true)
+        let legacy = appSupport.appendingPathComponent("VocalFlowMini/separator-models", isDirectory: true)
+        let legacyModel = legacy.appendingPathComponent(fastSeparatorModel)
+        let currentModel = current.appendingPathComponent(fastSeparatorModel)
+
+        try? fileManager.createDirectory(at: current, withIntermediateDirectories: true)
+        if !fileManager.fileExists(atPath: currentModel.path),
+           fileManager.fileExists(atPath: legacyModel.path) {
+            try? fileManager.copyItem(at: legacyModel, to: currentModel)
+        }
+        if !fileManager.fileExists(atPath: currentModel.path),
+           let resources = Bundle.main.resourceURL {
+            let bundled = resources
+                .appendingPathComponent("separator-models", isDirectory: true)
+                .appendingPathComponent(fastSeparatorModel)
+            if fileManager.fileExists(atPath: bundled.path) {
+                try? fileManager.copyItem(at: bundled, to: currentModel)
+            }
+        }
+        return current
+    }()
 
     private let processLock = NSLock()
     private var activeProcess: Process?
@@ -36,6 +59,10 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
         let resolvedRuntime = AudioSubtitlesRuntime.resolve()
         guard let runtime = resolvedRuntime.runtime else {
             throw JobRunnerError.failed(resolvedRuntime.diagnostics.joined(separator: "\n"))
+        }
+
+        if let failure = Self.preflightFailure(job: job, environment: runtime.environment) {
+            throw JobRunnerError.failed(failure)
         }
 
         try FileManager.default.createDirectory(at: job.outputDirectory, withIntermediateDirectories: true)
@@ -110,6 +137,10 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
             Self.handleStderrLine(line, outputCollector: outputCollector, onEvent: onEvent)
         }
 
+        if Task.isCancelled {
+            throw CancellationError()
+        }
+
         if terminationStatus != 0 {
             let message = outputCollector.stderrTail().suffix(12).joined(separator: "\n").nonEmpty ?? "audio-subtitles exited with status \(terminationStatus)."
             throw JobRunnerError.failed(message)
@@ -163,7 +194,8 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
             "--word-engine", "faster_whisper"
         ]
 
-        if job.options.saveAudio {
+        let shouldKeepAudio = job.options.saveAudio || (job.source.isURL && !job.options.separateVocals)
+        if shouldKeepAudio {
             args.append("--save-audio")
         }
         if job.options.saveVideoPreview {
@@ -183,6 +215,12 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
         if let language = job.options.normalizedLanguage {
             args += ["--language", language]
         }
+        if let browser = job.options.normalizedBrowser {
+            args += ["--browser", browser]
+        }
+        if job.options.simplifiedChinese {
+            args.append("--simplified-chinese")
+        }
 
         args.append(job.source.cliValue)
         return args
@@ -191,33 +229,46 @@ final class AudioSubtitlesJobRunner: @unchecked Sendable {
     private static func preflightChecks(job: ProcessingJob, environment: [String: String]) -> [String] {
         var lines: [String] = []
 
-        func locate(_ name: String) -> String? {
-            for directory in (environment["PATH"] ?? "").split(separator: ":") {
-                let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(name)
-                if FileManager.default.isExecutableFile(atPath: candidate.path) {
-                    return candidate.path
-                }
-            }
-            return nil
-        }
-
-        lines.append("[check] ffmpeg: " + (locate("ffmpeg") ?? "MISSING - brew install ffmpeg"))
+        lines.append("[check] ffmpeg: " + (locateExecutable("ffmpeg", environment: environment)?.path ?? "MISSING - reinstall VocalFlow"))
 
         if case .url = job.source {
-            lines.append("[check] yt-dlp: " + (locate("yt-dlp") ?? "MISSING - brew install yt-dlp"))
+            lines.append("[check] yt-dlp: " + (locateExecutable("yt-dlp", environment: environment)?.path ?? "MISSING - reinstall VocalFlow"))
         }
 
         if job.options.separateVocals {
-            lines.append("[check] audio-separator: " + (locate("audio-separator") ?? "MISSING - run setup_audio_separator.sh"))
+            lines.append("[check] audio-separator: " + (locateExecutable("audio-separator", environment: environment)?.path ?? "MISSING - run setup_audio_separator.sh"))
             let modelFile = separatorModelDirectory.appendingPathComponent(fastSeparatorModel)
             if FileManager.default.fileExists(atPath: modelFile.path) {
                 lines.append("[check] separator model cached: \(modelFile.path)")
             } else {
-                lines.append("[check] separator model \(fastSeparatorModel) not cached yet; first run downloads it once to \(separatorModelDirectory.path)")
+                lines.append("[check] separator model \(fastSeparatorModel) is not bundled; the first run may download it to \(separatorModelDirectory.path)")
             }
         }
 
         return lines
+    }
+
+    private static func preflightFailure(job: ProcessingJob, environment: [String: String]) -> String? {
+        guard locateExecutable("ffmpeg", environment: environment) != nil else {
+            return "The bundled ffmpeg runtime is missing. Reinstall VocalFlow, then refresh System Check."
+        }
+        if job.source.isURL, locateExecutable("yt-dlp", environment: environment) == nil {
+            return "The bundled media downloader is missing. Reinstall VocalFlow, then retry."
+        }
+        if job.options.separateVocals, locateExecutable("audio-separator", environment: environment) == nil {
+            return "The bundled vocal separator is missing. Reinstall VocalFlow or turn off Create instrumental."
+        }
+        return nil
+    }
+
+    private static func locateExecutable(_ name: String, environment: [String: String]) -> URL? {
+        for directory in (environment["PATH"] ?? "").split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(name)
+            if FileManager.default.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
     }
 
     private func commandPreview(executableURL: URL, arguments: [String]) -> String {
@@ -350,5 +401,14 @@ private final class ProcessLineBuffer: @unchecked Sendable {
 private extension String {
     var nonEmpty: String? {
         isEmpty ? nil : self
+    }
+}
+
+private extension KaraokeSource {
+    var isURL: Bool {
+        if case .url = self {
+            return true
+        }
+        return false
     }
 }

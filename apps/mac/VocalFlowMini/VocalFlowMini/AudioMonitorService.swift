@@ -46,7 +46,7 @@ final class AudioMonitorService: ObservableObject {
             case .ready:
                 "Click once to route your microphone into the output."
             case .requestingPermission:
-                "macOS will ask before VocalFlow Mini can hear your mic."
+                "macOS will ask before VocalFlow can hear your mic."
             case .listening:
                 "Your microphone is live. Use headphones to avoid feedback."
             case .permissionDenied:
@@ -73,6 +73,8 @@ final class AudioMonitorService: ObservableObject {
         case invalidInputFormat
         case inputUnitUnavailable
         case deviceSelectionFailed(String)
+        case recordingUnavailable
+        case recordingWriteFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -84,6 +86,10 @@ final class AudioMonitorService: ObservableObject {
                 "The microphone input unit is not available yet. Try System Default or restart monitoring."
             case .deviceSelectionFailed(let name):
                 "Could not switch to \(name). Choose System Default or refresh devices."
+            case .recordingUnavailable:
+                "The microphone input is not ready for recording."
+            case .recordingWriteFailed(let message):
+                "The microphone take could not be written. \(message)"
             }
         }
     }
@@ -95,6 +101,8 @@ final class AudioMonitorService: ObservableObject {
     @Published private(set) var inputGain: Float = 1.0
     @Published private(set) var monitorVolume: Float = 0.75
     @Published private(set) var voiceCleanupEnabled = false
+    @Published private(set) var isRecording = false
+    @Published private(set) var recordingDuration: TimeInterval = 0
 
     private var engine: AVAudioEngine?
     private var gainMixer: AVAudioMixerNode?
@@ -102,6 +110,10 @@ final class AudioMonitorService: ObservableObject {
     private var outputMixer: AVAudioMixerNode?
     private var lastMeterUpdate = Date.distantPast
     private var hasInputTap = false
+    private let recordingSlot = AudioRecordingSlot()
+    private var recordingURL: URL?
+    private var recordingStartedAt: Date?
+    private var recordingClockTask: Task<Void, Never>?
 
     init() {
         refreshInputDevices()
@@ -163,8 +175,74 @@ final class AudioMonitorService: ObservableObject {
     }
 
     func stopListening() {
+        if isRecording {
+            abortRecording()
+        }
         teardownEngine()
         state = .ready
+    }
+
+    func prepareForRecording() async throws {
+        if !state.isListening {
+            await startListening()
+        }
+        guard state.isListening, engine != nil else {
+            throw AudioMonitorError.recordingUnavailable
+        }
+    }
+
+    func beginRecording(to url: URL) throws {
+        guard !isRecording,
+              let engine,
+              state.isListening else {
+            throw AudioMonitorError.recordingUnavailable
+        }
+        let format = engine.inputNode.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            throw AudioMonitorError.invalidInputFormat
+        }
+
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        recordingSlot.install(file)
+        recordingURL = url
+        recordingStartedAt = Date()
+        recordingDuration = 0
+        isRecording = true
+        startRecordingClock()
+    }
+
+    func finishRecording() throws -> URL {
+        guard isRecording, let recordingURL else {
+            throw AudioMonitorError.recordingUnavailable
+        }
+        recordingClockTask?.cancel()
+        recordingClockTask = nil
+        recordingDuration = Date().timeIntervalSince(recordingStartedAt ?? Date())
+        let writeError = recordingSlot.finish()
+        isRecording = false
+        recordingStartedAt = nil
+        self.recordingURL = nil
+        if let writeError {
+            throw AudioMonitorError.recordingWriteFailed(writeError)
+        }
+        return recordingURL
+    }
+
+    func abortRecording() {
+        recordingClockTask?.cancel()
+        recordingClockTask = nil
+        _ = recordingSlot.finish()
+        if let recordingURL {
+            try? FileManager.default.removeItem(at: recordingURL)
+        }
+        self.recordingURL = nil
+        recordingStartedAt = nil
+        recordingDuration = 0
+        isRecording = false
     }
 
     private func configureEngine() throws {
@@ -196,7 +274,9 @@ final class AudioMonitorService: ObservableObject {
         engine.connect(voiceCleanupEQ, to: outputMixer, format: inputFormat)
         engine.connect(outputMixer, to: engine.mainMixerNode, format: inputFormat)
 
+        let recordingSlot = self.recordingSlot
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
+            recordingSlot.write(buffer)
             let level = Self.normalizedLevel(from: buffer)
             Task { @MainActor [weak self] in
                 self?.publishMeterLevel(level)
@@ -255,6 +335,17 @@ final class AudioMonitorService: ObservableObject {
         guard now.timeIntervalSince(lastMeterUpdate) >= 1.0 / 30.0 else { return }
         lastMeterUpdate = now
         inputLevel = level
+    }
+
+    private func startRecordingClock() {
+        recordingClockTask?.cancel()
+        recordingClockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.isRecording else { return }
+                self.recordingDuration = Date().timeIntervalSince(self.recordingStartedAt ?? Date())
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+        }
     }
 
     nonisolated private static func requestMicrophoneAccess() async -> Bool {
@@ -400,6 +491,39 @@ final class AudioMonitorService: ObservableObject {
 
         let decibels = 20 * log10(rms)
         return ((decibels + 60) / 60).clamped(to: 0...1)
+    }
+}
+
+private final class AudioRecordingSlot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var file: AVAudioFile?
+    private var writeError: String?
+
+    func install(_ file: AVAudioFile) {
+        lock.lock()
+        self.file = file
+        writeError = nil
+        lock.unlock()
+    }
+
+    func write(_ buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let file, writeError == nil else { return }
+        do {
+            try file.write(from: buffer)
+        } catch {
+            writeError = error.localizedDescription
+        }
+    }
+
+    func finish() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        file = nil
+        let error = writeError
+        writeError = nil
+        return error
     }
 }
 

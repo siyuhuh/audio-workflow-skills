@@ -1,77 +1,53 @@
-# VocalFlow Mini
+# VocalFlow for macOS
 
-VocalFlow Mini is the native Swift macOS spike for a simpler VocalFlow experience. The first version is intentionally narrow: one click starts a low-latency microphone monitor for singing practice, and the same control stops it.
+Native SwiftUI karaoke, package creation, recording, and private Mac mini processing for Apple Silicon. See the [root README](../../../README.md) for downloads and the complete product family.
 
-## Run Locally
+## Room
 
-From this directory:
+- Songbook and queue remain visible together in the adaptive workspace.
+- MV uses aspect-fit sizing; audio-only songs use the branded stage.
+- Previous/current/next lyric lines and word-level sweep timing.
+- Original, backing, or blended audio with a native mixer.
+- Full-screen immersive stage with queue/source/style controls.
+- Performance recording with a count-in, raw vocal WAV, M4A mix, and package-linked metadata.
+
+Recordings are written to `~/Music/VocalFlow/Recordings`.
+
+## Studio and media
+
+- YouTube and Bilibili search, URL metadata, and video preview.
+- Local audio/video import.
+- Package output under `~/Movies/VocalFlow` by default.
+- Default `small` Whisper model and fast MDX-Net separator.
+- Both `vocalflow-package.json` and Electron `manifest.json` folders are discoverable.
+
+## Mac mini Agent
+
+Open **Remote** and click **Install Agent**. The bundled installer creates a user LaunchAgent on port `8766`, advertises `_vocalflow._tcp` over Bonjour, and prints a six-digit iPhone pairing code.
+
+The Agent:
+
+- Runs one heavy job at a time.
+- Persists jobs across restarts.
+- Stores results under `~/Movies/VocalFlow/Remote`.
+- Uses token authentication and supports private Tailscale HTTPS.
+- Reuses the app's bundled Python runtime and models.
+
+## Run locally
 
 ```bash
 swift build
-swift run VocalFlowMini
+swift run VocalFlow
 ```
 
-`swift run` keeps the terminal busy while the macOS window is open. That is expected for this SwiftPM app. Quit VocalFlow Mini from the app menu, Dock, or `Command-Q` to return to the shell prompt.
-
-If the app is already running from an earlier attempt, stop it first:
+Build an ad-hoc local app/DMG:
 
 ```bash
-pkill -f VocalFlowMini
+./scripts/build-app.sh
+./scripts/build-dmg.sh release
+open dist/VocalFlow.app
 ```
 
-Metal cache messages such as `flock failed`, `fopen failed`, or `Invalidating cache` can appear on launch. They come from Apple's local SwiftUI/Metal cache and usually do not mean the app failed. If the build says `Build of product 'VocalFlowMini' complete!`, check the Dock or use `Command-Tab` to bring VocalFlow Mini forward.
+Release CI first prepares `apps/desktop/vendor/python-runtime`, `separator-models`, and `whisper-cache`; `build-app.sh` copies them into the native bundle. A source checkout without those release assets can still use an installed CLI/runtime for development.
 
-The executable embeds `VocalFlowMini/Info.plist` so macOS can show the microphone permission prompt. If permission was denied earlier, open System Settings → Privacy & Security → Microphone and enable VocalFlow Mini.
-
-## MVP Scope
-
-- SwiftUI window with a single primary listening control.
-- `AVAudioEngine` microphone input routed through gain and output mixers.
-- User-selectable microphone input device, with a System Default fallback.
-- Microphone permission request and clear denied/error states.
-- Input level meter, input gain, monitor volume, and a headphone feedback warning.
-- Light voice cleanup toggle for singing monitor mode.
-- Local karaoke package folder picker that scans audio/video media into a playlist.
-- MV playback for native AVPlayer formats such as `.mp4`, `.mov`, and `.m4v`.
-- Synced lyric display from same-name `.lrc`, `.srt`, or `audio-subtitles` `.json` files.
-- Playback volume and speed controls for the selected karaoke track or MV.
-- Package creation from a media URL or local audio/video file through the existing `audio-subtitles` pipeline.
-- Optional vocal separation, MV preview saving, local fallback, language, and Whisper model controls.
-
-This version reuses the existing Python `audio-subtitles` CLI for model-backed transcription, URL download, audio extraction, optional separation, and subtitle generation. It does not reimplement Whisper or UVR natively yet.
-
-## Create Packages
-
-Use the `Create Package` card to paste a media URL or choose a local audio/video file. The Swift app creates a dedicated output folder under `~/Movies/VocalFlow Mini` by default, then calls `audio-subtitles` with:
-
-- `--output-dir`
-- `--formats lrc,json,srt,ass`
-- `--save-audio`
-- `--save-video-preview`
-- `--local-fallback`
-- optional `--separate --separator-format MP3`
-
-When the job succeeds, VocalFlow Mini scans the output folder, writes `vocalflow-package.json`, and loads the package into the karaoke player.
-
-For URL sources the MV is not downloaded. Instead the player resolves a direct stream URL with `yt-dlp -g` at playback time and streams the online MV in AVPlayer, with lyrics synced to the same timeline. If resolution fails (offline, region lock), playback falls back to the generated backing/vocal stems.
-
-When the package has an instrumental stem, the MV plays in sing mode by default: the video is muted and the backing track supplies the audio, kept in sync with the video clock (drift corrected continuously). Use the "Sing mode" toggle to switch back to the MV's original vocals.
-
-## Karaoke Package Folders
-
-Click `Choose Folder` and select a folder that contains a karaoke package. VocalFlow Mini scans the folder recursively for:
-
-- Media: `.mp3`, `.m4a`, `.wav`, `.flac`, `.aac`, `.mp4`, `.mov`, `.m4v`
-- Lyrics: `.lrc`, `.srt`, `.json`
-
-Lyrics are matched by filename stem. For example, `song.mp4` pairs with `song.lrc`, `song.srt`, or `song.json`. `.lrc` is preferred, then `.json`, then `.srt`.
-
-## Phase Two Bridge
-
-Once the monitor mode feels right, the next step is recording a take and handing that file to the existing `audio-subtitles` pipeline:
-
-1. Record mic input to WAV or M4A in Swift.
-2. Call the installed `audio-subtitles` command, or invoke `skills/audio-subtitles/scripts/generate_subtitles.py` through `Process`.
-3. Read generated `.json`, `.lrc`, or `.srt` outputs back into a native review/practice view.
-
-Keep the current repository boundary intact: Swift owns the native interaction, while `audio-subtitles` remains the source of truth for model-backed transcription and subtitle generation.
+Public DMG distribution requires Developer ID signing and notarization. See [RELEASING.md](../../../RELEASING.md).

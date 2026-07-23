@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v0.1.8"
+        description: "Release tag, for example v0.8.0-beta.1"
         required: true
-        default: "v0.1.8"
+        default: "v0.8.0-beta.1"
 
 permissions:
   contents: write
@@ -72,6 +72,11 @@ jobs:
           tar -xzf python-runtime.tar.gz -C vendor/python-runtime
           rm python-runtime.tar.gz
 
+      - name: Install the offline processing runtime
+        shell: bash
+        working-directory: apps/desktop
+        run: ./scripts/prepare-bundled-runtime.sh
+
       # Pre-download separator + whisper weights into apps/desktop/vendor/
       # so they end up inside the .dmg / .nsis as `extraResources`.
       # See apps/desktop/scripts/fetch-bundled-models.sh for layout details.
@@ -98,9 +103,79 @@ jobs:
           path: ${{ matrix.files }}
           if-no-files-found: error
 
+  native-macos:
+    name: Build native macOS DMG
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Python for model downloads
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download bundled Python runtime
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          rm -rf vendor/python-runtime
+          mkdir -p vendor/python-runtime
+          curl -L --fail --retry 3 \
+            -o python-runtime.tar.gz \
+            "https://github.com/astral-sh/python-build-standalone/releases/download/20260414/cpython-3.12.13+20260414-aarch64-apple-darwin-install_only_stripped.tar.gz"
+          tar -xzf python-runtime.tar.gz -C vendor/python-runtime
+          rm python-runtime.tar.gz
+
+      - name: Install the offline processing runtime
+        shell: bash
+        working-directory: apps/desktop
+        run: ./scripts/prepare-bundled-runtime.sh
+
+      - name: Download bundled models
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          PYTHON: python
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "huggingface_hub>=0.24,<1.0"
+          ./scripts/fetch-bundled-models.sh
+
+      - name: Build native DMG
+        shell: bash
+        env:
+          REQUIRE_BUNDLED_RUNTIME: "1"
+          VOCALFLOW_VERSION: "0.8.0"
+        run: apps/mac/VocalFlowMini/scripts/build-dmg.sh release
+
+      - name: Upload native installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-macos
+          path: apps/mac/VocalFlowMini/dist/*.dmg
+          if-no-files-found: error
+
   release:
     name: Publish GitHub release
-    needs: build
+    needs: [build, native-macos]
     runs-on: ubuntu-latest
 
     steps:
@@ -125,37 +200,27 @@ jobs:
         with:
           tag_name: ${{ steps.release.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: VocalFlow Studio ${{ steps.release.outputs.tag }}
+          name: VocalFlow ${{ steps.release.outputs.tag }}
           draft: false
           prerelease: true
           files: release-assets/*
           body: |
-            VocalFlow Studio desktop prototype release.
+            VocalFlow 0.8 beta brings the native Mac room, iPhone companion,
+            private Mac mini Agent, and cross-platform VocalFlow Studio into one
+            compatible karaoke workflow.
 
-            What's new in this build:
+            Highlights:
+            - Immersive native macOS Room with adaptive MV sizing, word-synced lyrics, original/backing mix, queue, search, YouTube and Bilibili sources.
+            - Performance recording in both native Mac and Electron Room: raw vocal WAV plus a share-ready M4A/MP3/WAV mix.
+            - iPhone Room can import packages locally or download completed jobs from the private Mac mini Agent.
+            - Native Mac and iPhone discover both native and Electron package manifests.
+            - Default `faster-whisper-small` and `UVR-MDX-NET-Inst_HQ_3.onnx` weights, Python runtime, ffmpeg, yt-dlp, and processing packages ship inside desktop installers.
 
-            **Out-of-box reliability**
-            - Bundled vocal-separator weights (`UVR-MDX-NET-Inst_HQ_3.onnx`) and a `faster-whisper-small` HF cache snapshot ship inside the installer; first run no longer needs network access for the default workflow.
-            - Auto-detect Ultimate Vocal Remover if installed locally, and symlink its model files into a shadow folder so audio-separator finds them without copying gigabytes around.
-            - Smart separator-model picker prefers known-good UVR / bundled weights over partially-downloaded files, eliminating the `PytorchStreamReader` corruption loop.
+            Choose one:
+            - `VocalFlow-0.8.0-mac-arm64.dmg` — recommended native Apple Silicon client.
+            - `VocalFlow Studio-0.8.0-beta.1-mac-arm64.dmg` — Electron studio for macOS.
+            - `VocalFlow Studio-0.8.0-beta.1-win-x64.exe` — Electron studio for Windows.
 
-            **Network resilience**
-            - HuggingFace mirror setting (Settings → "HuggingFace mirror"), with a one-click China mirror preset that routes traffic through `hf-mirror.com`.
-            - HuggingFace token field for higher rate limits; malformed tokens are now silently rejected instead of breaking every download.
-
-            **Speed**
-            - `large-v3-turbo` transcription is now 4–12× faster (we were accidentally routing it through the OpenAI Whisper backend instead of CTranslate2).
-            - Whisper model load now overlaps with download + separation + convert, saving 5–20 s per typical job.
-            - URL preview card shows title / duration / uploader inline within ~1 s of pasting the link.
-
-            **UX polish**
-            - Live job status pill in the brand header so progress is visible even when scrolled away.
-            - Notification toaster surfaces stage failures with localized recovery actions ("Disable separation", "Open settings", "Copy log", etc.) instead of the old silent skip.
-            - Activity column de-duplicates retries — one card per distinct input regardless of how many times it was attempted.
-            - `manifest.json` written next to every package output for stable identity and role-tagged assets.
-
-            Assets:
-            - macOS Apple Silicon: download the `.dmg`
-            - Windows x64: download the `.exe`
-
-            Bundled into the installer: Python 3.12 standalone runtime, ffmpeg-static, the vocal separator + Whisper model weights, and the `audio-subtitles` CLI. On first launch the app creates a local Python venv under your user-data folder and pip-installs the runtime packages (~2 minutes, one-time).
+            This is a prerelease. Public macOS distribution still requires the
+            maintainer's Developer ID certificate and notarization credentials;
+            iPhone TestFlight upload uses the separate manual workflow.

@@ -2,6 +2,23 @@ import Foundation
 
 enum KaraokePackageScanner {
     static let manifestFileName = "vocalflow-package.json"
+    static let electronManifestFileName = "manifest.json"
+
+    private struct LooseManifest: Decodable {
+        let title: String?
+        let createdAt: String?
+
+        var parsedCreatedAt: Date? {
+            Self.fractionalFormatter.date(from: createdAt ?? "")
+                ?? ISO8601DateFormatter().date(from: createdAt ?? "")
+        }
+
+        private static let fractionalFormatter: ISO8601DateFormatter = {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter
+        }()
+    }
 
     static func readManifest(in folderURL: URL) throws -> KaraokePackage {
         let manifestURL = folderURL.appendingPathComponent(manifestFileName)
@@ -13,14 +30,29 @@ enum KaraokePackageScanner {
 
     static func scanExistingPackageFolder(_ folderURL: URL) throws -> KaraokePackage {
         if FileManager.default.fileExists(atPath: folderURL.appendingPathComponent(manifestFileName).path) {
-            return try readManifest(in: folderURL)
+            if let package = try? readManifest(in: folderURL) {
+                return package
+            }
         }
 
-        let package = try scan(
+        var package = try scan(
             outputDirectory: folderURL,
             source: .localFile(folderURL),
             options: ProcessingOptions()
         )
+        if let metadata = readLooseManifest(in: folderURL) {
+            package = KaraokePackage(
+                id: package.id,
+                title: metadata.title?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? package.title,
+                folderURL: package.folderURL,
+                source: package.source,
+                options: package.options,
+                assets: package.assets,
+                playback: package.playback,
+                createdAt: metadata.parsedCreatedAt ?? package.createdAt,
+                recordings: package.recordings
+            )
+        }
 
         guard package.playback.mediaURL != nil || package.playback.videoURL != nil else {
             throw KaraokePackageScannerError.noPlayableMedia(folderURL.path)
@@ -41,8 +73,12 @@ enum KaraokePackageScanner {
         }
 
         var folders: [URL] = []
-        for case let fileURL as URL in enumerator where fileURL.lastPathComponent == manifestFileName {
-            folders.append(fileURL.deletingLastPathComponent())
+        let manifestNames = Set([manifestFileName, electronManifestFileName])
+        for case let fileURL as URL in enumerator where manifestNames.contains(fileURL.lastPathComponent) {
+            let folder = fileURL.deletingLastPathComponent()
+            if !folders.contains(where: { $0.standardizedFileURL == folder.standardizedFileURL }) {
+                folders.append(folder)
+            }
         }
 
         return folders.sorted {
@@ -57,7 +93,7 @@ enum KaraokePackageScanner {
         stdout: String = ""
     ) throws -> KaraokePackage {
         let assets = discoverAssets(in: outputDirectory)
-        let playback = buildPlaybackBundle(from: assets)
+        let playback = buildPlaybackBundle(from: assets, source: source)
         let title = cleanTrackTitle(
             from: playback.originalURL ?? playback.backingURL ?? playback.mediaURL ?? playback.videoURL,
             fallback: source.suggestedTitle
@@ -95,13 +131,10 @@ enum KaraokePackageScanner {
 
         var assets: [PackageAsset] = []
         for case let fileURL as URL in enumerator {
-            if fileURL.lastPathComponent == manifestFileName {
+            if [manifestFileName, electronManifestFileName, "recording.json"].contains(fileURL.lastPathComponent) {
                 continue
             }
             let role = classify(fileURL)
-            if role == .vocalStem {
-                continue
-            }
             assets.append(PackageAsset(url: fileURL, role: role))
         }
 
@@ -113,16 +146,27 @@ enum KaraokePackageScanner {
         }
     }
 
-    private static func buildPlaybackBundle(from assets: [PackageAsset]) -> PlaybackBundle {
+    private static func buildPlaybackBundle(from assets: [PackageAsset], source: KaraokeSource) -> PlaybackBundle {
         let video = firstAsset(in: assets, roles: [.videoPreview])
         let backing = firstAsset(in: assets, roles: [.backingStem])
-        let original = firstAsset(in: assets, roles: [.originalAudio])
+        var original = firstAsset(in: assets, roles: [.originalAudio])
+        var resolvedVideo = video
         let vocal = firstAsset(in: assets, roles: [.vocalStem])
         let lyrics = firstAsset(in: assets, roles: [.lyrics, .jsonTiming, .subtitle])
 
+        if case .localFile(let localURL) = source,
+           FileManager.default.fileExists(atPath: localURL.path) {
+            let ext = localURL.pathExtension.lowercased()
+            if ["mp4", "mov", "m4v"].contains(ext), resolvedVideo == nil {
+                resolvedVideo = localURL
+            } else if ["mp3", "m4a", "wav", "flac", "aac", "ogg", "opus", "aiff"].contains(ext), original == nil {
+                original = localURL
+            }
+        }
+
         return PlaybackBundle(
-            mediaURL: backing ?? original ?? video,
-            videoURL: video,
+            mediaURL: backing ?? original ?? resolvedVideo,
+            videoURL: resolvedVideo,
             lyricURL: lyrics,
             originalURL: original,
             backingURL: backing,
@@ -134,6 +178,18 @@ enum KaraokePackageScanner {
         for role in roles {
             if let asset = assets.first(where: { $0.role == role }) {
                 return asset.url
+            }
+        }
+        return nil
+    }
+
+    private static func readLooseManifest(in folderURL: URL) -> LooseManifest? {
+        let decoder = JSONDecoder()
+        for name in [manifestFileName, electronManifestFileName] {
+            let url = folderURL.appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: url) else { continue }
+            if let manifest = try? decoder.decode(LooseManifest.self, from: data) {
+                return manifest
             }
         }
         return nil

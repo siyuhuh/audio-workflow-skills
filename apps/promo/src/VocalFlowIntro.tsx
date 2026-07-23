@@ -287,7 +287,7 @@ function CtaScene() {
               fontWeight: 600,
             }}
           >
-            github.com/gottaegbert/audio-workflow-skills
+            github.com/siyuhuh/audio-workflow-skills
           </div>
         </div>
       </AbsoluteFill>

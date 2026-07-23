@@ -107,6 +107,23 @@
     "autoNext": "Auto next",
     "phoneRequest": "Phone request"
   },
+  "recording": {
+    "record": "Record",
+    "start": "Start recording",
+    "stop": "Stop and save recording",
+    "startHint": "Starts a three-second countdown, restarts the song, and records your microphone.",
+    "getReady": "Get ready",
+    "cancel": "Cancel",
+    "preparing": "Preparing mic…",
+    "live": "Recording",
+    "saving": "Saving…",
+    "savedMix": "Vocal WAV and music mix saved.",
+    "savedVocal": "Vocal WAV saved.",
+    "openFolder": "Open recording folder",
+    "unavailable": "Microphone recording is unavailable in this environment.",
+    "captureFailed": "The microphone recording failed.",
+    "saveFailed": "The recording could not be saved."
+  },
   "lyricsEditor": {
     "button": "Lyrics",
     "title": "Lyric Sync",

@@ -1,217 +1,145 @@
-# VocalFlow Studio
+# VocalFlow
 
 English | [中文](README.zh-CN.md)
 
-VocalFlow Studio is a desktop and CLI toolkit for singing practice, video subtitles, and vocal separation. It accepts YouTube, Bilibili, and other `yt-dlp` supported media URLs, plus local audio files, video files, and UVR vocal stems.
+VocalFlow turns YouTube, Bilibili, local media, and existing vocal stems into a portable karaoke package: MV, original audio, backing track, vocal stem, and word-synced lyrics. The same package can be played in the native Mac Room, VocalFlow Studio, or the iPhone client.
 
 ## Download
 
-Latest release: [v0.1.8](https://github.com/gottaegbert/audio-workflow-skills/releases/tag/v0.1.8)
+Current beta: [v0.8.0-beta.1 releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.1)
 
-- [Download for macOS Apple Silicon (.dmg)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.8/VocalFlow-0.1.8-mac-arm64.dmg)
-- [Download for Windows x64 (.exe)](https://github.com/gottaegbert/audio-workflow-skills/releases/download/v0.1.8/VocalFlow-0.1.8-win-x64.exe)
+| App | Use it for | Distribution |
+| --- | --- | --- |
+| **VocalFlow for Mac** | Recommended Apple Silicon karaoke client: native Room, full-screen stage, recording, Mac mini Agent | One `.dmg` |
+| **VocalFlow Studio** | Cross-platform creation/review workflow with the Electron Room | macOS `.dmg`, Windows `.exe` |
+| **VocalFlow for iPhone** | Offline playback in the car or away from the Mac; local import and private Agent downloads | TestFlight workflow / Xcode beta |
+| **VocalFlow Agent** | Private processing on a Mac mini for the iPhone client | Included in the native Mac app |
 
-The desktop app includes the `audio-subtitles` script, a bundled Python runtime, and bundled ffmpeg. On first use, it creates a local runtime in the user's app data directory and installs the Python packages needed for URL downloads, local transcription, and optional vocal separation. The first run needs internet access.
+The beta release workflow builds ad-hoc/unsigned test installers when Apple distribution credentials are unavailable. A public macOS release without Gatekeeper warnings requires a Developer ID Application certificate and notarization. TestFlight requires an Apple Distribution/App Store Connect setup.
 
-## What's New in v0.1.8
+## Does the user need to download models?
 
-- New project logo / app icon from the Foundations brand mark (olive canvas + sage monogram), used for macOS/Windows installers and in-app header + intro splash.
-- Room setlist / Library resource cards and denser list chrome continue the sage industrial instrument language.
+For the default desktop workflow, no separate setup is required. Release installers contain:
 
-## Use Cases
+- Standalone Python 3.12 and the required Python packages.
+- `ffmpeg` and `yt-dlp`.
+- `faster-whisper-small` for local lyric timing.
+- `UVR-MDX-NET-Inst_HQ_3.onnx` for vocal/backing separation.
+- The `audio-subtitles` processing scripts.
 
-### 1. Karaoke / Singing Practice Package
+The first transcription or separation may copy bundled model files into VocalFlow's writable application-data folder, but it does not download them again. Larger Whisper or separator models remain optional downloads. Media URLs still require network access to fetch the source video/audio.
 
-Use this when you want to paste a YouTube, Bilibili, or other media URL and generate practice-ready assets.
+The iPhone app deliberately does not contain Whisper, PyTorch, or separator models. It can:
 
-```bash
-audio-subtitles --separate --separator-format MP3 "https://www.bilibili.com/video/BV..."
-audio-subtitles --separate --separator-format MP3 "https://www.youtube.com/watch?v=..."
-```
+- Play an imported/downloaded package fully offline.
+- Import packages from Files, AirDrop, iCloud Drive, or Finder.
+- Ask a private Mac mini Agent to process a URL and download the result.
 
-Typical outputs:
+No public cloud server is required.
 
-- Vocal stem under `stems/`.
-- Instrumental / no-vocals stem under `stems/`.
-- `.lrc` synced lyrics.
-- `.srt` / `.vtt` subtitles.
-- `.txt` / `.json` for review and downstream processing.
+## Karaoke Room
 
-Notes:
+Both desktop Rooms support MV playback, adaptive aspect ratio, previous/current/next lyrics, word-level lyric sweep, queue controls, original/backing selection, and an immersive stage.
 
-- `--separate` separates vocals and instrumental first, then transcribes the vocal stem.
-- `--separator-format MP3` writes separated stems as MP3; the default is WAV.
-- YouTube usually uses platform subtitles or auto-subtitles first.
-- Bilibili falls back to local Whisper by default in `auto` mode when no platform subtitles are available.
+Performance recording is available in both native Mac and Electron:
 
-### 2. Video Subtitle Extraction
+- Three-second count-in.
+- Microphone take saved as WAV.
+- Share-ready music + vocal mix (`M4A` in native Mac; `M4A`, `MP3`, or `WAV` in Studio).
+- Recording metadata linked back to the song package.
+- Output under `~/Music/VocalFlow/Recordings`.
 
-Use this when you need subtitle files for CapCut, Premiere, DaVinci Resolve, Final Cut, subtitle tools, or web playback.
+Recording locks seeking, source switching, and queue navigation until the take stops so the exported mix stays aligned.
 
-Local video:
+## Private Mac mini + iPhone flow
 
-```bash
-audio-subtitles "/path/to/video.mp4"
-```
+1. Install VocalFlow on the Mac mini and open **Remote**.
+2. Click **Install Agent**.
+3. Pair the iPhone with the six-digit code over Bonjour (same Wi-Fi) or a private Tailscale URL.
+4. Submit a YouTube/Bilibili link from the iPhone.
+5. The Mac prepares the package while the phone can be locked or disconnected.
+6. Download the finished package to the iPhone and sing offline.
 
-Media URL:
+Agent jobs run one at a time and persist across restarts. Packages are stored under `~/Movies/VocalFlow/Remote`.
 
-```bash
-audio-subtitles "https://www.bilibili.com/video/BV..."
-audio-subtitles "https://www.youtube.com/watch?v=..."
-```
+## CLI
 
-Default behavior:
-
-- If `yt-dlp` exposes platform subtitles, VocalFlow downloads and converts them first.
-- If the URL is Bilibili and no platform subtitles are available, it falls back to local Whisper by default.
-- For other sites without platform subtitles, add `--local-fallback`.
-
-```bash
-audio-subtitles --local-fallback "https://example.com/video"
-```
-
-### 3. Existing Vocal Stems / UVR Output
-
-Use this when you already separated vocals with Ultimate Vocal Remover GUI or another tool.
+The CLI remains available for automation and custom model setups:
 
 ```bash
-audio-subtitles "/path/to/uvr-output-folder"
-audio-subtitles "/path/to/vocals.wav"
-```
-
-The tool prefers files named with markers such as `vocals`, `vocal`, `voice`, or `acapella`.
-
-### 4. MP3 Download Only
-
-`media-mp3` downloads audio from `yt-dlp` supported sites, including YouTube and Bilibili.
-
-```bash
-media-mp3 "https://www.bilibili.com/video/BV..."
-media-mp3 "https://www.youtube.com/watch?v=..."
-```
-
-The old `youtube-mp3` command remains available as a compatibility alias.
-
-## CLI Install
-
-```bash
-git clone https://github.com/gottaegbert/audio-workflow-skills.git
+git clone https://github.com/siyuhuh/audio-workflow-skills.git
 cd audio-workflow-skills
 ./install.sh
 ```
 
-Install runtime dependencies:
+Examples:
 
 ```bash
-# macOS
-HOMEBREW_NO_AUTO_UPDATE=1 brew install ffmpeg yt-dlp
-
-# local lyrics/subtitle recognition
-setup-audio-subtitles
-
-# optional vocals/instrumental separation
-setup-audio-separator
+audio-subtitles --separate --separator-format MP3 "https://www.bilibili.com/video/BV..."
+audio-subtitles --separate --separator-format MP3 "https://www.youtube.com/watch?v=..."
+audio-subtitles --subtitle-source local "/path/to/video.mp4"
+media-mp3 "https://www.youtube.com/watch?v=..."
 ```
 
-`setup-audio-separator` installs PyTorch and separation dependencies, so it is much larger than the transcription-only setup. Install it only when you need `audio-subtitles --separate`.
+Typical outputs include `stems/`, `.lrc`, `.json`, `.srt`, `.vtt`, and `.ass`.
 
-## Desktop App
+## Development
 
-From the repository root (pnpm workspace):
+Electron:
 
 ```bash
-./install.sh
 pnpm install
 pnpm dev
 ```
 
-The same scripts work from `apps/desktop` if you prefer `cd apps/desktop` first.
-
-The desktop app includes the `audio-subtitles` script, bundled Python, and bundled ffmpeg. It auto-installs Python packages on first use instead of requiring users to run CLI setup commands. It supports:
-
-- Pasting YouTube / Bilibili URLs.
-- Selecting local audio, video, or UVR output folders.
-- Platform subtitles first, local Whisper, and default Bilibili local fallback.
-- Optional vocals / instrumental separation.
-- Output directory, model, language, cookies, and output format settings.
-- Command preview, logs, and opening generated files.
-
-## Common Options
-
-Choose subtitle language:
+Native macOS:
 
 ```bash
-audio-subtitles --sub-langs "zh.*,en.*" "https://www.bilibili.com/video/BV..."
-audio-subtitles --language zh "/path/to/video.mp4"
+cd apps/mac/VocalFlowMini
+swift run VocalFlow
 ```
 
-Force local recognition:
+iPhone:
 
 ```bash
-audio-subtitles --subtitle-source local "https://www.bilibili.com/video/BV..."
-audio-subtitles --force-local "https://www.youtube.com/watch?v=..."
+cd apps/ios/VocalFlowMobile
+xcodegen generate
+open VocalFlowMobile.xcodeproj
 ```
 
-Use platform subtitles only:
+Build a local native Mac DMG:
 
 ```bash
-audio-subtitles --subtitle-source platform "https://www.youtube.com/watch?v=..."
+apps/mac/VocalFlowMini/scripts/build-dmg.sh release
 ```
 
-Save files elsewhere:
+Release maintainers populate the standalone runtime and model bundle before packaging:
 
 ```bash
-audio-subtitles --output-dir "/path/to/output" "/path/to/video.mp4"
+cd apps/desktop
+./scripts/prepare-bundled-runtime.sh
+./scripts/fetch-bundled-models.sh
 ```
 
-Use browser cookies when a site requires sign-in:
+Pushing a `v*` tag builds the native Mac DMG plus Electron macOS/Windows installers. The manual `iOS TestFlight` workflow requires the Apple signing secrets documented in [RELEASING.md](RELEASING.md).
 
-```bash
-audio-subtitles --browser chrome "https://www.bilibili.com/video/BV..."
-media-mp3 --browser chrome "https://www.bilibili.com/video/BV..."
-```
+## Package compatibility
 
-## Release DMG / EXE
-
-Maintainers can push a version tag to let GitHub Actions build desktop installers and upload them to a GitHub Release:
-
-```bash
-git tag v0.1.8
-git push origin v0.1.8
-```
-
-Release assets:
-
-- macOS: `.dmg`
-- Windows: `.exe`
-
-Note: the desktop app includes the `audio-subtitles` script, a bundled Python runtime, and bundled ffmpeg. It installs `yt-dlp`, `faster-whisper`, and optional `audio-separator[cpu]` into a local app runtime on first use.
-
-## Outputs
-
-- `.lrc`: synced lyrics.
-- `.srt`: video editors and subtitle tools.
-- `.vtt`: web playback.
-- `.txt`: timestamped text review.
-- `.json`: machine-readable cue data.
-- `stems/`: vocals and instrumental files when `--separate` is enabled.
+- Electron writes `manifest.json`.
+- Native Mac writes `vocalflow-package.json`.
+- Native Mac and iPhone discover either manifest and fall back to a safe media scan for older/loose folders.
+- Recording packages use the shared `recording.json` shape.
 
 ## Notes
 
-- Song transcription is harder than speech transcription; choruses, harmonies, reverb, and overlapping vocals often need manual cleanup.
-- A clean vocal stem usually improves lyric accuracy more than simply choosing a larger model.
+- Song transcription is harder than speech transcription; clean vocal stems often improve lyrics more than a larger model.
+- Use headphones for microphone monitoring to avoid feedback.
 - Only download or process media you have the right to use.
-- Browser cookies are login credentials; do not commit or share them.
+- Browser cookies are login credentials and must not be committed or shared.
+- Do not operate the app while driving. Prepare the queue before departure or let a passenger control playback.
 
 ## License
 
-Code is licensed under `AGPL-3.0-or-later` from this version forward. Versions already released under MIT remain available under the MIT terms that applied to those releases.
+Code is licensed under `AGPL-3.0-or-later`. The VocalFlow names, logos, icons, and product marks are not included in the code license.
 
-The names `VocalFlow` and `VocalFlow Studio`, plus logos, icons, product marks, and release artwork, are not licensed as part of the source code license. Commercial licensing, proprietary distribution, white-label builds, and enterprise use are available separately from the project owner.
-
-## More
-
-- Workflow notes: [docs/flow.md](docs/flow.md)
-- Desktop app product notes: [docs/desktop-app-prd.md](docs/desktop-app-prd.md)
-- Upstream tools: [yt-dlp](https://github.com/yt-dlp/yt-dlp), [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [audio-separator](https://pypi.org/project/audio-separator/), [Ultimate Vocal Remover GUI](https://github.com/Anjok07/ultimatevocalremovergui)
+More: [native Mac](apps/mac/VocalFlowMini/README.md) · [iPhone](apps/ios/VocalFlowMobile/README.md) · [Electron](apps/desktop/README.md) · [Agent](apps/mac/VocalFlowAgent/README.md)

@@ -1,7 +1,8 @@
 {
   "name": "@vocalflow/desktop",
-  "version": "0.1.8",
+  "version": "0.8.0-beta.1",
   "description": "Desktop app for generating vocal stems, karaoke assets, and subtitles with audio-subtitles.",
+  "author": "VocalFlow",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-or-later",
@@ -19,8 +20,8 @@
     "start": "electron ."
   },
   "build": {
-    "appId": "com.gottaegbert.vocalflow",
-    "productName": "VocalFlow",
+    "appId": "com.gottaegbert.vocalflow.studio",
+    "productName": "VocalFlow Studio",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
@@ -81,6 +82,12 @@
     "mac": {
       "category": "public.app-category.music",
       "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "VocalFlow Studio records your microphone when you start a karaoke performance recording."
+      },
       "target": [
         "dmg"
       ]

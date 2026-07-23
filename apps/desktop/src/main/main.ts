@@ -17,8 +17,13 @@ import type {
   JobResult,
   OutputFormat,
   PlaybackBundle,
+  RecordingExport,
+  RecordingPackage,
+  RecordingSaveResult,
+  RecordingTake,
   RoomQueueItem,
   RoomStatus,
+  SaveRecordingTakeRequest,
   SavedJobHistory,
   UrlMetadataPreview,
   UserSettings,
@@ -135,7 +140,6 @@ interface SamplePackageManifest {
 const runtimePackageChecks = {
   ytDlp: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('yt_dlp') else 1)",
   whisper: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('faster_whisper') else 1)",
-  whisperTimestamped: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('whisper_timestamped') else 1)",
   separator: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('audio_separator') else 1)",
   zhconv: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('zhconv') else 1)"
 };
@@ -143,7 +147,6 @@ const runtimePackageChecks = {
 const runtimePackages = {
   ytDlp: "yt-dlp",
   whisper: "faster-whisper",
-  whisperTimestamped: "whisper-timestamped",
   separator: "audio-separator[cpu]",
   zhconv: "zhconv"
 };
@@ -424,6 +427,17 @@ function registerIpcHandlers(): void {
     return history;
   });
 
+  ipcMain.handle("recording:list", (_event, sourceSongPackageId?: string) => {
+    const recordings = loadRecordingIndex();
+    return sourceSongPackageId
+      ? recordings.filter((recording) => recording.sourceSongPackageId === sourceSongPackageId)
+      : recordings;
+  });
+
+  ipcMain.handle("recording:save-take", async (_event, request: SaveRecordingTakeRequest) => {
+    return saveRecordingTake(request);
+  });
+
   ipcMain.handle("youtube:search", (_event, query: string, appendKaraoke: boolean) => {
     return runYoutubeSearch(String(query ?? ""), Boolean(appendKaraoke));
   });
@@ -652,7 +666,7 @@ function detectAndLinkUvr(): UvrDetectionPayload {
 
 /**
  * Resolve the writable HuggingFace cache directory used by all child
- * subprocesses (faster-whisper, whisper-timestamped, audio-separator).
+ * subprocesses (faster-whisper and audio-separator).
  * On first call we copy any bundled snapshot from `vendor/whisper-cache/`
  * into the user-data folder so faster-whisper doesn't try to write into
  * the read-only DMG bundle on macOS.
@@ -2400,6 +2414,255 @@ function removeHistoryById(historyId: string): SavedJobHistory[] {
   return history;
 }
 
+const MAX_RECORDING_CAPTURE_BYTES = 512 * 1024 * 1024;
+
+function recordingIndexFilePath(): string {
+  return path.join(app.getPath("userData"), "recordings.json");
+}
+
+function loadRecordingIndex(): RecordingPackage[] {
+  try {
+    if (!existsSync(recordingIndexFilePath())) {
+      return [];
+    }
+    const parsed = JSON.parse(readFileSync(recordingIndexFilePath(), "utf-8")) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(isRecordingPackage).slice(0, 500);
+  } catch {
+    return [];
+  }
+}
+
+function writeRecordingIndex(recordings: RecordingPackage[]): void {
+  mkdirSync(path.dirname(recordingIndexFilePath()), { recursive: true });
+  writeFileSync(recordingIndexFilePath(), JSON.stringify(recordings.slice(0, 500), null, 2), "utf-8");
+}
+
+function isRecordingPackage(value: unknown): value is RecordingPackage {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<RecordingPackage>;
+  return (
+    typeof candidate.id === "string" &&
+    candidate.packageType === "recordingPackage" &&
+    typeof candidate.sourceSongPackageId === "string" &&
+    typeof candidate.outputDir === "string" &&
+    Array.isArray(candidate.takes) &&
+    Array.isArray(candidate.exports)
+  );
+}
+
+function recordingCaptureBytes(data: Uint8Array): Uint8Array {
+  if (data instanceof Uint8Array) {
+    return data;
+  }
+  if (data && typeof data === "object" && "byteLength" in data) {
+    return new Uint8Array(data as ArrayBufferLike);
+  }
+  throw new Error("The microphone capture payload is invalid.");
+}
+
+function recordingCaptureExtension(mimeType: string): string {
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes("mp4") || normalized.includes("m4a")) {
+    return ".m4a";
+  }
+  if (normalized.includes("ogg")) {
+    return ".ogg";
+  }
+  return ".webm";
+}
+
+function recordingFfmpegExecutable(): string | null {
+  const bundledDir = bundledFfmpegDir();
+  if (bundledDir) {
+    const candidate = path.join(bundledDir, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return findExecutable(process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+}
+
+function selectRecordingMusicPath(entry: SavedJobHistory, preferBackingTrack: boolean): string | null {
+  const backing = entry.assets.find((asset) => asset.exists && asset.role === "backing" && mediaExtensions.has(path.extname(asset.path).toLowerCase()));
+  const original = entry.assets.find((asset) => asset.exists && asset.role === "original" && mediaExtensions.has(path.extname(asset.path).toLowerCase()));
+  const fallback = entry.playbackBundle.localAudioPath ?? entry.playbackBundle.localVideoPath;
+  const ordered = preferBackingTrack ? [backing?.path, original?.path, fallback] : [original?.path, fallback, backing?.path];
+  return ordered.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))) ?? null;
+}
+
+function recordingExportArguments(
+  musicPath: string,
+  vocalPath: string,
+  outputPath: string,
+  request: SaveRecordingTakeRequest
+): string[] {
+  const duration = Math.max(0.1, Math.min(4 * 60 * 60, request.duration));
+  const vocalGain = Math.max(0, Math.min(2, request.vocalGain));
+  const musicGain = Math.max(0, Math.min(2, request.musicGain));
+  const args = [
+    "-y",
+    "-i",
+    musicPath,
+    "-i",
+    vocalPath,
+    "-filter_complex",
+    `[0:a]volume=${musicGain.toFixed(3)}[music];[1:a]volume=${vocalGain.toFixed(3)}[vocal];[music][vocal]amix=inputs=2:duration=longest:dropout_transition=0,alimiter=limit=0.95[mix]`,
+    "-map",
+    "[mix]",
+    "-t",
+    duration.toFixed(3)
+  ];
+  switch (request.exportFormat) {
+    case "wav":
+      args.push("-c:a", "pcm_s24le");
+      break;
+    case "mp3":
+      args.push("-c:a", "libmp3lame", "-b:a", "256k");
+      break;
+    case "m4a":
+    default:
+      args.push("-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart");
+      break;
+  }
+  args.push(outputPath);
+  return args;
+}
+
+async function saveRecordingTake(request: SaveRecordingTakeRequest): Promise<RecordingSaveResult> {
+  const source = savedHistory.find((entry) => entry.id === request.sourceSongPackageId);
+  if (!source) {
+    throw new Error("The source song package is no longer in the local library.");
+  }
+
+  const bytes = recordingCaptureBytes(request.data);
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_RECORDING_CAPTURE_BYTES) {
+    throw new Error("The microphone capture is empty or exceeds the 512 MB safety limit.");
+  }
+  if (!Number.isFinite(request.duration) || request.duration <= 0) {
+    throw new Error("The microphone capture duration is invalid.");
+  }
+
+  const ffmpeg = recordingFfmpegExecutable();
+  if (!ffmpeg) {
+    throw new Error("VocalFlow could not find its bundled ffmpeg runtime. Reinstall the app and try again.");
+  }
+
+  const existingRecordings = loadRecordingIndex();
+  const sourceRecordings = existingRecordings.filter((recording) => recording.sourceSongPackageId === source.id);
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const id = randomUUID();
+  const takeNumber = sourceRecordings.reduce((count, recording) => count + recording.takes.length, 0) + 1;
+  const safeTitle = sanitizeOutputFolderLabel(source.title?.trim() || path.basename(source.outputDir) || "song");
+  const folderStamp = createdAt.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const outputDir = path.join(app.getPath("music"), "VocalFlow", "Recordings", safeTitle, `${folderStamp}-${id.slice(0, 8)}`);
+  const takesDir = path.join(outputDir, "takes");
+  const exportsDir = path.join(outputDir, "exports");
+  mkdirSync(takesDir, { recursive: true });
+  mkdirSync(exportsDir, { recursive: true });
+
+  const sourceCapturePath = path.join(takesDir, `capture-${id}${recordingCaptureExtension(request.mimeType)}`);
+  const rawTakePath = path.join(takesDir, `take-${String(takeNumber).padStart(2, "0")}-vocal.wav`);
+  await writeFile(sourceCapturePath, bytes);
+
+  try {
+    await runRuntimeCommand(
+      ffmpeg,
+      ["-y", "-i", sourceCapturePath, "-map", "0:a:0", "-ac", "1", "-ar", "48000", "-c:a", "pcm_s24le", rawTakePath],
+      process.env,
+      () => {}
+    );
+  } catch (error) {
+    rmSync(outputDir, { recursive: true, force: true });
+    throw new Error(`Could not convert the microphone take to WAV. ${error instanceof Error ? error.message : error}`);
+  } finally {
+    rmSync(sourceCapturePath, { force: true });
+  }
+
+  const recordingPackageId = `recording:${id}`;
+  const take: RecordingTake = {
+    id: `take:${randomUUID()}`,
+    recordingPackageId,
+    sourceSongPackageId: source.id,
+    createdAt,
+    updatedAt: createdAt,
+    title: `Take ${String(takeNumber).padStart(2, "0")}`,
+    path: rawTakePath,
+    mimeType: "audio/wav",
+    duration: request.duration,
+    deviceId: request.deviceId ?? null,
+    deviceLabel: request.deviceLabel ?? null,
+    status: "complete"
+  };
+
+  let mixExport: RecordingExport | null = null;
+  let warning: string | null = null;
+  const musicPath = selectRecordingMusicPath(source, request.preferBackingTrack);
+  if (musicPath) {
+    const extension = request.exportFormat === "m4a" ? "m4a" : request.exportFormat;
+    const mixPath = path.join(exportsDir, `take-${String(takeNumber).padStart(2, "0")}-mix.${extension}`);
+    try {
+      await runRuntimeCommand(
+        ffmpeg,
+        recordingExportArguments(musicPath, rawTakePath, mixPath, request),
+        process.env,
+        () => {}
+      );
+      mixExport = {
+        id: `export:${randomUUID()}`,
+        recordingPackageId,
+        takeId: take.id,
+        createdAt,
+        path: mixPath,
+        format: request.exportFormat,
+        duration: request.duration
+      };
+    } catch (error) {
+      warning = `The vocal WAV was saved, but the music mix could not be rendered. ${error instanceof Error ? error.message : error}`;
+    }
+  } else {
+    warning = "The vocal WAV was saved. This song has no local backing/original track, so a music mix was not rendered.";
+  }
+
+  const recordingPackage: RecordingPackage = {
+    id: recordingPackageId,
+    packageType: "recordingPackage",
+    sourceSongPackageId: source.id,
+    title: `${source.title?.trim() || "Untitled song"} — ${take.title}`,
+    createdAt,
+    updatedAt: createdAt,
+    outputDir,
+    takes: [take],
+    mix: {
+      activeTakeId: take.id,
+      vocalGain: Math.max(0, Math.min(2, request.vocalGain)),
+      musicGain: Math.max(0, Math.min(2, request.musicGain)),
+      preferBackingTrack: request.preferBackingTrack,
+      exportFormat: request.exportFormat
+    },
+    exports: mixExport ? [mixExport] : []
+  };
+
+  writeFileSync(path.join(outputDir, "recording.json"), JSON.stringify(recordingPackage, null, 2), "utf-8");
+  writeRecordingIndex([recordingPackage, ...existingRecordings]);
+
+  const sourceManifest = readPackageManifest(source.outputDir);
+  if (sourceManifest && sourceManifest.packageId === source.id) {
+    writePackageManifest(source.outputDir, {
+      ...sourceManifest,
+      updatedAt: createdAt,
+      recordings: [recordingPackage, ...(sourceManifest.recordings ?? []).filter((recording) => recording.id !== recordingPackage.id)]
+    });
+  }
+
+  return { recordingPackage, take, mixExport, warning };
+}
+
 function writeHistoryFile(): void {
   mkdirSync(path.dirname(historyFilePath()), { recursive: true });
   writeFileSync(historyFilePath(), JSON.stringify(savedHistory, null, 2), "utf-8");
@@ -2830,7 +3093,9 @@ function buildCommandPreview(options: JobOptions, runtime?: PreparedRuntime): Co
 }
 
 async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promise<PreparedRuntime> {
+  const bundledPython = bundledPythonInvocation();
   const pathDirs = [
+    bundledPython ? path.dirname(bundledPython.command) : null,
     venvBinDir(runtimeVenvDir()),
     bundledFfmpegDir(),
     path.join(homedir(), ".local", "bin"),
@@ -2845,11 +3110,31 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
     return { env };
   }
 
-  const basePython = bundledPythonInvocation() ?? pythonInvocation();
+  const basePython = bundledPython ?? pythonInvocation();
   if (!basePython) {
     throw new Error(
       "VocalFlow could not find Python. Reinstall the app and try again; the installer should include a bundled Python runtime."
     );
+  }
+
+  if (app.isPackaged && bundledPython) {
+    const bundledEnv = withHuggingFaceEnv(
+      withPath(
+        {
+          ...env,
+          AUDIO_SUBTITLES_PYTHON: bundledPython.command,
+          PYTHONNOUSERSITE: "1",
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+        },
+        pathDirs
+      )
+    );
+    const bundledMissing = await missingRuntimePackages(bundledPython.command, needs, bundledEnv);
+    if (bundledMissing.length === 0) {
+      log("[runtime] Using complete offline runtime bundled with VocalFlow Studio.\n");
+      return { env: bundledEnv, python: bundledPython };
+    }
+    log(`[runtime] Bundled runtime is incomplete (${bundledMissing.join(", ")}); preparing a repair environment.\n`);
   }
 
   const venvDir = runtimeVenvDir();
@@ -2884,22 +3169,7 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
     await ensurePip(venvPython, runtimeEnv, log);
   }
 
-  const missingPackages: string[] = [];
-  if (needs.ytDlp && !(await pythonCheck(venvPython, runtimePackageChecks.ytDlp, runtimeEnv))) {
-    missingPackages.push(runtimePackages.ytDlp);
-  }
-  if (needs.whisper && !(await pythonCheck(venvPython, runtimePackageChecks.whisper, runtimeEnv))) {
-    missingPackages.push(runtimePackages.whisper);
-  }
-  if (needs.whisper && !(await pythonCheck(venvPython, runtimePackageChecks.whisperTimestamped, runtimeEnv))) {
-    missingPackages.push(runtimePackages.whisperTimestamped);
-  }
-  if (needs.separator && !(await pythonCheck(venvPython, runtimePackageChecks.separator, runtimeEnv))) {
-    missingPackages.push(runtimePackages.separator);
-  }
-  if (needs.zhconv && !(await pythonCheck(venvPython, runtimePackageChecks.zhconv, runtimeEnv))) {
-    missingPackages.push(runtimePackages.zhconv);
-  }
+  const missingPackages = await missingRuntimePackages(venvPython, needs, runtimeEnv);
 
   if (missingPackages.length > 0) {
     log(`[runtime] Installing ${missingPackages.join(", ")}. First run may take several minutes.\n`);
@@ -2909,6 +3179,27 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
 
   log("[runtime] Runtime ready.\n");
   return { env: runtimeEnv, python: venvPythonInvocation };
+}
+
+async function missingRuntimePackages(
+  python: string,
+  needs: RuntimeNeeds,
+  env: NodeJS.ProcessEnv
+): Promise<string[]> {
+  const missingPackages: string[] = [];
+  if (needs.ytDlp && !(await pythonCheck(python, runtimePackageChecks.ytDlp, env))) {
+    missingPackages.push(runtimePackages.ytDlp);
+  }
+  if (needs.whisper && !(await pythonCheck(python, runtimePackageChecks.whisper, env))) {
+    missingPackages.push(runtimePackages.whisper);
+  }
+  if (needs.separator && !(await pythonCheck(python, runtimePackageChecks.separator, env))) {
+    missingPackages.push(runtimePackages.separator);
+  }
+  if (needs.zhconv && !(await pythonCheck(python, runtimePackageChecks.zhconv, env))) {
+    missingPackages.push(runtimePackages.zhconv);
+  }
+  return missingPackages;
 }
 
 const YOUTUBE_SEARCH_PLACEHOLDER_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
@@ -2927,7 +3218,7 @@ function ytdlpSearchPlaceholderOptions(): JobOptions {
     saveAudio: false,
     keepPlatformSubs: false,
     simplifiedChinese: false,
-    model: "medium",
+    model: "small",
     language: "",
     subLangs: "",
     browser: "",
@@ -3358,7 +3649,7 @@ function withPath(baseEnv: NodeJS.ProcessEnv, pathDirs: string[]): NodeJS.Proces
  * Inject the user's HuggingFace settings into the child env:
  *
  * - `HF_TOKEN` + `HUGGING_FACE_HUB_TOKEN` — when set, every downstream
- *   tool (audio-separator, faster-whisper, whisper-timestamped) downloads
+ *   tool (audio-separator or faster-whisper) downloads
  *   with authenticated rate limits instead of the anonymous ~10 req/min.
  * - `HF_ENDPOINT` — when set, all `huggingface_hub` clients route through
  *   the chosen host (e.g. `https://hf-mirror.com` for mainland China).
@@ -3539,14 +3830,9 @@ function formatSpawnError(error: Error, command: string): string {
 /**
  * Choose the local transcription engine for a given Whisper model.
  *
- * - `large-v3-turbo` (and other "turbo" / "v3-turbo" variants): always
- *   `faster_whisper`. The CTranslate2 backend is dramatically faster on
- *   these models and turbo's word-alignment quality through
- *   `whisper-timestamped` is no better than faster-whisper's native one.
- * - Everything else: keep `auto` (prefers `whisper-timestamped` for
- *   precise word boundaries; falls back to `faster_whisper` if missing).
- *
- * Centralized so the renderer never sets `--word-engine` directly.
+ * All supported models use `faster_whisper`: the CTranslate2 backend keeps
+ * the release runtime smaller and provides native word timing without a
+ * second Whisper implementation.
  */
 function pickWordEngine(_model: string): "faster_whisper" {
   return "faster_whisper";
@@ -3566,11 +3852,10 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
   }
 
   args.push("--subtitle-source", options.subtitleSource);
-  const modelArg = options.model || "medium";
+  const modelArg = options.model || "small";
   args.push("--model", modelArg);
   args.push("--formats", formats.join(","));
-  // Desktop jobs should prioritize responsiveness. faster-whisper avoids the
-  // slow whisper-timestamped alignment path while still producing word timing.
+  // Desktop jobs prioritize responsiveness while preserving word timing.
   args.push("--word-engine", pickWordEngine(modelArg));
 
   if (options.language.trim()) {
