@@ -6,7 +6,7 @@ VocalFlow 可以把 YouTube、Bilibili、本地视频/音频或已有的人声 s
 
 ## 下载
 
-当前测试版：[v0.8.0-beta.1 Releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.1)
+当前测试版：[v0.8.0-beta.2 Releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.2)
 
 | 客户端 | 适合什么场景 | 交付方式 |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ VocalFlow 可以把 YouTube、Bilibili、本地视频/音频或已有的人声 s
 - 用于人声/伴奏分离的 `UVR-MDX-NET-Inst_HQ_3.onnx`。
 - `audio-subtitles` 处理脚本。
 
-第一次识别或分离时，App 可能会把只读安装包里的模型复制到可写的应用数据目录，但不会再次联网下载。更大的 Whisper 或 separator 模型仍是可选下载。处理网站链接当然仍需联网获取原始视频/音频。
+桌面 App 会直接读取安装包内的默认 Whisper 模型，并在需要时把小型分离模型写入应用数据目录；两者都不会再次联网下载。安装 Mac mini Agent 时会把内置默认模型复制到 Agent 的应用数据目录。更大的 Whisper 或 separator 模型仍是可选下载。处理网站链接当然仍需联网获取原始视频/音频。
 
 iPhone 不会打包 Whisper、PyTorch 或分离模型。它可以：
 
@@ -129,6 +129,13 @@ cd apps/desktop
 - Mac 原生写入 `vocalflow-package.json`。
 - Mac 原生与 iPhone 都会识别两种清单，老文件夹或松散素材则安全回退到媒体扫描。
 - 录音统一使用 `recording.json` 数据结构。
+
+## 下一版优先级
+
+1. 配好 Developer ID 签名、notarization 和首次安装引导，让公开 DMG 不再需要绕过 Gatekeeper。
+2. 配置 App Store Connect secrets，用现有 TestFlight 工作流在真机 iPhone 上发布测试版。
+3. 增加签名自动更新，并为可选大模型提供断点续传和清晰的磁盘占用提示。
+4. 做一次由乘客操作的车内可用性测试：离线包下载、提前排队、音频路由、来电/断网恢复和大触控目标。
 
 ## 注意
 

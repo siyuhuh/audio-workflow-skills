@@ -48,6 +48,6 @@ Build an ad-hoc local app/DMG:
 open dist/VocalFlow.app
 ```
 
-Release CI first prepares `apps/desktop/vendor/python-runtime`, `separator-models`, and `whisper-cache`; `build-app.sh` copies them into the native bundle. A source checkout without those release assets can still use an installed CLI/runtime for development.
+Release CI first prepares `apps/desktop/vendor/python-runtime`, `separator-models`, and `whisper-models`; `build-app.sh` copies them into the native bundle. The default Whisper model is read directly from the app, while optional models use a writable app-managed cache. A source checkout without those release assets can still use an installed CLI/runtime for development.
 
 Public DMG distribution requires Developer ID signing and notarization. See [RELEASING.md](../../../RELEASING.md).

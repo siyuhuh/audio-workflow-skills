@@ -46,11 +46,11 @@ if [[ -d "$separator_source" ]]; then
   cp -Rn "$separator_source/" "$separator_target/"
 fi
 
-whisper_source="$resources_dir/whisper-cache"
-whisper_target="$HOME/Library/Application Support/VocalFlow/hf-cache"
-if [[ -d "$whisper_source" && ! -d "$whisper_target/hub" ]]; then
+whisper_source="$resources_dir/whisper-models"
+whisper_target="$HOME/Library/Application Support/VocalFlow/whisper-models"
+if [[ -d "$whisper_source" && ! -f "$whisper_target/small/model.bin" ]]; then
   mkdir -p "$whisper_target"
-  cp -R "$whisper_source/" "$whisper_target/"
+  cp -Rn "$whisper_source/" "$whisper_target/"
 fi
 
 "$python" - "$target" "$label" "$python" "$install_dir" "$logs_dir" "$resources_dir" <<'PY'
@@ -83,8 +83,12 @@ payload = {
             "/bin",
         ]),
         "VOCALFLOW_AUDIO_SUBTITLES": str(Path(install_dir) / "generate_subtitles.py"),
+        "VOCALFLOW_WHISPER_MODEL_DIR": str(
+            Path.home() / "Library/Application Support/VocalFlow/whisper-models"
+        ),
         "HF_HOME": str(Path.home() / "Library/Application Support/VocalFlow/hf-cache"),
         "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
     },
     "StandardOutPath": str(Path(logs_dir) / "agent.log"),
     "StandardErrorPath": str(Path(logs_dir) / "agent-error.log"),

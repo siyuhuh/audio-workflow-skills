@@ -1,6 +1,6 @@
 {
   "name": "@vocalflow/desktop",
-  "version": "0.8.0-beta.1",
+  "version": "0.8.0-beta.2",
   "description": "Desktop app for generating vocal stems, karaoke assets, and subtitles with audio-subtitles.",
   "author": "VocalFlow",
   "private": true,
@@ -72,8 +72,8 @@
         ]
       },
       {
-        "from": "vendor/whisper-cache",
-        "to": "whisper-cache",
+        "from": "vendor/whisper-models",
+        "to": "whisper-models",
         "filter": [
           "**/*"
         ]

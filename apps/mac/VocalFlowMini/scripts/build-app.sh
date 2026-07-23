@@ -55,7 +55,7 @@ elif [[ "${REQUIRE_BUNDLED_RUNTIME:-0}" == "1" ]]; then
 fi
 
 separator_source="$repo_root/apps/desktop/vendor/separator-models"
-whisper_source="$repo_root/apps/desktop/vendor/whisper-cache"
+whisper_source="$repo_root/apps/desktop/vendor/whisper-models"
 if [[ -d "$separator_source" ]]; then
   cp -R "$separator_source" "$resources/separator-models"
 elif [[ "${REQUIRE_BUNDLED_RUNTIME:-0}" == "1" ]]; then
@@ -63,7 +63,7 @@ elif [[ "${REQUIRE_BUNDLED_RUNTIME:-0}" == "1" ]]; then
   exit 1
 fi
 if [[ -d "$whisper_source" ]]; then
-  cp -R "$whisper_source" "$resources/whisper-cache"
+  cp -R "$whisper_source" "$resources/whisper-models"
 elif [[ "${REQUIRE_BUNDLED_RUNTIME:-0}" == "1" ]]; then
   echo "[fatal] Bundled Whisper model is missing." >&2
   exit 1

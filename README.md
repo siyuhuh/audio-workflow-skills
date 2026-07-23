@@ -6,7 +6,7 @@ VocalFlow turns YouTube, Bilibili, local media, and existing vocal stems into a 
 
 ## Download
 
-Current beta: [v0.8.0-beta.1 releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.1)
+Current beta: [v0.8.0-beta.2 releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.2)
 
 | App | Use it for | Distribution |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ For the default desktop workflow, no separate setup is required. Release install
 - `UVR-MDX-NET-Inst_HQ_3.onnx` for vocal/backing separation.
 - The `audio-subtitles` processing scripts.
 
-The first transcription or separation may copy bundled model files into VocalFlow's writable application-data folder, but it does not download them again. Larger Whisper or separator models remain optional downloads. Media URLs still require network access to fetch the source video/audio.
+The desktop apps read the default Whisper model directly from the installer and seed the small separator weight locally when needed; they do not download either default model again. The Mac mini Agent copies the bundled defaults into its application-data folder when installed. Larger Whisper or separator models remain optional downloads. Media URLs still require network access to fetch the source video/audio.
 
 The iPhone app deliberately does not contain Whisper, PyTorch, or separator models. It can:
 
@@ -129,6 +129,13 @@ Pushing a `v*` tag builds the native Mac DMG plus Electron macOS/Windows install
 - Native Mac writes `vocalflow-package.json`.
 - Native Mac and iPhone discover either manifest and fall back to a safe media scan for older/loose folders.
 - Recording packages use the shared `recording.json` shape.
+
+## Next release priorities
+
+1. Add Developer ID signing, notarization, and a first-launch installation guide so the public DMG opens without Gatekeeper workarounds.
+2. Configure the App Store Connect secrets and run the existing TestFlight workflow on physical iPhones.
+3. Add signed auto-update plus resumable optional-model downloads with visible disk-space estimates.
+4. Run a passenger-operated in-car usability test: offline package download, queue preparation, audio routing, interruption recovery, and large touch targets.
 
 ## Notes
 

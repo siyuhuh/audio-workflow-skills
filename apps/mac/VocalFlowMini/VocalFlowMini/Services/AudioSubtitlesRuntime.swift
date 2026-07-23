@@ -187,10 +187,14 @@ struct AudioSubtitlesRuntime {
         ]
         environment["PATH"] = pathParts.filter { !$0.isEmpty }.joined(separator: ":")
         environment["PYTHONNOUSERSITE"] = "1"
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
         environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
         environment["HF_HUB_DISABLE_TELEMETRY"] = "1"
         if let hfHome = writableHuggingFaceHome() {
             environment["HF_HOME"] = hfHome.path
+        }
+        if let whisperModels = bundledWhisperModelsDirectory() {
+            environment["VOCALFLOW_WHISPER_MODEL_DIR"] = whisperModels.path
         }
         return environment
     }
@@ -302,30 +306,19 @@ struct AudioSubtitlesRuntime {
 
         do {
             try fileManager.createDirectory(at: target, withIntermediateDirectories: true)
-            guard let resources = Bundle.main.resourceURL else { return target }
-            let bundledHub = resources
-                .appendingPathComponent("whisper-cache", isDirectory: true)
-                .appendingPathComponent("hub", isDirectory: true)
-            guard let children = try? fileManager.contentsOfDirectory(
-                at: bundledHub,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) else {
-                return target
-            }
-
-            let targetHub = target.appendingPathComponent("hub", isDirectory: true)
-            try fileManager.createDirectory(at: targetHub, withIntermediateDirectories: true)
-            for source in children where source.lastPathComponent.hasPrefix("models--") {
-                let destination = targetHub.appendingPathComponent(source.lastPathComponent, isDirectory: true)
-                if !fileManager.fileExists(atPath: destination.path) {
-                    try? fileManager.copyItem(at: source, to: destination)
-                }
-            }
             return target
         } catch {
             return nil
         }
+    }
+
+    private static func bundledWhisperModelsDirectory() -> URL? {
+        guard let root = Bundle.main.resourceURL?
+            .appendingPathComponent("whisper-models", isDirectory: true),
+              FileManager.default.fileExists(atPath: root.path) else {
+            return nil
+        }
+        return root
     }
 
     private static func bundledScriptURL() -> URL? {

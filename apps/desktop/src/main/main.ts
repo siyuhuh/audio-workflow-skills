@@ -56,10 +56,8 @@ import {
 } from "./lib/uvrDetect.js";
 import {
   bundledSeparatorModelsDir,
-  bundledWhisperHfHomeDir,
-  dirSizeBytes,
-  seedBundledSeparator,
-  seedBundledWhisperCache
+  bundledWhisperModelsDir,
+  seedBundledSeparator
 } from "./lib/bundledModels.js";
 
 type JobFailedEvent = Extract<JobEvent, { kind: "failed" }>;
@@ -665,11 +663,9 @@ function detectAndLinkUvr(): UvrDetectionPayload {
 }
 
 /**
- * Resolve the writable HuggingFace cache directory used by all child
- * subprocesses (faster-whisper and audio-separator).
- * On first call we copy any bundled snapshot from `vendor/whisper-cache/`
- * into the user-data folder so faster-whisper doesn't try to write into
- * the read-only DMG bundle on macOS.
+ * Resolve the writable Hugging Face cache directory used for optional models.
+ * The default model is read directly from `whisper-models/`; this cache only
+ * receives models the user explicitly selects later.
  */
 let cachedHfHomeDir: string | null | undefined;
 function ensureHfHomeDir(): string | null {
@@ -682,24 +678,6 @@ function ensureHfHomeDir(): string | null {
   } catch {
     cachedHfHomeDir = null;
     return null;
-  }
-
-  const bundle = bundledWhisperHfHomeDir({
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath
-  });
-  if (bundle) {
-    try {
-      const result = seedBundledWhisperCache(bundle, target);
-      if (result.copied) {
-        const sizeMb = (dirSizeBytes(target) / 1024 / 1024).toFixed(0);
-        console.log(`[whisper] Seeded bundled cache into ${target} (${sizeMb} MB)`);
-      }
-    } catch (error) {
-      console.warn(
-        `[whisper] Failed to seed bundled cache from ${bundle}: ${error instanceof Error ? error.message : error}`
-      );
-    }
   }
 
   cachedHfHomeDir = target;
@@ -3124,6 +3102,7 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
           ...env,
           AUDIO_SUBTITLES_PYTHON: bundledPython.command,
           PYTHONNOUSERSITE: "1",
+          PYTHONDONTWRITEBYTECODE: "1",
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
         },
         pathDirs
@@ -3154,6 +3133,7 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
         AUDIO_SUBTITLES_PYTHON: venvPython,
         AUDIO_SUBTITLES_VENV: venvDir,
         PYTHONNOUSERSITE: "1",
+        PYTHONDONTWRITEBYTECODE: "1",
         PIP_DISABLE_PIP_VERSION_CHECK: "1"
       },
       pathDirs
@@ -3669,17 +3649,17 @@ function withHuggingFaceEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   if (endpoint && /^https?:\/\//i.test(endpoint)) {
     next.HF_ENDPOINT = endpoint;
   }
-  // Always pin `HF_HOME` to a writable user-data folder. When the
-  // packaged build ships a pre-downloaded faster-whisper snapshot under
-  // `vendor/whisper-cache/`, `ensureHfHomeDir()` copies it in once so
-  // `WhisperModel(<repo>)` finds the model on first run without any HF
-  // network traffic. On `pnpm dev` the bundle is empty and faster-whisper
-  // falls back to its normal HF download path — but it now always writes
-  // into our app-managed cache instead of the user's `~/.cache/huggingface/`,
-  // so re-downloads after model upgrades stay scoped to this app.
+  // Always pin optional downloads to a writable app-managed cache.
   const hfHome = ensureHfHomeDir();
   if (hfHome) {
     next.HF_HOME = hfHome;
+  }
+  const bundledModels = bundledWhisperModelsDir({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath
+  });
+  if (bundledModels) {
+    next.VOCALFLOW_WHISPER_MODEL_DIR = bundledModels;
   }
   return next;
 }

@@ -12,8 +12,12 @@ falls back to the regular UVR-detect / HuggingFace download flow.
 vendor/
 ├── python-runtime/        # Relocatable standalone Python + production packages
 ├── separator-models/      # Bundled vocal-separator weights
-└── whisper-cache/         # Bundled HF Hub cache for faster-whisper
-    └── hub/models--<org>--<repo>/...
+└── whisper-models/        # Direct faster-whisper model directories
+    └── small/
+        ├── config.json
+        ├── model.bin
+        ├── tokenizer.json
+        └── vocabulary.txt
 ```
 
 ## Populating the bundles
@@ -25,10 +29,10 @@ After extracting python-build-standalone into `python-runtime/`, run:
 ./scripts/fetch-bundled-models.sh
 ```
 
-Defaults (~310 MB):
+Defaults (~530 MB):
 
-* `vendor/separator-models/UVR-MDX-NET-Inst_HQ_3.onnx` (~50 MB)
-* `vendor/whisper-cache/hub/models--Systran--faster-whisper-small/...` (~250 MB)
+* `vendor/separator-models/UVR-MDX-NET-Inst_HQ_3.onnx` (~64 MB)
+* `vendor/whisper-models/small/...` (~465 MB)
 
 Override via env vars:
 
@@ -41,17 +45,17 @@ SEPARATOR_MODEL=UVR-MDX-NET-Voc_FT.onnx WHISPER_MODEL=tiny ./scripts/fetch-bundl
 * On launch, `detectAndLinkUvr()` symlinks every bundled separator
   weight into the user-data shadow folder it shares with system UVR.
   `audio-separator` finds them via `--model_file_dir <shadow>`.
-* On first call, `ensureHfHomeDir()` copies `vendor/whisper-cache/hub/...`
-  into a writable user-data folder and pins `HF_HOME` there. Every CLI
-  subprocess inherits it via `withHuggingFaceEnv()`, so
-  `WhisperModel(<repo>)` resolves the bundled snapshot without hitting
-  HuggingFace.
+* The default faster-whisper model is read directly from
+  `vendor/whisper-models/small` through
+  `VOCALFLOW_WHISPER_MODEL_DIR`; no first-run copy and no duplicate
+  Hugging Face blob cache are required. `HF_HOME` remains a writable
+  app-managed folder for optional model downloads.
 
 The git-ignore at the repo root keeps the heavy binaries out of
 version control:
 
 ```
 apps/desktop/vendor/separator-models/
-apps/desktop/vendor/whisper-cache/
+apps/desktop/vendor/whisper-models/
 apps/desktop/vendor/python-runtime/*
 ```

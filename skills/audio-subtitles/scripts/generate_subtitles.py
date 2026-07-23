@@ -1314,6 +1314,25 @@ def should_preload_whisper(args: argparse.Namespace, is_url_input: bool) -> bool
     return False
 
 
+def resolve_faster_whisper_model(model_name: str) -> str:
+    """Use a directly bundled faster-whisper model when one is available."""
+    raw_root = os.environ.get("VOCALFLOW_WHISPER_MODEL_DIR", "").strip()
+    if not raw_root:
+        return model_name
+
+    root = Path(raw_root).expanduser()
+    # Only append a named child for simple model aliases such as "small".
+    # Explicit paths and repository identifiers keep their normal behavior.
+    if not model_name or Path(model_name).name != model_name or "/" in model_name:
+        return model_name
+    candidates = [root / model_name, root]
+
+    for candidate in candidates:
+        if (candidate / "model.bin").is_file() and (candidate / "config.json").is_file():
+            return str(candidate)
+    return model_name
+
+
 def _load_faster_whisper_model(args: argparse.Namespace) -> PreloadedWhisper:
     from faster_whisper import WhisperModel  # type: ignore[import-not-found]
 
@@ -1321,7 +1340,7 @@ def _load_faster_whisper_model(args: argparse.Namespace) -> PreloadedWhisper:
     compute_type = "int8" if args.compute_type == "auto" and device == "cpu" else args.compute_type
     if compute_type == "auto":
         compute_type = "float16" if device == "cuda" else "int8"
-    model = WhisperModel(args.model, device=device, compute_type=compute_type)
+    model = WhisperModel(resolve_faster_whisper_model(args.model), device=device, compute_type=compute_type)
     return PreloadedWhisper(engine="faster_whisper", model=model)
 
 
@@ -1515,7 +1534,7 @@ def transcribe_with_faster_whisper(
             ) from exc
 
         emit_progress("transcribe", progress=0.0, message=f"Loading faster-whisper model: {args.model}")
-        model = WhisperModel(args.model, device=device, compute_type=compute_type)
+        model = WhisperModel(resolve_faster_whisper_model(args.model), device=device, compute_type=compute_type)
     segments_iter, info = model.transcribe(
         str(audio_path),
         language=args.language,
