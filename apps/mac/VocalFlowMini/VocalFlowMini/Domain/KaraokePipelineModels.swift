@@ -42,7 +42,9 @@ enum SubtitleSource: String, CaseIterable, Codable, Identifiable {
         case .auto:
             return "auto"
         case .platform:
-            return "platform"
+            // `youtube` is the compatibility spelling accepted by both the
+            // bundled legacy CLI and the current CLI (where it aliases platform).
+            return "youtube"
         case .local:
             return "local"
         }

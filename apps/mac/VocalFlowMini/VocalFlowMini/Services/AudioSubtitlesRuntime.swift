@@ -94,22 +94,25 @@ struct AudioSubtitlesRuntime {
             return (runtime, diag)
         }
 
-        if let executable = findExecutable(named: "audio-subtitles", environment: environment) {
-            diag.append("[OK] Using standalone audio-subtitles at \(executable.path)")
+        // Source/debug builds do not have an app Resources directory. Prefer
+        // the script from the current checkout before a potentially stale
+        // globally installed `audio-subtitles` wrapper.
+        let script = findScript(diagnostics: &diag)
+        let python = findPython(diagnostics: &diag)
+        if let script, let python {
+            diag.append("[OK] Using python + project script mode.")
             let runtime = AudioSubtitlesRuntime(
-                invocation: .executable(executable),
+                invocation: .script(python: python, script: script),
                 environment: environment,
                 diagnostics: diag
             )
             return (runtime, diag)
         }
 
-        let script = findScript(diagnostics: &diag)
-        let python = findPython(diagnostics: &diag)
-        if let script, let python {
-            diag.append("[OK] Using python + script mode.")
+        if let executable = findExecutable(named: "audio-subtitles", environment: environment) {
+            diag.append("[OK] Using standalone audio-subtitles fallback at \(executable.path)")
             let runtime = AudioSubtitlesRuntime(
-                invocation: .script(python: python, script: script),
+                invocation: .executable(executable),
                 environment: environment,
                 diagnostics: diag
             )
@@ -196,7 +199,20 @@ struct AudioSubtitlesRuntime {
         if let whisperModels = bundledWhisperModelsDirectory() {
             environment["VOCALFLOW_WHISPER_MODEL_DIR"] = whisperModels.path
         }
+        environment["AUDIO_SEPARATOR_MODEL_DIR"] = separatorModelsDirectory().path
         return environment
+    }
+
+    private static func separatorModelsDirectory() -> URL {
+        let fileManager = FileManager.default
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        let target = appSupport
+            .appendingPathComponent("VocalFlow", isDirectory: true)
+            .appendingPathComponent("separator-models", isDirectory: true)
+        try? fileManager.createDirectory(at: target, withIntermediateDirectories: true)
+        return target
     }
 
     private static func findScript(diagnostics diag: inout [String]) -> URL? {

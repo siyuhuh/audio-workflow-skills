@@ -2091,7 +2091,17 @@ export default function App() {
             }
             return audioWorkflow.saveRecordingTake(request);
           }}
-          onOpenRecordingFolder={(targetPath) => audioWorkflow.openPath(targetPath)}
+          onListRecordings={(sourceSongPackageId) =>
+            audioWorkflow.listRecordings?.(sourceSongPackageId) ?? Promise.resolve([])
+          }
+          onGetRecordingMediaUrl={(targetPath) => {
+            if (!audioWorkflow.getRecordingMediaUrl) {
+              return Promise.reject(new Error("Recording preview is available in the installed desktop app."));
+            }
+            return audioWorkflow.getRecordingMediaUrl(targetPath);
+          }}
+          onOpenRecordingPath={(targetPath) => audioWorkflow.openPath(targetPath)}
+          onOpenRecordingRoot={() => audioWorkflow.openRecordingRoot?.()}
           onSplitVocals={splitActiveReview}
           onTrackRoleChange={setTrackRole}
           isRunning={isRunning}

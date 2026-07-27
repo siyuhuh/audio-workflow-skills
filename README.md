@@ -6,7 +6,7 @@ VocalFlow turns YouTube, Bilibili, local media, and existing vocal stems into a 
 
 ## Download
 
-Current beta: [v0.8.0-beta.2 releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.2)
+Current beta: [v0.8.0-beta.3 releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.3)
 
 | App | Use it for | Distribution |
 | --- | --- | --- |

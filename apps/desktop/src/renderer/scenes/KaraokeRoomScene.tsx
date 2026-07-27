@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import type {
   GeneratedAsset,
   PlaybackBundle,
+  RecordingPackage,
   RecordingSaveResult,
   RoomQueueItem,
   SavedJobHistory,
@@ -35,7 +36,7 @@ import { cn } from "../lib/cn";
 import type { Translator } from "../lib/types";
 
 type TrackRole = "original" | "backing" | "vocal" | "custom";
-type RoomTool = "mixer" | "style" | "queue" | "settings";
+type RoomTool = "recordings" | "mixer" | "style" | "queue" | "settings";
 
 interface PlaybackController {
   mediaRef: RefObject<HTMLMediaElement | null>;
@@ -112,7 +113,10 @@ interface KaraokeRoomSceneProps {
   onScriptChange: (content: string) => void;
   onSaveLyrics: () => void | Promise<void>;
   onSaveRecording: (request: SaveRecordingTakeRequest) => Promise<RecordingSaveResult>;
-  onOpenRecordingFolder: (targetPath: string) => void | Promise<void>;
+  onListRecordings: (sourceSongPackageId: string) => Promise<RecordingPackage[]>;
+  onGetRecordingMediaUrl: (targetPath: string) => Promise<string>;
+  onOpenRecordingPath: (targetPath: string) => void | Promise<void>;
+  onOpenRecordingRoot: () => void | Promise<void>;
   onSplitVocals: () => void;
   onTrackRoleChange: (role: TrackRole) => void;
   isRunning: boolean;
@@ -170,6 +174,27 @@ function translatedTrackRoleLabel(trackRole: TrackRole, t: Translator): string {
   }
 }
 
+function primaryRecordingFile(recording: RecordingPackage): string | null {
+  return recording.exports[0]?.path ?? recording.takes[0]?.path ?? null;
+}
+
+function recordingDuration(recording: RecordingPackage): number | null {
+  return recording.exports[0]?.duration ?? recording.takes[0]?.duration ?? null;
+}
+
+function formatRecordingDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export function KaraokeRoomScene({
   activeCue,
   activeCueIndex,
@@ -203,7 +228,10 @@ export function KaraokeRoomScene({
   onScriptChange,
   onSaveLyrics,
   onSaveRecording,
-  onOpenRecordingFolder,
+  onListRecordings,
+  onGetRecordingMediaUrl,
+  onOpenRecordingPath,
+  onOpenRecordingRoot,
   onSplitVocals,
   onTrackRoleChange,
   isRunning
@@ -216,9 +244,15 @@ export function KaraokeRoomScene({
   const [recordingCountdown, setRecordingCountdown] = useState(3);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
   const [recordingMessage, setRecordingMessage] = useState("");
-  const [lastRecording, setLastRecording] = useState<RecordingSaveResult | null>(null);
+  const [recordingPackages, setRecordingPackages] = useState<RecordingPackage[]>([]);
+  const [recordingsLoading, setRecordingsLoading] = useState(true);
+  const [recordingsError, setRecordingsError] = useState("");
+  const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
+  const [activeRecordingUrl, setActiveRecordingUrl] = useState("");
+  const [recordingPreviewLoadingId, setRecordingPreviewLoadingId] = useState<string | null>(null);
   const progressRef = useRef<HTMLDivElement | null>(null);
   const toolsRef = useRef<HTMLDivElement | null>(null);
+  const listRecordingsRef = useRef(onListRecordings);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -260,7 +294,9 @@ export function KaraokeRoomScene({
     [playbackController.currentTime]
   );
   const toolPanelTitle =
-    openTool === "mixer"
+    openTool === "recordings"
+      ? t("room:recording.library")
+      : openTool === "mixer"
       ? t("room:volumes.title")
       : openTool === "style"
         ? t("room:stylePanel")
@@ -268,7 +304,9 @@ export function KaraokeRoomScene({
           ? t("room:playlist.title")
           : t("room:settings");
   const toolPanelMeta =
-    openTool === "queue"
+    openTool === "recordings"
+      ? t("room:recording.count", { count: recordingPackages.length })
+      : openTool === "queue"
       ? t("room:playlist.autoNext")
       : openTool === "settings"
         ? trackRoleLabel
@@ -330,7 +368,10 @@ export function KaraokeRoomScene({
         preferBackingTrack: mainTrackRole === "backing",
         exportFormat: "m4a"
       });
-      setLastRecording(result);
+      setRecordingPackages((current) => [
+        result.recordingPackage,
+        ...current.filter((recording) => recording.id !== result.recordingPackage.id)
+      ]);
       setRecordingMessage(
         result.warning ??
           (result.mixExport ? t("room:recording.savedMix") : t("room:recording.savedVocal"))
@@ -366,7 +407,6 @@ export function KaraokeRoomScene({
 
     const generation = recordingGenerationRef.current + 1;
     recordingGenerationRef.current = generation;
-    setLastRecording(null);
     setRecordingMessage("");
     setOpenTool(null);
     setRecordingPhase("preparing");
@@ -439,6 +479,40 @@ export function KaraokeRoomScene({
   ]);
 
   useEffect(() => {
+    listRecordingsRef.current = onListRecordings;
+  }, [onListRecordings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRecordingsLoading(true);
+    setRecordingsError("");
+    setActiveRecordingId(null);
+    setActiveRecordingUrl("");
+    void listRecordingsRef.current(activeReview.id)
+      .then((recordings) => {
+        if (!cancelled) {
+          setRecordingPackages(recordings);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setRecordingPackages([]);
+          setRecordingsError(
+            error instanceof Error ? error.message : t("room:recording.loadFailed")
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRecordingsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeReview.id, t]);
+
+  useEffect(() => {
     if (recordingPhase !== "recording") {
       return undefined;
     }
@@ -494,6 +568,31 @@ export function KaraokeRoomScene({
       document.removeEventListener("keydown", handleToolKeydown);
     };
   }, [openTool]);
+
+  async function toggleRecordingPreview(recording: RecordingPackage) {
+    if (activeRecordingId === recording.id) {
+      setActiveRecordingId(null);
+      setActiveRecordingUrl("");
+      return;
+    }
+    const filePath = primaryRecordingFile(recording);
+    if (!filePath) {
+      return;
+    }
+    setRecordingPreviewLoadingId(recording.id);
+    setRecordingsError("");
+    try {
+      const mediaUrl = await onGetRecordingMediaUrl(filePath);
+      setActiveRecordingId(recording.id);
+      setActiveRecordingUrl(mediaUrl);
+    } catch (error) {
+      setRecordingsError(
+        error instanceof Error ? error.message : t("room:recording.previewFailed")
+      );
+    } finally {
+      setRecordingPreviewLoadingId(null);
+    }
+  }
 
   function seekFromProgressPointer(event: PointerEvent<HTMLDivElement>) {
     if (!hasPlayableMedia || recordingLocked || progressMax <= 0) {
@@ -773,17 +872,22 @@ export function KaraokeRoomScene({
               </span>
             </button>
 
-            {lastRecording ? (
-              <button
-                type="button"
-                className="roomToolTrigger"
-                onClick={() => void onOpenRecordingFolder(lastRecording.recordingPackage.outputDir)}
-                aria-label={t("room:recording.openFolder")}
-                title={recordingMessage || t("room:recording.openFolder")}
-              >
-                <Icon name="folder" />
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="roomToolTrigger"
+              data-open={openTool === "recordings"}
+              onClick={() => setOpenTool((current) => current === "recordings" ? null : "recordings")}
+              aria-label={t("room:recording.library")}
+              title={recordingMessage || t("room:recording.library")}
+              aria-expanded={openTool === "recordings"}
+              aria-controls="roomToolPanel"
+              disabled={recordingLocked}
+            >
+              <Icon name="headphones" />
+              {recordingPackages.length > 0 ? (
+                <span className="roomToolBadge">{recordingPackages.length}</span>
+              ) : null}
+            </button>
 
             <button
               type="button"
@@ -864,6 +968,119 @@ export function KaraokeRoomScene({
                     <span aria-hidden="true">×</span>
                   </button>
                 </header>
+
+                {openTool === "recordings" ? (
+                  <div className="roomRecordingLibrary">
+                    <div className="roomRecordingLibraryIntro">
+                      <div>
+                        <strong>{t("room:recording.savedOnMac")}</strong>
+                        <span>~/Music/VocalFlow/Recordings</span>
+                      </div>
+                      <button type="button" onClick={() => void onOpenRecordingRoot()}>
+                        <Icon name="folder" />
+                        {t("room:recording.openAll")}
+                      </button>
+                    </div>
+
+                    {recordingsError ? (
+                      <p className="roomRecordingLibraryNotice" role="alert">{recordingsError}</p>
+                    ) : null}
+
+                    {recordingsLoading ? (
+                      <p className="roomRecordingLibraryNotice" aria-live="polite">
+                        {t("room:recording.loading")}
+                      </p>
+                    ) : recordingPackages.length === 0 ? (
+                      <div className="roomRecordingEmpty">
+                        <span className="roomRecordGlyph" aria-hidden="true" />
+                        <strong>{t("room:recording.empty")}</strong>
+                        <p>{t("room:recording.emptyHint")}</p>
+                      </div>
+                    ) : (
+                      <div className="roomRecordingList" role="list">
+                        {recordingPackages.map((recording, index) => {
+                          const filePath = primaryRecordingFile(recording);
+                          const duration = recordingDuration(recording);
+                          const format = recording.exports[0]?.format ?? "wav";
+                          const isPreviewOpen =
+                            activeRecordingId === recording.id && Boolean(activeRecordingUrl);
+                          return (
+                            <article
+                              className="roomRecordingItem"
+                              data-preview-open={isPreviewOpen}
+                              key={recording.id}
+                              role="listitem"
+                              title={recording.outputDir}
+                            >
+                              <div className="roomRecordingItemMain">
+                                <span className="roomRecordingIndex">
+                                  {String(recordingPackages.length - index).padStart(2, "0")}
+                                </span>
+                                <div>
+                                  <strong>{recording.takes[0]?.title ?? recording.title}</strong>
+                                  <span>
+                                    <time dateTime={recording.createdAt}>
+                                      {formatRecordingDate(recording.createdAt)}
+                                    </time>
+                                    {" · "}
+                                    {duration ? formatClock(duration) : "--:--"}
+                                    {" · "}
+                                    {format.toUpperCase()}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="roomRecordingActions">
+                                <button
+                                  type="button"
+                                  onClick={() => void toggleRecordingPreview(recording)}
+                                  disabled={!filePath || recordingPreviewLoadingId === recording.id}
+                                  aria-label={
+                                    isPreviewOpen
+                                      ? t("room:recording.hidePreview")
+                                      : t("room:recording.preview")
+                                  }
+                                >
+                                  <Icon name={isPreviewOpen ? "stop" : "play"} />
+                                  {recordingPreviewLoadingId === recording.id
+                                    ? t("room:recording.loading")
+                                    : isPreviewOpen
+                                      ? t("room:recording.hidePreview")
+                                      : t("room:recording.preview")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => filePath && void onOpenRecordingPath(filePath)}
+                                  disabled={!filePath}
+                                  aria-label={t("room:recording.openFile")}
+                                  title={t("room:recording.openFile")}
+                                >
+                                  <Icon name="music" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void onOpenRecordingPath(recording.outputDir)}
+                                  aria-label={t("room:recording.openFolder")}
+                                  title={t("room:recording.openFolder")}
+                                >
+                                  <Icon name="folder" />
+                                </button>
+                              </div>
+                              {isPreviewOpen ? (
+                                <audio
+                                  className="roomRecordingAudio"
+                                  src={activeRecordingUrl}
+                                  controls
+                                  autoPlay
+                                  preload="metadata"
+                                />
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
 
                 {openTool === "mixer" ? (
                   <RoomMixerPanel

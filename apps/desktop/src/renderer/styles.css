@@ -4904,6 +4904,10 @@ select:focus-visible {
   }
 }
 
+.roomToolPanel[data-tool="recordings"] {
+  width: min(440px, calc(100vw - 24px));
+}
+
 .roomToolPanelHeader {
   display: flex;
   min-height: 48px;
@@ -4945,6 +4949,194 @@ select:focus-visible {
   color: color-mix(in oklch, var(--room-panel) 56%, transparent);
   font-size: 1.05rem;
   line-height: 1;
+}
+
+.roomRecordingLibrary {
+  display: grid;
+  gap: 0;
+}
+
+.roomRecordingLibraryIntro {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid color-mix(in oklch, var(--room-panel) 10%, transparent);
+  padding: 12px 14px;
+}
+
+.roomRecordingLibraryIntro > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.roomRecordingLibraryIntro strong {
+  color: color-mix(in oklch, var(--room-panel) 84%, white);
+  font-size: 0.71rem;
+  font-weight: 600;
+}
+
+.roomRecordingLibraryIntro span {
+  overflow: hidden;
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.59rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomRecordingLibraryIntro button,
+.roomRecordingActions button {
+  display: inline-flex;
+  min-height: 30px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 0 10px;
+  background: color-mix(in oklch, var(--room-panel) 8%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 76%, white);
+  font-size: 0.65rem;
+  font-weight: 600;
+  transition: background-color 140ms var(--motion-ease-out), color 140ms var(--motion-ease-out), transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.roomRecordingLibraryNotice {
+  margin: 0;
+  padding: 16px 14px;
+  color: color-mix(in oklch, var(--room-panel) 58%, transparent);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.roomRecordingEmpty {
+  display: grid;
+  min-height: 150px;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 20px;
+  text-align: center;
+}
+
+.roomRecordingEmpty .roomRecordGlyph {
+  width: 12px;
+  height: 12px;
+  margin-bottom: 4px;
+}
+
+.roomRecordingEmpty strong {
+  color: color-mix(in oklch, var(--room-panel) 82%, white);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.roomRecordingEmpty p {
+  max-width: 280px;
+  margin: 0;
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-size: 0.66rem;
+  line-height: 1.5;
+}
+
+.roomRecordingList {
+  display: grid;
+  padding: 5px;
+}
+
+.roomRecordingItem {
+  display: grid;
+  gap: 9px;
+  border-bottom: 1px solid color-mix(in oklch, var(--room-panel) 10%, transparent);
+  border-radius: var(--radius-md);
+  padding: 10px 9px;
+}
+
+.roomRecordingItem:last-child {
+  border-bottom-color: transparent;
+}
+
+.roomRecordingItem[data-preview-open="true"] {
+  background: color-mix(in oklch, var(--room-panel) 6%, transparent);
+}
+
+.roomRecordingItemMain {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.roomRecordingIndex {
+  color: color-mix(in oklch, var(--room-panel) 38%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.roomRecordingItemMain > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.roomRecordingItemMain strong,
+.roomRecordingItemMain span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomRecordingItemMain strong {
+  color: color-mix(in oklch, var(--room-panel) 90%, white);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.roomRecordingItemMain span {
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.59rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.roomRecordingActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 36px;
+}
+
+.roomRecordingActions button:first-child {
+  margin-right: auto;
+}
+
+.roomRecordingActions button:not(:first-child) {
+  width: 30px;
+  padding: 0;
+}
+
+.roomRecordingLibraryIntro button:disabled,
+.roomRecordingActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.roomRecordingLibraryIntro button:active:enabled,
+.roomRecordingActions button:active:enabled {
+  transform: scale(0.97);
+}
+
+.roomRecordingAudio {
+  width: calc(100% - 36px);
+  height: 34px;
+  margin-left: 36px;
+  color-scheme: dark;
 }
 
 .roomToolSectionStack,
@@ -5525,6 +5717,8 @@ select:focus-visible {
   .roomToolPanelClose:hover:enabled,
   .roomMixerRow button:hover:enabled,
   .roomQueueItem button:hover:enabled,
+  .roomRecordingLibraryIntro button:hover:enabled,
+  .roomRecordingActions button:hover:enabled,
   .roomEditorNudge button:hover:enabled {
     background: color-mix(in oklch, var(--room-panel) 12%, transparent);
   }
@@ -5652,6 +5846,8 @@ select:focus-visible {
   .roomSwitch > span,
   .roomMixerRow button,
   .roomQueueItem button,
+  .roomRecordingLibraryIntro button,
+  .roomRecordingActions button,
   .roomSongItem,
   .roomStyleGrid button,
   .roomStageMenu button,

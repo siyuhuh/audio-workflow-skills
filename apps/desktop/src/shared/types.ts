@@ -307,6 +307,10 @@ export interface AudioWorkflowApi {
   saveRecordingTake?: (request: SaveRecordingTakeRequest) => Promise<RecordingSaveResult>;
   /** Return persisted recording packages, optionally filtered to one source song package. */
   listRecordings?: (sourceSongPackageId?: string) => Promise<RecordingPackage[]>;
+  /** Return a secure app-local media URL for a persisted recording file. */
+  getRecordingMediaUrl?: (targetPath: string) => Promise<string>;
+  /** Reveal the top-level VocalFlow recordings folder in Finder. */
+  openRecordingRoot?: () => Promise<void>;
   onJobLog: (callback: (log: JobLog) => void) => () => void;
   /** Subscribe to structured pipeline progress events from the CLI. */
   onJobProgress?: (callback: (event: JobProgressStage) => void) => () => void;

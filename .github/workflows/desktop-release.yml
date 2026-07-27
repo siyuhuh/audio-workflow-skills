@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v0.8.0-beta.2"
+        description: "Release tag, for example v0.8.0-beta.3"
         required: true
-        default: "v0.8.0-beta.2"
+        default: "v0.8.0-beta.3"
 
 permissions:
   contents: write
@@ -173,7 +173,7 @@ jobs:
         shell: bash
         env:
           REQUIRE_BUNDLED_RUNTIME: "1"
-          VOCALFLOW_VERSION: "0.8.0-beta.2"
+          VOCALFLOW_VERSION: "0.8.0-beta.3"
         run: |
           ulimit -n 65536 || true
           apps/mac/VocalFlowMini/scripts/build-dmg.sh release
@@ -229,9 +229,9 @@ jobs:
             - Default `faster-whisper-small` and `UVR-MDX-NET-Inst_HQ_3.onnx` weights, Python runtime, ffmpeg, yt-dlp, and processing packages ship inside desktop installers.
 
             Choose one:
-            - `VocalFlow-0.8.0-beta.2-mac-arm64.dmg` — recommended native Apple Silicon client.
-            - `VocalFlow.Studio-0.8.0-beta.2-mac-arm64.dmg` — Electron studio for macOS.
-            - `VocalFlow.Studio-0.8.0-beta.2-win-x64.exe` — Electron studio for Windows.
+            - `VocalFlow-0.8.0-beta.3-mac-arm64.dmg` — recommended native Apple Silicon client.
+            - `VocalFlow.Studio-0.8.0-beta.3-mac-arm64.dmg` — Electron studio for macOS.
+            - `VocalFlow.Studio-0.8.0-beta.3-win-x64.exe` — Electron studio for Windows.
 
             This is a prerelease. Public macOS distribution still requires the
             maintainer's Developer ID certificate and notarization credentials;

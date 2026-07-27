@@ -33,6 +33,9 @@ const api: AudioWorkflowApi = {
     ipcRenderer.invoke("recording:save-take", request) as Promise<RecordingSaveResult>,
   listRecordings: (sourceSongPackageId?: string) =>
     ipcRenderer.invoke("recording:list", sourceSongPackageId) as Promise<RecordingPackage[]>,
+  getRecordingMediaUrl: (targetPath: string) =>
+    ipcRenderer.invoke("recording:media-url", targetPath) as Promise<string>,
+  openRecordingRoot: () => ipcRenderer.invoke("recording:open-root") as Promise<void>,
   onJobLog: (callback: (log: JobLog) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, log: JobLog) => callback(log);
     ipcRenderer.on("job:log", listener);

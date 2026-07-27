@@ -432,6 +432,21 @@ function registerIpcHandlers(): void {
       : recordings;
   });
 
+  ipcMain.handle("recording:media-url", (_event, targetPath: string) => {
+    const safePath = assertKnownRecordingFile(targetPath);
+    knownFilePaths.add(safePath);
+    return createMediaUrl(safePath);
+  });
+
+  ipcMain.handle("recording:open-root", async () => {
+    const rootDir = recordingRootDir();
+    mkdirSync(rootDir, { recursive: true });
+    const errorMessage = await shell.openPath(rootDir);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+  });
+
   ipcMain.handle("recording:save-take", async (_event, request: SaveRecordingTakeRequest) => {
     return saveRecordingTake(request);
   });
@@ -2398,6 +2413,10 @@ function recordingIndexFilePath(): string {
   return path.join(app.getPath("userData"), "recordings.json");
 }
 
+function recordingRootDir(): string {
+  return path.join(app.getPath("music"), "VocalFlow", "Recordings");
+}
+
 function loadRecordingIndex(): RecordingPackage[] {
   try {
     if (!existsSync(recordingIndexFilePath())) {
@@ -2431,6 +2450,22 @@ function isRecordingPackage(value: unknown): value is RecordingPackage {
     Array.isArray(candidate.takes) &&
     Array.isArray(candidate.exports)
   );
+}
+
+function assertKnownRecordingFile(targetPath: string): string {
+  const resolved = path.resolve(targetPath);
+  const extension = path.extname(resolved).toLowerCase();
+  const isIndexed = loadRecordingIndex().some((recording) =>
+    recording.takes.some((take) => path.resolve(take.path) === resolved) ||
+    recording.exports.some((recordingExport) => path.resolve(recordingExport.path) === resolved)
+  );
+  if (!isIndexed || !mediaExtensions.has(extension)) {
+    throw new Error("File is not available in the recording library.");
+  }
+  if (!existsSync(resolved)) {
+    throw new Error("Recording file no longer exists on disk.");
+  }
+  return resolved;
 }
 
 function recordingCaptureBytes(data: Uint8Array): Uint8Array {
@@ -2538,7 +2573,7 @@ async function saveRecordingTake(request: SaveRecordingTakeRequest): Promise<Rec
   const takeNumber = sourceRecordings.reduce((count, recording) => count + recording.takes.length, 0) + 1;
   const safeTitle = sanitizeOutputFolderLabel(source.title?.trim() || path.basename(source.outputDir) || "song");
   const folderStamp = createdAt.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-  const outputDir = path.join(app.getPath("music"), "VocalFlow", "Recordings", safeTitle, `${folderStamp}-${id.slice(0, 8)}`);
+  const outputDir = path.join(recordingRootDir(), safeTitle, `${folderStamp}-${id.slice(0, 8)}`);
   const takesDir = path.join(outputDir, "takes");
   const exportsDir = path.join(outputDir, "exports");
   mkdirSync(takesDir, { recursive: true });
@@ -3831,7 +3866,10 @@ function buildAudioSubtitlesArgs(options: JobOptions): string[] {
     args.push("--output-dir", options.outputDir.trim());
   }
 
-  args.push("--subtitle-source", options.subtitleSource);
+  // Keep packaged desktops compatible with both legacy runtimes (which only
+  // accept `youtube`) and current runtimes (where it aliases `platform`).
+  const cliSubtitleSource = options.subtitleSource === "platform" ? "youtube" : options.subtitleSource;
+  args.push("--subtitle-source", cliSubtitleSource);
   const modelArg = options.model || "small";
   args.push("--model", modelArg);
   args.push("--formats", formats.join(","));
