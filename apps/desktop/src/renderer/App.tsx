@@ -53,7 +53,7 @@ import {
   withTimedWords,
   wordProgressForTime
 } from "./lib/lyrics";
-import { StageChain, clampProgress, type StageProgress } from "./components/StageChain";
+import { StageChain, type StageProgress } from "./components/StageChain";
 import { LiveJobStatus } from "./components/LiveJobStatus";
 import { HeaderJobStatusPill } from "./components/HeaderJobStatusPill";
 import { UrlPreviewCard, type UrlPreviewLoadState } from "./components/UrlPreviewCard";
@@ -853,7 +853,7 @@ export default function App() {
         const existing = next.get(event.name);
         next.set(event.name, {
           name: event.name,
-          progress: clampProgress(event.progress >= 0 ? event.progress : existing?.progress ?? 0),
+          progress: event.done ? 1 : event.progress,
           message: event.message ?? existing?.message,
           done: event.done ?? existing?.done ?? false,
           failed: event.failed ?? existing?.failed ?? false

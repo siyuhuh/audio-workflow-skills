@@ -66,8 +66,15 @@ export function StageChain({ stages, isRunning, t }: StageChainProps) {
         if (!progress) {
           return null;
         }
+        const isIndeterminate = progress.progress < 0 && !progress.done && !progress.failed;
         const fraction = clampProgress(progress.progress);
-        const state = progress.failed ? "failed" : progress.done ? "done" : fraction > 0 ? "active" : "pending";
+        const state = progress.failed
+          ? "failed"
+          : progress.done
+            ? "done"
+            : isIndeterminate || fraction > 0
+              ? "active"
+              : "pending";
         return (
           <div key={stage.id} className="grid min-w-0 gap-1">
             <div
@@ -79,13 +86,17 @@ export function StageChain({ stages, isRunning, t }: StageChainProps) {
               {t(stage.labelKey)}
             </div>
             <div className="relative h-1.5 overflow-hidden rounded-full bg-foreground/10">
-              <span
-                className={cn(
-                  "block h-full transition-[width] duration-200 ease-out",
-                  stateFillClasses[state]
-                )}
-                style={{ width: `${Math.round(fraction * 100)}%` }}
-              />
+              {isIndeterminate ? (
+                <span className="block h-full w-full animate-pulse bg-primary/40" />
+              ) : (
+                <span
+                  className={cn(
+                    "block h-full transition-[width] duration-200 ease-out",
+                    stateFillClasses[state]
+                  )}
+                  style={{ width: `${Math.round(fraction * 100)}%` }}
+                />
+              )}
             </div>
             {progress.message ? (
               <div className="truncate text-xs font-medium text-faint" title={progress.message}>

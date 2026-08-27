@@ -33,7 +33,7 @@ from typing import Any
 from urllib.parse import quote, unquote, urlparse
 
 
-VERSION = "0.8.0-beta.4"
+VERSION = "0.8.0-beta.5"
 SERVICE_TYPE = "_vocalflow._tcp"
 DEFAULT_PORT = 8766
 MAX_REQUEST_BYTES = 64 * 1024

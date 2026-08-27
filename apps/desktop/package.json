@@ -1,6 +1,6 @@
 {
   "name": "@vocalflow/desktop",
-  "version": "0.8.0-beta.4",
+  "version": "0.8.0-beta.5",
   "description": "Desktop app for generating vocal stems, karaoke assets, and subtitles with audio-subtitles.",
   "author": "VocalFlow",
   "private": true,
@@ -19,6 +19,7 @@
     "dist:mac:offline": "pnpm run build && electron-builder --mac dmg --publish never --config electron-builder.offline.yml",
     "dist:win": "pnpm run build && electron-builder --win nsis --publish never",
     "dist:win:offline": "pnpm run build && electron-builder --win nsis --publish never --config electron-builder.offline.yml",
+    "verify:bundle": "node scripts/verify-bundled-release.mjs release",
     "start": "electron ."
   },
   "dependencies": {

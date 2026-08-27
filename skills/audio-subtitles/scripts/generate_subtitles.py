@@ -184,7 +184,10 @@ def main() -> int:
             print(message, file=sys.stderr)
             emit_progress("separate", progress=1.0, done=True, message=message)
         else:
-            emit_progress("separate", progress=0.0, message="Separating vocals")
+            # audio-separator does not expose a stable fractional progress API.
+            # Mark this stage as indeterminate instead of leaving the desktop
+            # frozen at a misleading 0% for the full CPU inference pass.
+            emit_progress("separate", progress=-1.0, message="Separating vocals")
             try:
                 source = separate_source(source, output_dir, args)
                 emit_progress("separate", progress=1.0, done=True)

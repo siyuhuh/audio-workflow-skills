@@ -23,6 +23,16 @@ extraResources:
     filter:
       - ffmpeg
       - ffmpeg.exe
+  - from: vendor/separator-models
+    to: separator-models
+    filter:
+      - "**/*.onnx"
+      - "**/*.pth"
+      - "**/*.ckpt"
+  - from: vendor/whisper-models
+    to: whisper-models
+    filter:
+      - "**/*"
 mac:
   category: public.app-category.music
   icon: build/icon.icns

@@ -6,13 +6,13 @@ VocalFlow turns YouTube, Bilibili, local media, or existing vocal stems into a p
 
 ## Download
 
-Current beta: [VocalFlow v0.8.0-beta.4](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.4)
+Current beta: [VocalFlow v0.8.0-beta.5](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.5)
 
 | Download | Platform | Use it for | Size |
 | --- | --- | --- | ---: |
-| `VocalFlow-0.8.0-beta.4-mac-arm64.dmg` | Apple Silicon Mac (M1/M2/M3/M4, etc.) | Recommended native Mac karaoke client with Room, recording, and Mac mini Agent | About 997 MB |
-| `VocalFlow.Studio-0.8.0-beta.4-mac-arm64.dmg` | Apple Silicon Mac (M1/M2/M3/M4, etc.) | Cross-platform creation, review, and playback studio | About 411 MB |
-| `VocalFlow.Studio-0.8.0-beta.4-win-x64.exe` | 64-bit Windows | Cross-platform creation, review, and playback studio | About 377 MB |
+| `VocalFlow-0.8.0-beta.5-mac-arm64.dmg` | Apple Silicon Mac (M1/M2/M3/M4, etc.) | Recommended native Mac karaoke client with Room, recording, and Mac mini Agent | About 1 GB |
+| `VocalFlow.Studio-0.8.0-beta.5-mac-arm64.dmg` | Apple Silicon Mac (M1/M2/M3/M4, etc.) | Cross-platform creation, review, and playback studio | About 1 GB |
+| `VocalFlow.Studio-0.8.0-beta.5-win-x64.exe` | 64-bit Windows | Cross-platform creation, review, and playback studio | About 1 GB |
 
 There is no Intel Mac installer yet. The iPhone client is still distributed through the TestFlight/Xcode beta workflow and is not included in this GitHub Release.
 
@@ -38,7 +38,7 @@ This is an unsigned and unnotarized prerelease, so the operating system may bloc
 
 ## Models, network access, and disk space
 
-The default desktop workflow does not download another model. Installers include:
+The default desktop workflow does not download another model. Beta.5 adds packaged-app verification, so the release fails if either default model is absent. Installers include:
 
 | Bundled item | Purpose | Approximate size |
 | --- | --- | ---: |

@@ -6,13 +6,13 @@ VocalFlow 可以把 YouTube、哔哩哔哩、本地音视频或已有的人声�
 
 ## 下载
 
-当前测试版：[VocalFlow v0.8.0-beta.4](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.4)
+当前测试版：[VocalFlow v0.8.0-beta.5](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.5)
 
 | 下载文件 | 适用设备 | 用途 | 大小 |
 | --- | --- | --- | ---: |
-| `VocalFlow-0.8.0-beta.4-mac-arm64.dmg` | Apple Silicon Mac（M1/M2/M3/M4 等） | 推荐的原生 Mac K 歌客户端，包含 Room、录音和 Mac mini Agent | 约 997 MB |
-| `VocalFlow.Studio-0.8.0-beta.4-mac-arm64.dmg` | Apple Silicon Mac（M1/M2/M3/M4 等） | 跨平台制作、检查和播放工作台 | 约 411 MB |
-| `VocalFlow.Studio-0.8.0-beta.4-win-x64.exe` | 64 位 Windows | 跨平台制作、检查和播放工作台 | 约 377 MB |
+| `VocalFlow-0.8.0-beta.5-mac-arm64.dmg` | Apple Silicon Mac（M1/M2/M3/M4 等） | 推荐的原生 Mac K 歌客户端，包含 Room、录音和 Mac mini Agent | 约 1 GB |
+| `VocalFlow.Studio-0.8.0-beta.5-mac-arm64.dmg` | Apple Silicon Mac（M1/M2/M3/M4 等） | 跨平台制作、检查和播放工作台 | 约 1 GB |
+| `VocalFlow.Studio-0.8.0-beta.5-win-x64.exe` | 64 位 Windows | 跨平台制作、检查和播放工作台 | 约 1 GB |
 
 目前没有 Intel Mac 安装包。iPhone 版本仍处于 TestFlight / Xcode 测试流程，本次 GitHub Release 不包含 iPhone 安装包。
 
@@ -38,7 +38,7 @@ VocalFlow 可以把 YouTube、哔哩哔哩、本地音视频或已有的人声�
 
 ## 模型、联网和磁盘空间
 
-默认桌面流程不需要再次下载模型。安装包内置：
+默认桌面流程不需要再次下载模型。beta.5 增加了安装包内部校验：缺少任一默认模型时，发布流程会直接失败。安装包内置：
 
 | 内置内容 | 用途 | 约占空间 |
 | --- | --- | ---: |

@@ -4,7 +4,7 @@
 # weights that ship inside the .dmg / .nsis installer.
 #
 # Run this ONCE before `pnpm dist:mac` / `pnpm dist:win`. The destination
-# folders are listed under `extraResources` in `apps/desktop/package.json`
+# folders are listed under `extraResources` in `apps/desktop/electron-builder.yml`
 # and end up at `process.resourcesPath` inside the packaged app, where
 # `apps/desktop/src/main/lib/bundledModels.ts` finds them on launch and
 # seeds them into the user-data shadow folders so the desktop runs
