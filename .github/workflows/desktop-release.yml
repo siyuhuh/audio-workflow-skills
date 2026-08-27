@@ -217,22 +217,45 @@ jobs:
           prerelease: true
           files: release-assets/*
           body: |
-            VocalFlow 0.8 beta brings the native Mac room, iPhone companion,
-            private Mac mini Agent, and cross-platform VocalFlow Studio into one
-            compatible karaoke workflow.
+            # VocalFlow 0.8 测试版
 
-            Highlights:
-            - Immersive native macOS Room with adaptive MV sizing, word-synced lyrics, original/backing mix, queue, search, YouTube and Bilibili sources.
-            - Performance recording in both native Mac and Electron Room: raw vocal WAV plus a share-ready M4A/MP3/WAV mix.
-            - iPhone Room can import packages locally or download completed jobs from the private Mac mini Agent.
-            - Native Mac and iPhone discover both native and Electron package manifests.
-            - Default `faster-whisper-small` and `UVR-MDX-NET-Inst_HQ_3.onnx` weights, Python runtime, ffmpeg, yt-dlp, and processing packages ship inside desktop installers.
+            中文说明在前；English follows below.
 
-            Choose one:
-            - `VocalFlow-0.8.0-beta.4-mac-arm64.dmg` — recommended native Apple Silicon client.
-            - `VocalFlow.Studio-0.8.0-beta.4-mac-arm64.dmg` — Electron studio for macOS.
-            - `VocalFlow.Studio-0.8.0-beta.4-win-x64.exe` — Electron studio for Windows.
+            桌面安装包已经包含 Python 运行时、处理依赖、ffmpeg、yt-dlp、默认 Whisper 小模型和 UVR 人声分离模型，下载安装后即可使用。
 
-            This is a prerelease. Public macOS distribution still requires the
-            maintainer's Developer ID certificate and notarization credentials;
-            iPhone TestFlight upload uses the separate manual workflow.
+            下载：
+            - `VocalFlow-0.8.0-beta.4-mac-arm64.dmg` — Apple Silicon 原生 Mac 客户端，约 997 MB。
+            - `VocalFlow.Studio-0.8.0-beta.4-mac-arm64.dmg` — Apple Silicon Studio，约 411 MB。
+            - `VocalFlow.Studio-0.8.0-beta.4-win-x64.exe` — 64 位 Windows Studio，约 377 MB。
+
+            暂无 Intel Mac 安装包；iPhone 版本不包含在本次 Release。
+
+            默认模型已内置（Whisper small 约 464–486 MB、UVR 约 64 MB），不会在首次处理时重复下载。Studio 可选模型首次使用时会下载：medium 约 1.53 GB、large-v3-turbo 约 1.62 GB、large-v3 约 3.09 GB。建议至少预留 5 GB；使用大模型或保留较多 MV 时建议 10 GB 以上。
+
+            本地文件处理、歌曲包播放和录音可以离线完成；链接下载、在线搜索和可选模型首次下载需要网络。
+
+            这是未签名、未公证的预发布版。macOS 首次打开请在 Finder 右键应用选择“打开”，或前往“系统设置 → 隐私与安全性 → 仍要打开”。Windows SmartScreen 出现时选择“更多信息 → 仍要运行”。
+
+            亮点：
+            - 原生 Mac Room、VocalFlow Studio、iPhone 客户端与私有 Mac mini Agent 使用兼容的 K 歌包流程。
+            - 原生 Mac 与 Studio 均支持演唱录音，保存 WAV 原始人声与可分享的 M4A/MP3/WAV 混音。
+            - 自适应 MV、逐字歌词、原唱/伴奏、队列、YouTube 与哔哩哔哩来源。
+
+            ---
+
+            # English
+
+            Desktop installers include the Python runtime, processing dependencies, ffmpeg, yt-dlp, the default Whisper small model, and the UVR separator model. They are ready to use after installation.
+
+            Downloads:
+            - `VocalFlow-0.8.0-beta.4-mac-arm64.dmg` — native Apple Silicon Mac client, about 997 MB.
+            - `VocalFlow.Studio-0.8.0-beta.4-mac-arm64.dmg` — Apple Silicon Studio, about 411 MB.
+            - `VocalFlow.Studio-0.8.0-beta.4-win-x64.exe` — 64-bit Windows Studio, about 377 MB.
+
+            There is no Intel Mac installer yet, and the iPhone app is not included in this Release.
+
+            Default models are bundled (Whisper small about 464–486 MB and UVR about 64 MB) and are not downloaded again on first use. Optional Studio models download on first use: medium about 1.53 GB, large-v3-turbo about 1.62 GB, and large-v3 about 3.09 GB. Keep at least 5 GB free, or 10 GB or more when using larger models or retaining many MVs.
+
+            Local-file processing, package playback, and recording can work offline. URL downloads, online search, and the first optional-model download require network access.
+
+            This is an unsigned and unnotarized prerelease. On macOS, right-click the app and choose Open, or use System Settings → Privacy & Security → Open Anyway. On Windows, choose More info → Run anyway if SmartScreen appears.
