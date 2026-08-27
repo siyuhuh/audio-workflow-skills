@@ -10,9 +10,9 @@ Current beta: [VocalFlow v0.8.0-beta.5](https://github.com/siyuhuh/audio-workflo
 
 | Download | Platform | Use it for | Size |
 | --- | --- | --- | ---: |
-| `VocalFlow-0.8.0-beta.5-mac-arm64.dmg` | Apple Silicon Mac (M1/M2/M3/M4, etc.) | Recommended native Mac karaoke client with Room, recording, and Mac mini Agent | About 1 GB |
-| `VocalFlow.Studio-0.8.0-beta.5-mac-arm64.dmg` | Apple Silicon Mac (M1/M2/M3/M4, etc.) | Cross-platform creation, review, and playback studio | About 1 GB |
-| `VocalFlow.Studio-0.8.0-beta.5-win-x64.exe` | 64-bit Windows | Cross-platform creation, review, and playback studio | About 1 GB |
+| `VocalFlow-0.8.0-beta.5-mac-arm64.dmg` | Apple Silicon Mac (M1/M2/M3/M4, etc.) | Recommended native Mac karaoke client with Room, recording, and Mac mini Agent | About 995 MB |
+| `VocalFlow.Studio-0.8.0-beta.5-mac-arm64.dmg` | Apple Silicon Mac (M1/M2/M3/M4, etc.) | Cross-platform creation, review, and playback studio | About 920 MB |
+| `VocalFlow.Studio-0.8.0-beta.5-win-x64.exe` | 64-bit Windows | Cross-platform creation, review, and playback studio | About 874 MB |
 
 There is no Intel Mac installer yet. The iPhone client is still distributed through the TestFlight/Xcode beta workflow and is not included in this GitHub Release.
 

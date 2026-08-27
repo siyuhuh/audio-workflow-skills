@@ -231,9 +231,9 @@ jobs:
             桌面安装包已经包含 Python 运行时、处理依赖、ffmpeg、yt-dlp、默认 Whisper 小模型和 UVR 人声分离模型，下载安装后即可使用。
 
             下载：
-            - `VocalFlow-0.8.0-beta.5-mac-arm64.dmg` — Apple Silicon 原生 Mac 客户端，约 1 GB。
-            - `VocalFlow.Studio-0.8.0-beta.5-mac-arm64.dmg` — Apple Silicon Studio，约 1 GB。
-            - `VocalFlow.Studio-0.8.0-beta.5-win-x64.exe` — 64 位 Windows Studio，约 1 GB。
+            - `VocalFlow-0.8.0-beta.5-mac-arm64.dmg` — Apple Silicon 原生 Mac 客户端，约 995 MB。
+            - `VocalFlow.Studio-0.8.0-beta.5-mac-arm64.dmg` — Apple Silicon Studio，约 920 MB。
+            - `VocalFlow.Studio-0.8.0-beta.5-win-x64.exe` — 64 位 Windows Studio，约 874 MB。
 
             暂无 Intel Mac 安装包；iPhone 版本不包含在本次 Release。
 
@@ -258,9 +258,9 @@ jobs:
             Desktop installers include the Python runtime, processing dependencies, ffmpeg, yt-dlp, the default Whisper small model, and the UVR separator model. They are ready to use after installation.
 
             Downloads:
-            - `VocalFlow-0.8.0-beta.5-mac-arm64.dmg` — native Apple Silicon Mac client, about 1 GB.
-            - `VocalFlow.Studio-0.8.0-beta.5-mac-arm64.dmg` — Apple Silicon Studio, about 1 GB.
-            - `VocalFlow.Studio-0.8.0-beta.5-win-x64.exe` — 64-bit Windows Studio, about 1 GB.
+            - `VocalFlow-0.8.0-beta.5-mac-arm64.dmg` — native Apple Silicon Mac client, about 995 MB.
+            - `VocalFlow.Studio-0.8.0-beta.5-mac-arm64.dmg` — Apple Silicon Studio, about 920 MB.
+            - `VocalFlow.Studio-0.8.0-beta.5-win-x64.exe` — 64-bit Windows Studio, about 874 MB.
 
             There is no Intel Mac installer yet, and the iPhone app is not included in this Release.
 
