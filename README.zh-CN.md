@@ -6,7 +6,7 @@ VocalFlow 可以把 YouTube、Bilibili、本地视频/音频或已有的人声 s
 
 ## 下载
 
-当前测试版：[v0.8.0-beta.3 Releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.3)
+当前测试版：[v0.8.0-beta.4 Releases](https://github.com/siyuhuh/audio-workflow-skills/releases/tag/v0.8.0-beta.4)
 
 | 客户端 | 适合什么场景 | 交付方式 |
 | --- | --- | --- |

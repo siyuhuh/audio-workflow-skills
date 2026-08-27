@@ -17,13 +17,13 @@ Keep these values aligned before tagging:
 - `apps/ios/VocalFlowMobile/project.yml`
 - `apps/mac/VocalFlowAgent/vocalflow_agent.py`
 
-The suite marketing version for this beta is `0.8.0`; the prerelease tag and Electron semver are `0.8.0-beta.3`.
+The suite marketing version for this beta is `0.8.0`; the prerelease tag and Electron semver are `0.8.0-beta.4`.
 
 ## Desktop release
 
 ```bash
-git tag -a v0.8.0-beta.3 -m "VocalFlow 0.8.0 beta 3"
-git push siyuhuh v0.8.0-beta.3
+git tag -a v0.8.0-beta.4 -m "VocalFlow 0.8.0 beta 4"
+git push siyuhuh v0.8.0-beta.4
 ```
 
 Without Apple credentials, GitHub Actions can still produce an ad-hoc/unsigned beta for direct testing. For public macOS distribution, import a Developer ID Application certificate into the runner and set the signing identity used by the build. Store a notarization profile as `APPLE_NOTARY_KEYCHAIN_PROFILE` before running `build-dmg.sh`.
