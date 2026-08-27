@@ -1,8 +1,10 @@
 # vendor/
 
 Build-time assets bundled into the packaged Electron app via
-`extraResources` in `apps/desktop/package.json`. Everything in this
-folder is **opt-in** — when it's empty (typical for `pnpm dev`),
+`extraResources` in `apps/desktop/electron-builder.yml` and
+`apps/desktop/electron-builder.offline.yml`. Everything in this
+folder is **opt-in** — model folders are included only by the explicit
+Offline packaging targets. When they're empty (typical for `pnpm dev`),
 `apps/desktop/src/main/lib/bundledModels.ts` no-ops and the desktop
 falls back to the regular UVR-detect / HuggingFace download flow.
 

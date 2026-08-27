@@ -13,11 +13,13 @@ import type {
   OutputFormat,
   PlaybackBundle,
   RecordingSaveResult,
+  RenameRecordingRequest,
   RoomQueueItem,
   RoomStatus,
   SaveRecordingTakeRequest,
   SavedJobHistory,
   ThemeMode,
+  UpdateRecordingMixRequest,
   UrlMetadataPreview,
   UserSettings,
   UvrDetectionResult,
@@ -2091,6 +2093,24 @@ export default function App() {
             }
             return audioWorkflow.saveRecordingTake(request);
           }}
+          onUpdateRecordingMix={(request: UpdateRecordingMixRequest) => {
+            if (!audioWorkflow.updateRecordingMix) {
+              return Promise.reject(new Error("Recording remixing is available in the installed desktop app."));
+            }
+            return audioWorkflow.updateRecordingMix(request);
+          }}
+          onRenameRecording={(request: RenameRecordingRequest) => {
+            if (!audioWorkflow.renameRecording) {
+              return Promise.reject(new Error("Recording renaming is available in the installed desktop app."));
+            }
+            return audioWorkflow.renameRecording(request);
+          }}
+          onDeleteRecording={(recordingPackageId) => {
+            if (!audioWorkflow.deleteRecording) {
+              return Promise.reject(new Error("Recording deletion is available in the installed desktop app."));
+            }
+            return audioWorkflow.deleteRecording(recordingPackageId);
+          }}
           onListRecordings={(sourceSongPackageId) =>
             audioWorkflow.listRecordings?.(sourceSongPackageId) ?? Promise.resolve([])
           }
@@ -3233,10 +3253,22 @@ function usePlaybackController(mediaPath: string, previewPath: string | null): P
 }
 
 function useMicrophoneMonitor(): MicrophoneMonitorController {
+  type LowLatencyTrackConstraints = MediaTrackConstraints & {
+    latency?: ConstrainDouble;
+  };
+  type LowLatencyTrackSettings = MediaTrackSettings & {
+    latency?: number;
+  };
+  type LowLatencySupportedConstraints = MediaTrackSupportedConstraints & {
+    latency?: boolean;
+  };
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const meterTimerRef = useRef<number | null>(null);
   const selectedDeviceIdRef = useRef("");
   const monitorGainRef = useRef(0.35);
   const [devices, setDevices] = useState<AudioInputDevice[]>([]);
@@ -3245,10 +3277,19 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
   const [monitorGain, setMonitorGainState] = useState(0.35);
   const [noiseReduction, setNoiseReduction] = useState(false);
   const [status, setStatus] = useState("Monitor off");
+  const [estimatedLatencyMs, setEstimatedLatencyMs] = useState<number | null>(null);
+  const [sampleRate, setSampleRate] = useState<number | null>(null);
+  const [inputLevel, setInputLevel] = useState(0);
+  const [isClipping, setIsClipping] = useState(false);
 
   const closeCurrentMonitor = useCallback(() => {
+    if (meterTimerRef.current !== null) {
+      window.clearInterval(meterTimerRef.current);
+      meterTimerRef.current = null;
+    }
     try {
       sourceRef.current?.disconnect();
+      analyserRef.current?.disconnect();
       gainNodeRef.current?.disconnect();
     } catch {
       // Already disconnected.
@@ -3260,9 +3301,14 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
     }
 
     sourceRef.current = null;
+    analyserRef.current = null;
     gainNodeRef.current = null;
     streamRef.current = null;
     audioContextRef.current = null;
+    setEstimatedLatencyMs(null);
+    setSampleRate(null);
+    setInputLevel(0);
+    setIsClipping(false);
   }, []);
 
   const refreshDevices = useCallback(() => {
@@ -3313,29 +3359,85 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
     }
 
     try {
-      const audioConstraints: MediaTrackConstraints = {
+      let audioContext: AudioContext;
+      try {
+        audioContext = new AudioContextConstructor({
+          latencyHint: 0.003,
+          sampleRate: 48_000
+        });
+      } catch {
+        audioContext = new AudioContextConstructor({ latencyHint: "interactive" });
+      }
+
+      const supportedConstraints =
+        navigator.mediaDevices.getSupportedConstraints() as LowLatencySupportedConstraints;
+      const audioConstraints: LowLatencyTrackConstraints = {
         echoCancellation: noiseReduction,
         noiseSuppression: noiseReduction,
-        autoGainControl: noiseReduction
+        autoGainControl: noiseReduction,
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: audioContext.sampleRate },
+        sampleSize: { ideal: 16 }
       };
+      if (supportedConstraints.latency) {
+        audioConstraints.latency = { ideal: 0 };
+      }
       if (selectedDeviceIdRef.current) {
         audioConstraints.deviceId = { exact: selectedDeviceIdRef.current };
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-      const audioContext = new AudioContextConstructor({ latencyHint: "interactive" });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      } catch (error) {
+        await audioContext.close();
+        throw error;
+      }
+      streamRef.current = stream;
+      audioContextRef.current = audioContext;
       const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.7;
       const gainNode = audioContext.createGain();
       gainNode.gain.value = monitorGainRef.current;
-      source.connect(gainNode);
+      source.connect(analyser);
+      analyser.connect(gainNode);
       gainNode.connect(audioContext.destination);
       await audioContext.resume();
 
-      streamRef.current = stream;
-      audioContextRef.current = audioContext;
       sourceRef.current = source;
+      analyserRef.current = analyser;
       gainNodeRef.current = gainNode;
-      setStatus("Monitoring input. Use headphones to avoid feedback.");
+      const meterData = new Uint8Array(analyser.fftSize);
+      meterTimerRef.current = window.setInterval(() => {
+        analyser.getByteTimeDomainData(meterData);
+        let peak = 0;
+        let squareSum = 0;
+        for (const sample of meterData) {
+          const centered = Math.abs((sample - 128) / 128);
+          peak = Math.max(peak, centered);
+          squareSum += centered * centered;
+        }
+        const rms = Math.sqrt(squareSum / meterData.length);
+        setInputLevel(Math.min(1, Math.max(peak * 0.75, rms * 2.4)));
+        setIsClipping(peak >= 0.98);
+      }, 80);
+      const trackSettings = stream.getAudioTracks()[0]?.getSettings() as
+        | LowLatencyTrackSettings
+        | undefined;
+      const reportedLatencySeconds = [
+        trackSettings?.latency,
+        audioContext.baseLatency,
+        audioContext.outputLatency
+      ].reduce<number>((total, value) => {
+        return total + (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
+      }, 0);
+      setEstimatedLatencyMs(
+        reportedLatencySeconds > 0 ? reportedLatencySeconds * 1_000 : null
+      );
+      setSampleRate(trackSettings?.sampleRate ?? audioContext.sampleRate);
+      setStatus("Low-latency microphone monitoring is active.");
       refreshDevices();
     } catch (error) {
       closeCurrentMonitor();
@@ -3347,6 +3449,29 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
   const setMonitorGain = useCallback((gain: number) => {
     setMonitorGainState(Math.max(0, Math.min(1.5, gain)));
   }, []);
+
+  const acquireRecordingStream = useCallback(async (): Promise<MediaStream> => {
+    const monitoredTrack = streamRef.current
+      ?.getAudioTracks()
+      .find((track) => track.readyState === "live");
+    if (monitoredTrack) {
+      return new MediaStream([monitoredTrack.clone()]);
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Microphone API unavailable");
+    }
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: noiseReduction,
+      noiseSuppression: noiseReduction,
+      autoGainControl: noiseReduction,
+      channelCount: 1,
+      sampleRate: 48_000
+    };
+    if (selectedDeviceIdRef.current) {
+      audioConstraints.deviceId = { exact: selectedDeviceIdRef.current };
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+  }, [noiseReduction]);
 
   useEffect(() => {
     selectedDeviceIdRef.current = selectedDeviceId;
@@ -3388,11 +3513,16 @@ function useMicrophoneMonitor(): MicrophoneMonitorController {
     monitorGain,
     noiseReduction,
     status,
+    estimatedLatencyMs,
+    sampleRate,
+    inputLevel,
+    isClipping,
     setSelectedDeviceId,
     setIsMonitoring,
     setMonitorGain,
     setNoiseReduction,
-    refreshDevices
+    refreshDevices,
+    acquireRecordingStream
   };
 }
 

@@ -887,6 +887,14 @@ struct ContentView: View {
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .frame(minHeight: 36)
+
+                    if monitor.state.isListening {
+                        Text(monitor.latencyGuidance)
+                            .font(.vocal(11, weight: .medium))
+                            .foregroundStyle(AppTheme.primary.opacity(0.9))
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 LevelMeterView(level: monitor.inputLevel)
@@ -1073,7 +1081,7 @@ struct ContentView: View {
                 Image(systemName: "headphones")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(AppTheme.warning)
-                Text("Wear headphones before monitoring. Speaker playback can feed back into the microphone.")
+                Text(monitor.latencyGuidance)
                     .font(.vocal(12, weight: .medium))
                     .foregroundStyle(AppTheme.mutedText)
                     .fixedSize(horizontal: false, vertical: true)

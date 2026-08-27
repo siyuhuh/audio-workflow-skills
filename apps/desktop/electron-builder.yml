@@ -1,0 +1,44 @@
+appId: com.gottaegbert.vocalflow.studio
+productName: VocalFlow Studio
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+files:
+  - dist/**/*
+  - build/**/*
+  - package.json
+  - "!node_modules/**/*"
+icon: build/icon
+extraResources:
+  - from: ../../skills/audio-subtitles/scripts
+    to: audio-subtitles/scripts
+    filter:
+      - "**/*"
+  - from: vendor/python-runtime
+    to: python-runtime
+    filter:
+      - "**/*"
+  - from: node_modules/ffmpeg-static
+    to: ffmpeg-static
+    filter:
+      - ffmpeg
+      - ffmpeg.exe
+mac:
+  category: public.app-category.music
+  icon: build/icon.icns
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: VocalFlow Studio records your microphone when you start a karaoke performance recording.
+  target:
+    - dmg
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

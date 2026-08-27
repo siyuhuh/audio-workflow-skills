@@ -17,14 +17,17 @@ import type {
   JobResult,
   OutputFormat,
   PlaybackBundle,
+  RecordingCalibrationRequest,
   RecordingExport,
   RecordingPackage,
   RecordingSaveResult,
   RecordingTake,
+  RenameRecordingRequest,
   RoomQueueItem,
   RoomStatus,
   SaveRecordingTakeRequest,
   SavedJobHistory,
+  UpdateRecordingMixRequest,
   UrlMetadataPreview,
   UserSettings,
   YoutubeSearchResult
@@ -157,6 +160,7 @@ const webApiHost = "0.0.0.0";
 const webApiLocalHost = "127.0.0.1";
 const webApiPort = 5175;
 const webApiOrigin = `http://${webApiLocalHost}:${webApiPort}`;
+const lowLatencyAudioBufferFrames = process.platform === "darwin" ? "128" : "256";
 const mediaMimeTypes = new Map([
   [".mp3", "audio/mpeg"],
   [".wav", "audio/wav"],
@@ -174,6 +178,11 @@ const mediaMimeTypes = new Map([
   [".avi", "video/x-msvideo"],
   [".m4v", "video/x-m4v"]
 ]);
+
+// Chromium otherwise chooses a playback-oriented renderer buffer on some
+// devices. This switch must be set before `ready`; macOS can reliably run the
+// same 128-frame quantum used by the native VocalFlow monitor.
+app.commandLine.appendSwitch("audio-buffer-size", lowLatencyAudioBufferFrames);
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -262,11 +271,16 @@ function createWindow(): void {
     }
   });
 
-  if (app.isPackaged) {
-    window.loadFile(path.join(__dirname, "../renderer/index.html"));
-  } else {
-    window.loadURL(process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5174");
+  const devServerUrl =
+    process.env.VITE_DEV_SERVER_URL
+    ?? process.argv
+      .find((argument) => argument.startsWith("--dev-server-url="))
+      ?.slice("--dev-server-url=".length);
+  if (devServerUrl) {
+    window.loadURL(devServerUrl);
+    return;
   }
+  window.loadFile(path.join(__dirname, "../renderer/index.html"));
 }
 
 app.whenReady().then(() => {
@@ -449,6 +463,22 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle("recording:save-take", async (_event, request: SaveRecordingTakeRequest) => {
     return saveRecordingTake(request);
+  });
+
+  ipcMain.handle("recording:calibrate", async (_event, request: RecordingCalibrationRequest) => {
+    return calibrateRecording(request);
+  });
+
+  ipcMain.handle("recording:update-mix", async (_event, request: UpdateRecordingMixRequest) => {
+    return updateRecordingMix(request);
+  });
+
+  ipcMain.handle("recording:rename", (_event, request: RenameRecordingRequest) => {
+    return renameRecording(request);
+  });
+
+  ipcMain.handle("recording:delete", (_event, recordingPackageId: string) => {
+    return deleteRecording(recordingPackageId);
   });
 
   ipcMain.handle("youtube:search", (_event, query: string, appendKaraoke: boolean) => {
@@ -2517,6 +2547,13 @@ function recordingExportArguments(
   const duration = Math.max(0.1, Math.min(4 * 60 * 60, request.duration));
   const vocalGain = Math.max(0, Math.min(2, request.vocalGain));
   const musicGain = Math.max(0, Math.min(2, request.musicGain));
+  const vocalOffsetMs = normalizeVocalOffsetMs(request.vocalOffsetMs);
+  const vocalAlignmentFilter =
+    vocalOffsetMs > 0
+      ? `atrim=start=${(vocalOffsetMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS`
+      : vocalOffsetMs < 0
+        ? `adelay=delays=${Math.abs(vocalOffsetMs)}:all=1`
+        : "anull";
   const args = [
     "-y",
     "-i",
@@ -2524,7 +2561,7 @@ function recordingExportArguments(
     "-i",
     vocalPath,
     "-filter_complex",
-    `[0:a]volume=${musicGain.toFixed(3)}[music];[1:a]volume=${vocalGain.toFixed(3)}[vocal];[music][vocal]amix=inputs=2:duration=longest:dropout_transition=0,alimiter=limit=0.95[mix]`,
+    `[0:a]volume=${musicGain.toFixed(3)}[music];[1:a]${vocalAlignmentFilter},volume=${vocalGain.toFixed(3)}[vocal];[music][vocal]amix=inputs=2:duration=longest:dropout_transition=0,alimiter=limit=0.95[mix]`,
     "-map",
     "[mix]",
     "-t",
@@ -2546,8 +2583,25 @@ function recordingExportArguments(
   return args;
 }
 
+function normalizeVocalOffsetMs(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.round(Math.max(-500, Math.min(500, value)));
+}
+
+function vocalOffsetFileToken(value: number): string {
+  if (value > 0) {
+    return `advance-${String(value).padStart(4, "0")}ms`;
+  }
+  if (value < 0) {
+    return `delay-${String(Math.abs(value)).padStart(4, "0")}ms`;
+  }
+  return "centered";
+}
+
 async function saveRecordingTake(request: SaveRecordingTakeRequest): Promise<RecordingSaveResult> {
-  const source = savedHistory.find((entry) => entry.id === request.sourceSongPackageId);
+  const source = historyWithBundledSamples().find((entry) => entry.id === request.sourceSongPackageId);
   if (!source) {
     throw new Error("The source song package is no longer in the local library.");
   }
@@ -2566,12 +2620,18 @@ async function saveRecordingTake(request: SaveRecordingTakeRequest): Promise<Rec
   }
 
   const existingRecordings = loadRecordingIndex();
+  const vocalOffsetMs = normalizeVocalOffsetMs(request.vocalOffsetMs);
   const sourceRecordings = existingRecordings.filter((recording) => recording.sourceSongPackageId === source.id);
   const now = new Date();
   const createdAt = now.toISOString();
   const id = randomUUID();
   const takeNumber = sourceRecordings.reduce((count, recording) => count + recording.takes.length, 0) + 1;
-  const safeTitle = sanitizeOutputFolderLabel(source.title?.trim() || path.basename(source.outputDir) || "song");
+  const sourceTitle =
+    String(request.sourceTitle ?? "").trim()
+    || source.title?.trim()
+    || path.basename(source.outputDir)
+    || "Untitled song";
+  const safeTitle = sanitizeOutputFolderLabel(sourceTitle);
   const folderStamp = createdAt.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
   const outputDir = path.join(recordingRootDir(), safeTitle, `${folderStamp}-${id.slice(0, 8)}`);
   const takesDir = path.join(outputDir, "takes");
@@ -2646,7 +2706,7 @@ async function saveRecordingTake(request: SaveRecordingTakeRequest): Promise<Rec
     id: recordingPackageId,
     packageType: "recordingPackage",
     sourceSongPackageId: source.id,
-    title: `${source.title?.trim() || "Untitled song"} — ${take.title}`,
+    title: `${sourceTitle} — ${take.title}`,
     createdAt,
     updatedAt: createdAt,
     outputDir,
@@ -2655,6 +2715,7 @@ async function saveRecordingTake(request: SaveRecordingTakeRequest): Promise<Rec
       activeTakeId: take.id,
       vocalGain: Math.max(0, Math.min(2, request.vocalGain)),
       musicGain: Math.max(0, Math.min(2, request.musicGain)),
+      vocalOffsetMs,
       preferBackingTrack: request.preferBackingTrack,
       exportFormat: request.exportFormat
     },
@@ -2674,6 +2735,253 @@ async function saveRecordingTake(request: SaveRecordingTakeRequest): Promise<Rec
   }
 
   return { recordingPackage, take, mixExport, warning };
+}
+
+async function calibrateRecording(
+  request: RecordingCalibrationRequest
+): Promise<RecordingPackage> {
+  const recording = loadRecordingIndex().find(
+    (candidate) => candidate.id === request?.recordingPackageId
+  );
+  if (!recording) {
+    throw new Error("The recording is no longer available.");
+  }
+  return updateRecordingMix({
+    recordingPackageId: recording.id,
+    vocalGain: recording.mix.vocalGain,
+    musicGain: recording.mix.musicGain,
+    vocalOffsetMs: normalizeVocalOffsetMs(request?.vocalOffsetMs),
+    preferBackingTrack: recording.mix.preferBackingTrack,
+    exportFormat: recording.mix.exportFormat
+  });
+}
+
+function normalizeRecordingGain(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(2, value))
+    : fallback;
+}
+
+function normalizeRecordingExportFormat(value: unknown): RecordingExport["format"] {
+  return value === "wav" || value === "mp3" || value === "m4a" ? value : "m4a";
+}
+
+function persistRecordingPackage(
+  recordings: RecordingPackage[],
+  updatedRecording: RecordingPackage,
+  source: SavedJobHistory | undefined
+): void {
+  writeFileSync(
+    path.join(updatedRecording.outputDir, "recording.json"),
+    JSON.stringify(updatedRecording, null, 2),
+    "utf-8"
+  );
+  writeRecordingIndex(recordings);
+
+  if (!source) {
+    return;
+  }
+  const sourceManifest = readPackageManifest(source.outputDir);
+  if (sourceManifest && sourceManifest.packageId === source.id) {
+    writePackageManifest(source.outputDir, {
+      ...sourceManifest,
+      updatedAt: updatedRecording.updatedAt,
+      recordings: [
+        updatedRecording,
+        ...(sourceManifest.recordings ?? []).filter(
+          (candidate) => candidate.id !== updatedRecording.id
+        )
+      ]
+    });
+  }
+}
+
+function isPathInside(parentPath: string, candidatePath: string): boolean {
+  const relative = path.relative(path.resolve(parentPath), path.resolve(candidatePath));
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+async function updateRecordingMix(
+  request: UpdateRecordingMixRequest
+): Promise<RecordingPackage> {
+  const recordings = loadRecordingIndex();
+  const recordingIndex = recordings.findIndex(
+    (recording) => recording.id === request?.recordingPackageId
+  );
+  if (recordingIndex < 0) {
+    throw new Error("The recording is no longer available.");
+  }
+
+  const recording = recordings[recordingIndex];
+  const take =
+    recording.takes.find((candidate) => candidate.id === recording.mix.activeTakeId)
+    ?? recording.takes[0];
+  const recordingExport = recording.exports[0];
+  const source = historyWithBundledSamples().find(
+    (entry) => entry.id === recording.sourceSongPackageId
+  );
+  if (!take || !source) {
+    throw new Error("This recording does not have the source files needed for remixing.");
+  }
+  if (!existsSync(take.path)) {
+    throw new Error("The original vocal WAV is missing.");
+  }
+
+  const preferBackingTrack = Boolean(request?.preferBackingTrack);
+  const musicPath = selectRecordingMusicPath(source, preferBackingTrack);
+  if (!musicPath) {
+    throw new Error("The source song no longer has a local music track.");
+  }
+  const ffmpeg = recordingFfmpegExecutable();
+  if (!ffmpeg) {
+    throw new Error("VocalFlow could not find its bundled ffmpeg runtime.");
+  }
+
+  const duration = take.duration ?? recordingExport?.duration;
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
+    throw new Error("The recording duration is unavailable.");
+  }
+
+  const vocalGain = normalizeRecordingGain(request?.vocalGain, recording.mix.vocalGain);
+  const musicGain = normalizeRecordingGain(request?.musicGain, recording.mix.musicGain);
+  const vocalOffsetMs = normalizeVocalOffsetMs(request?.vocalOffsetMs);
+  const exportFormat = normalizeRecordingExportFormat(request?.exportFormat);
+  const extension = exportFormat === "m4a" ? "m4a" : exportFormat;
+  const updatedAt = new Date().toISOString();
+  const exportStamp = updatedAt.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const exportsDir = path.join(recording.outputDir, "exports");
+  mkdirSync(exportsDir, { recursive: true });
+  const remixedPath = path.join(
+    exportsDir,
+    `mix-${exportStamp}-${vocalOffsetFileToken(vocalOffsetMs)}.${extension}`
+  );
+  const renderRequest: SaveRecordingTakeRequest = {
+    sourceSongPackageId: recording.sourceSongPackageId,
+    sourceTitle: source.title,
+    data: new Uint8Array(),
+    mimeType: take.mimeType,
+    duration,
+    deviceId: take.deviceId,
+    deviceLabel: take.deviceLabel,
+    vocalGain,
+    musicGain,
+    vocalOffsetMs,
+    preferBackingTrack,
+    exportFormat
+  };
+
+  await runRuntimeCommand(
+    ffmpeg,
+    recordingExportArguments(musicPath, take.path, remixedPath, renderRequest),
+    process.env,
+    () => {}
+  );
+
+  const updatedExport: RecordingExport = {
+    id: `export:${randomUUID()}`,
+    recordingPackageId: recording.id,
+    takeId: take.id,
+    createdAt: updatedAt,
+    path: remixedPath,
+    format: exportFormat,
+    duration
+  };
+  const updatedRecording: RecordingPackage = {
+    ...recording,
+    updatedAt,
+    mix: {
+      ...recording.mix,
+      vocalGain,
+      musicGain,
+      vocalOffsetMs,
+      preferBackingTrack,
+      exportFormat
+    },
+    exports: [updatedExport]
+  };
+  recordings[recordingIndex] = updatedRecording;
+  persistRecordingPackage(recordings, updatedRecording, source);
+
+  for (const previousExport of recording.exports) {
+    if (
+      previousExport.path !== remixedPath
+      && isPathInside(exportsDir, previousExport.path)
+      && existsSync(previousExport.path)
+    ) {
+      try {
+        rmSync(previousExport.path, { force: true });
+      } catch {
+        // The new mix is already persisted; stale exports can be cleaned manually.
+      }
+    }
+  }
+
+  return updatedRecording;
+}
+
+function renameRecording(request: RenameRecordingRequest): RecordingPackage {
+  const title = String(request?.title ?? "").trim().replace(/\s+/g, " ").slice(0, 120);
+  if (!title) {
+    throw new Error("Enter a name for this recording.");
+  }
+  const recordings = loadRecordingIndex();
+  const recordingIndex = recordings.findIndex(
+    (recording) => recording.id === request?.recordingPackageId
+  );
+  if (recordingIndex < 0) {
+    throw new Error("The recording is no longer available.");
+  }
+
+  const recording = recordings[recordingIndex];
+  const updatedAt = new Date().toISOString();
+  const activeTakeId = recording.mix.activeTakeId ?? recording.takes[0]?.id;
+  const updatedRecording: RecordingPackage = {
+    ...recording,
+    title,
+    updatedAt,
+    takes: recording.takes.map((take) =>
+      take.id === activeTakeId ? { ...take, title, updatedAt } : take
+    )
+  };
+  recordings[recordingIndex] = updatedRecording;
+  const source = historyWithBundledSamples().find(
+    (entry) => entry.id === recording.sourceSongPackageId
+  );
+  persistRecordingPackage(recordings, updatedRecording, source);
+  return updatedRecording;
+}
+
+function deleteRecording(recordingPackageId: string): RecordingPackage[] {
+  const recordings = loadRecordingIndex();
+  const recording = recordings.find((candidate) => candidate.id === recordingPackageId);
+  if (!recording) {
+    return recordings;
+  }
+
+  const rootDir = recordingRootDir();
+  if (!isPathInside(rootDir, recording.outputDir)) {
+    throw new Error("The recording folder is outside the managed recordings directory.");
+  }
+  rmSync(recording.outputDir, { recursive: true, force: true });
+  const remaining = recordings.filter((candidate) => candidate.id !== recording.id);
+  writeRecordingIndex(remaining);
+
+  const source = historyWithBundledSamples().find(
+    (entry) => entry.id === recording.sourceSongPackageId
+  );
+  if (source) {
+    const sourceManifest = readPackageManifest(source.outputDir);
+    if (sourceManifest && sourceManifest.packageId === source.id) {
+      writePackageManifest(source.outputDir, {
+        ...sourceManifest,
+        updatedAt: new Date().toISOString(),
+        recordings: (sourceManifest.recordings ?? []).filter(
+          (candidate) => candidate.id !== recording.id
+        )
+      });
+    }
+  }
+  return remaining;
 }
 
 function writeHistoryFile(): void {

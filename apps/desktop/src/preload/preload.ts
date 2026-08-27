@@ -5,9 +5,12 @@ import type {
   JobLog,
   JobOptions,
   JobProgressStage,
+  RecordingCalibrationRequest,
   RecordingPackage,
   RecordingSaveResult,
+  RenameRecordingRequest,
   SaveRecordingTakeRequest,
+  UpdateRecordingMixRequest,
   UrlMetadataPreview,
   UserSettings,
   UvrDetectionResult,
@@ -31,6 +34,14 @@ const api: AudioWorkflowApi = {
   removeHistory: (historyId: string) => ipcRenderer.invoke("history:remove", historyId),
   saveRecordingTake: (request: SaveRecordingTakeRequest) =>
     ipcRenderer.invoke("recording:save-take", request) as Promise<RecordingSaveResult>,
+  calibrateRecording: (request: RecordingCalibrationRequest) =>
+    ipcRenderer.invoke("recording:calibrate", request) as Promise<RecordingPackage>,
+  updateRecordingMix: (request: UpdateRecordingMixRequest) =>
+    ipcRenderer.invoke("recording:update-mix", request) as Promise<RecordingPackage>,
+  renameRecording: (request: RenameRecordingRequest) =>
+    ipcRenderer.invoke("recording:rename", request) as Promise<RecordingPackage>,
+  deleteRecording: (recordingPackageId: string) =>
+    ipcRenderer.invoke("recording:delete", recordingPackageId) as Promise<RecordingPackage[]>,
   listRecordings: (sourceSongPackageId?: string) =>
     ipcRenderer.invoke("recording:list", sourceSongPackageId) as Promise<RecordingPackage[]>,
   getRecordingMediaUrl: (targetPath: string) =>

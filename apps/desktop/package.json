@@ -9,101 +9,17 @@
   "packageManager": "pnpm@10.20.0",
   "main": "dist/main/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5174 && tsc -p tsconfig.electron.json && electron .\"",
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5174 && tsc -p tsconfig.electron.json && electron . --dev-server-url=http://127.0.0.1:5174\"",
     "dev:ui": "vite --host 127.0.0.1",
     "build": "pnpm run build:ui && pnpm run build:main",
     "build:ui": "vite build",
     "build:main": "tsc -p tsconfig.electron.json",
     "dist": "pnpm run build && electron-builder --publish never",
     "dist:mac": "pnpm run build && electron-builder --mac dmg --publish never",
+    "dist:mac:offline": "pnpm run build && electron-builder --mac dmg --publish never --config electron-builder.offline.yml",
     "dist:win": "pnpm run build && electron-builder --win nsis --publish never",
+    "dist:win:offline": "pnpm run build && electron-builder --win nsis --publish never --config electron-builder.offline.yml",
     "start": "electron ."
-  },
-  "build": {
-    "appId": "com.gottaegbert.vocalflow.studio",
-    "productName": "VocalFlow Studio",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "build/**/*",
-      "package.json"
-    ],
-    "icon": "build/icon",
-    "extraResources": [
-      {
-        "from": "../../skills/audio-subtitles/scripts",
-        "to": "audio-subtitles/scripts",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "vendor/python-runtime",
-        "to": "python-runtime",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "node_modules/ffmpeg-static",
-        "to": "ffmpeg-static",
-        "filter": [
-          "ffmpeg",
-          "ffmpeg.exe"
-        ]
-      },
-      {
-        "from": "samples",
-        "to": "samples",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "vendor/separator-models",
-        "to": "separator-models",
-        "filter": [
-          "**/*.onnx",
-          "**/*.pth",
-          "**/*.ckpt"
-        ]
-      },
-      {
-        "from": "vendor/whisper-models",
-        "to": "whisper-models",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.music",
-      "icon": "build/icon.icns",
-      "hardenedRuntime": true,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "extendInfo": {
-        "NSMicrophoneUsageDescription": "VocalFlow Studio records your microphone when you start a karaoke performance recording."
-      },
-      "target": [
-        "dmg"
-      ]
-    },
-    "win": {
-      "icon": "build/icon.ico",
-      "target": [
-        "nsis"
-      ],
-      "signAndEditExecutable": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true
-    }
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

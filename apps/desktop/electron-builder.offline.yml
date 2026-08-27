@@ -1,0 +1,31 @@
+extends: ./electron-builder.yml
+artifactName: ${productName}-${version}-offline-${os}-${arch}.${ext}
+extraResources:
+  - from: ../../skills/audio-subtitles/scripts
+    to: audio-subtitles/scripts
+    filter:
+      - "**/*"
+  - from: vendor/python-runtime
+    to: python-runtime
+    filter:
+      - "**/*"
+  - from: node_modules/ffmpeg-static
+    to: ffmpeg-static
+    filter:
+      - ffmpeg
+      - ffmpeg.exe
+  - from: samples
+    to: samples
+    filter:
+      - "**/*"
+      - "!**/*.transcribe.wav"
+  - from: vendor/separator-models
+    to: separator-models
+    filter:
+      - "**/*.onnx"
+      - "**/*.pth"
+      - "**/*.ckpt"
+  - from: vendor/whisper-models
+    to: whisper-models
+    filter:
+      - "**/*"

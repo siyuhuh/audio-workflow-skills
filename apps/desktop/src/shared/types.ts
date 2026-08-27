@@ -106,6 +106,11 @@ export interface RecordingMixSettings {
   vocalGain: number;
   /** 0..2 gain applied to backing/original music track. */
   musicGain: number;
+  /**
+   * Signed vocal alignment correction in milliseconds.
+   * Positive values advance a late vocal; negative values delay an early vocal.
+   */
+  vocalOffsetMs?: number;
   /** Prefer backing stem when present; otherwise fall back to original track. */
   preferBackingTrack: boolean;
   exportFormat: RecordingExportFormat;
@@ -136,6 +141,8 @@ export interface RecordingPackage {
 
 export interface SaveRecordingTakeRequest {
   sourceSongPackageId: string;
+  /** Renderer-resolved display title for legacy packages whose stored title is only a source key. */
+  sourceTitle?: string;
   /** Encoded microphone capture from MediaRecorder. */
   data: Uint8Array;
   mimeType: string;
@@ -144,8 +151,31 @@ export interface SaveRecordingTakeRequest {
   deviceLabel?: string | null;
   vocalGain: number;
   musicGain: number;
+  /** Signed alignment correction; positive values advance the vocal. */
+  vocalOffsetMs?: number;
   preferBackingTrack: boolean;
   exportFormat: RecordingExportFormat;
+}
+
+export interface RecordingCalibrationRequest {
+  recordingPackageId: string;
+  /** Signed alignment correction; positive values advance the vocal. */
+  vocalOffsetMs: number;
+}
+
+export interface UpdateRecordingMixRequest {
+  recordingPackageId: string;
+  vocalGain: number;
+  musicGain: number;
+  /** Signed alignment correction; positive values advance the vocal. */
+  vocalOffsetMs: number;
+  preferBackingTrack: boolean;
+  exportFormat: RecordingExportFormat;
+}
+
+export interface RenameRecordingRequest {
+  recordingPackageId: string;
+  title: string;
 }
 
 export interface RecordingSaveResult {
@@ -305,6 +335,14 @@ export interface AudioWorkflowApi {
   removeHistory: (historyId: string) => Promise<SavedJobHistory[]>;
   /** Persist a microphone take, convert it to WAV, and render a music mix when possible. */
   saveRecordingTake?: (request: SaveRecordingTakeRequest) => Promise<RecordingSaveResult>;
+  /** Re-render a saved recording mix with a new signed vocal alignment correction. */
+  calibrateRecording?: (request: RecordingCalibrationRequest) => Promise<RecordingPackage>;
+  /** Re-render a saved take with non-destructive mix and export settings. */
+  updateRecordingMix?: (request: UpdateRecordingMixRequest) => Promise<RecordingPackage>;
+  /** Rename a saved recording without changing its files on disk. */
+  renameRecording?: (request: RenameRecordingRequest) => Promise<RecordingPackage>;
+  /** Permanently remove one recording package and its generated files. */
+  deleteRecording?: (recordingPackageId: string) => Promise<RecordingPackage[]>;
   /** Return persisted recording packages, optionally filtered to one source song package. */
   listRecordings?: (sourceSongPackageId?: string) => Promise<RecordingPackage[]>;
   /** Return a secure app-local media URL for a persisted recording file. */

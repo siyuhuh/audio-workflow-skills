@@ -20,7 +20,7 @@ pnpm install
 pnpm dev
 ```
 
-Development can reuse a system CLI/runtime. Release installers instead contain standalone Python, ffmpeg, yt-dlp, faster-whisper, audio-separator, zhconv, and the default model weights.
+Development can reuse a system CLI/runtime. Release installers contain the prepared Python runtime and ffmpeg. The default Lite installer downloads model weights on demand and omits the bundled demo-song media; the Offline installer embeds the prepared default weights and demo package.
 
 ## Build
 
@@ -30,12 +30,14 @@ pnpm --filter @vocalflow/desktop dist:mac
 pnpm --filter @vocalflow/desktop dist:win
 ```
 
-To build the complete offline installer, populate the release-only runtime first:
+To build the complete offline installer, populate the release-only runtime and models first, then use the explicit Offline target:
 
 ```bash
 cd apps/desktop
 ./scripts/prepare-bundled-runtime.sh
 ./scripts/fetch-bundled-models.sh
+pnpm dist:mac:offline
+# or: pnpm dist:win:offline
 ```
 
 The app id is `com.gottaegbert.vocalflow.studio`, so it can coexist with the native `com.gottaegbert.vocalflow` app.

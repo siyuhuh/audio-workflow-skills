@@ -5139,6 +5139,178 @@ select:focus-visible {
   color-scheme: dark;
 }
 
+.roomRecordingCalibration {
+  display: grid;
+  width: calc(100% - 36px);
+  gap: 8px;
+  margin-left: 36px;
+  padding: 8px 0 2px;
+}
+
+.roomRecordingCalibration > div:first-child,
+.roomRecordingCalibrationActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.roomRecordingCalibration strong {
+  color: color-mix(in oklch, var(--room-panel) 76%, white);
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.roomRecordingCalibration span {
+  color: color-mix(in oklch, var(--room-panel) 48%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.59rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.roomRecordingCalibration input[type="range"] {
+  width: 100%;
+  height: 16px;
+  margin: 0;
+}
+
+.roomRecordingCalibrationActions {
+  justify-content: flex-end;
+}
+
+.roomRecordingCalibrationActions button {
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 0 10px;
+  background: color-mix(in oklch, var(--room-panel) 8%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 72%, white);
+  font-size: 0.62rem;
+  font-weight: 600;
+  transition: background-color 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out), transform 140ms var(--motion-ease-out);
+}
+
+.roomRecordingCalibrationActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.roomRecordingDelete {
+  color: color-mix(in oklch, var(--color-danger) 72%, white) !important;
+}
+
+.roomRecordingReviewEditor {
+  display: grid;
+  width: calc(100% - 36px);
+  gap: 12px;
+  margin-left: 36px;
+  padding: 10px 0 3px;
+}
+
+.roomRecordingRename {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.roomRecordingRename input,
+.roomRecordingExportRow select {
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid color-mix(in oklch, var(--room-panel) 14%, transparent);
+  border-radius: var(--radius-md);
+  padding: 0 9px;
+  background: color-mix(in oklch, var(--room-panel) 5%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 84%, white);
+  font-size: 0.66rem;
+}
+
+.roomRecordingRename button,
+.roomRecordingReviewEditor .roomRecordingCalibrationActions button {
+  min-height: 30px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 0 10px;
+  background: color-mix(in oklch, var(--room-panel) 8%, transparent);
+  color: color-mix(in oklch, var(--room-panel) 72%, white);
+  font-size: 0.62rem;
+  font-weight: 600;
+  transition: background-color 140ms var(--motion-ease-out), color 140ms var(--motion-ease-out), transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+}
+
+.roomRecordingRename button:disabled,
+.roomRecordingReviewEditor .roomRecordingCalibrationActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.roomRecordingMixGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.roomRecordingMixGrid label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.roomRecordingMixGrid span,
+.roomRecordingExportRow span {
+  color: color-mix(in oklch, var(--room-panel) 54%, transparent);
+  font-size: 0.62rem;
+}
+
+.roomRecordingMixGrid strong {
+  color: color-mix(in oklch, var(--room-panel) 72%, white);
+  font-family: var(--font-mono);
+  font-size: 0.59rem;
+  font-weight: 500;
+}
+
+.roomRecordingMixGrid input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+}
+
+.roomRecordingReviewEditor .roomRecordingCalibration {
+  width: 100%;
+  margin-left: 0;
+  padding: 0;
+}
+
+.roomRecordingExportRow {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.roomRecordingExportRow > label:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.roomRecordingBackingChoice {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+}
+
+.roomRecordingBackingChoice input {
+  accent-color: var(--room-panel);
+}
+
+.roomRecordingApplyMix {
+  background: var(--room-panel) !important;
+  color: var(--room-panel-fg) !important;
+}
+
 .roomToolSectionStack,
 .roomSettingsStack {
   display: grid;
@@ -5407,6 +5579,47 @@ select:focus-visible {
   color: color-mix(in oklch, var(--room-panel) 52%, transparent);
   font-size: 0.64rem;
   font-weight: 500;
+}
+
+.roomMicLevel > span:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.roomMicLevel small {
+  color: color-mix(in oklch, var(--room-panel) 42%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  font-weight: 500;
+}
+
+.roomMicLevel small[data-clipping="true"] {
+  color: var(--color-danger);
+}
+
+.roomMicMeter {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--room-panel) 10%, transparent);
+}
+
+.roomMicMeter > i {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--room-panel);
+  transform-origin: left center;
+  transition: transform 80ms linear, background-color 120ms var(--motion-ease-out);
+}
+
+.roomMicLevel:has(small[data-clipping="true"]) .roomMicMeter > i {
+  background: var(--color-danger);
 }
 
 .roomMicLevel input[type="range"] {
@@ -5719,6 +5932,7 @@ select:focus-visible {
   .roomQueueItem button:hover:enabled,
   .roomRecordingLibraryIntro button:hover:enabled,
   .roomRecordingActions button:hover:enabled,
+  .roomRecordingCalibrationActions button:hover:enabled,
   .roomEditorNudge button:hover:enabled {
     background: color-mix(in oklch, var(--room-panel) 12%, transparent);
   }

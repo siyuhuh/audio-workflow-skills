@@ -11,6 +11,15 @@ final class AudioMonitorService: ObservableObject {
         let audioDeviceID: AudioDeviceID
     }
 
+    struct LatencyDiagnostics: Equatable {
+        let inputDeviceName: String
+        let outputDeviceName: String
+        let inputBufferFrames: UInt32
+        let outputBufferFrames: UInt32
+        let estimatedRoundTripMilliseconds: Double
+        let hasPotentialWirelessLink: Bool
+    }
+
     enum MonitorState: Equatable {
         case ready
         case requestingPermission
@@ -103,6 +112,7 @@ final class AudioMonitorService: ObservableObject {
     @Published private(set) var voiceCleanupEnabled = false
     @Published private(set) var isRecording = false
     @Published private(set) var recordingDuration: TimeInterval = 0
+    @Published private(set) var latencyDiagnostics: LatencyDiagnostics?
 
     private var engine: AVAudioEngine?
     private var gainMixer: AVAudioMixerNode?
@@ -114,9 +124,25 @@ final class AudioMonitorService: ObservableObject {
     private var recordingURL: URL?
     private var recordingStartedAt: Date?
     private var recordingClockTask: Task<Void, Never>?
+    private var originalBufferFrameSizes: [AudioDeviceID: UInt32] = [:]
+
+    nonisolated private static let preferredBufferFrameSize: UInt32 = 128
 
     init() {
         refreshInputDevices()
+    }
+
+    var latencyGuidance: String {
+        guard state.isListening, let latencyDiagnostics else {
+            return "For the lowest latency, use wired headphones or an audio interface with direct monitoring."
+        }
+
+        let milliseconds = Int(latencyDiagnostics.estimatedRoundTripMilliseconds.rounded())
+        let bufferDescription = "\(latencyDiagnostics.inputBufferFrames)/\(latencyDiagnostics.outputBufferFrames)-frame I/O"
+        if latencyDiagnostics.hasPotentialWirelessLink {
+            return "Low-latency mode · \(bufferDescription) · about \(milliseconds) ms in Core Audio. Wireless microphone or headphone hardware adds delay that macOS cannot remove."
+        }
+        return "Low-latency mode · \(bufferDescription) · about \(milliseconds) ms estimated system round trip."
     }
 
     func toggleListening() {
@@ -166,7 +192,15 @@ final class AudioMonitorService: ObservableObject {
 
         do {
             try configureEngine()
-            try engine?.start()
+            do {
+                try engine?.start()
+            } catch {
+                guard !originalBufferFrameSizes.isEmpty else { throw error }
+                teardownEngine()
+                try configureEngine(preferLowLatency: false)
+                try engine?.start()
+            }
+            updateLatencyDiagnostics()
             state = .listening
         } catch {
             teardownEngine()
@@ -245,12 +279,15 @@ final class AudioMonitorService: ObservableObject {
         isRecording = false
     }
 
-    private func configureEngine() throws {
+    private func configureEngine(preferLowLatency: Bool = true) throws {
         teardownEngine()
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
         try applySelectedInputDevice(to: input)
+        if preferLowLatency {
+            requestLowLatencyBuffers()
+        }
         let inputFormat = input.outputFormat(forBus: 0)
 
         guard inputFormat.channelCount > 0 else {
@@ -292,6 +329,87 @@ final class AudioMonitorService: ObservableObject {
         self.outputMixer = outputMixer
     }
 
+    private func requestLowLatencyBuffers() {
+        let resolvedInputDeviceID = inputDevices
+            .first(where: { $0.id == selectedInputDeviceID })?
+            .audioDeviceID
+        let inputDeviceID = resolvedInputDeviceID
+            ?? Self.defaultAudioDevice(for: kAudioHardwarePropertyDefaultInputDevice)
+        let outputDeviceID = Self.defaultAudioDevice(for: kAudioHardwarePropertyDefaultOutputDevice)
+
+        for deviceID in Set([inputDeviceID, outputDeviceID].compactMap { $0 }) {
+            guard let currentFrames = Self.uint32Property(
+                kAudioDevicePropertyBufferFrameSize,
+                for: deviceID
+            ) else {
+                continue
+            }
+            let requestedFrames = Self.preferredBufferFrames(for: deviceID)
+            guard requestedFrames < currentFrames,
+                  Self.setUInt32Property(
+                    kAudioDevicePropertyBufferFrameSize,
+                    value: requestedFrames,
+                    for: deviceID
+                  ) else {
+                continue
+            }
+            originalBufferFrameSizes[deviceID] = currentFrames
+        }
+    }
+
+    private func updateLatencyDiagnostics() {
+        guard let engine else {
+            latencyDiagnostics = nil
+            return
+        }
+
+        let resolvedInputDeviceID = inputDevices
+            .first(where: { $0.id == selectedInputDeviceID })?
+            .audioDeviceID
+        guard let inputDeviceID = resolvedInputDeviceID
+                ?? Self.defaultAudioDevice(for: kAudioHardwarePropertyDefaultInputDevice),
+              let outputDeviceID = Self.defaultAudioDevice(for: kAudioHardwarePropertyDefaultOutputDevice) else {
+            latencyDiagnostics = nil
+            return
+        }
+
+        let inputBufferFrames = Self.uint32Property(
+            kAudioDevicePropertyBufferFrameSize,
+            for: inputDeviceID
+        ) ?? 0
+        let outputBufferFrames = Self.uint32Property(
+            kAudioDevicePropertyBufferFrameSize,
+            for: outputDeviceID
+        ) ?? 0
+        let inputDeviceName = Self.stringProperty(.name, for: inputDeviceID) ?? "System input"
+        let outputDeviceName = Self.stringProperty(.name, for: outputDeviceID) ?? "System output"
+        let coreAudioEstimate = Self.estimatedDeviceLatency(
+            deviceID: inputDeviceID,
+            scope: kAudioObjectPropertyScopeInput
+        ) + Self.estimatedDeviceLatency(
+            deviceID: outputDeviceID,
+            scope: kAudioObjectPropertyScopeOutput
+        )
+        let engineEstimate = engine.inputNode.presentationLatency
+            + engine.inputNode.outputPresentationLatency
+        let estimatedRoundTripMilliseconds = max(coreAudioEstimate, engineEstimate) * 1_000
+
+        latencyDiagnostics = LatencyDiagnostics(
+            inputDeviceName: inputDeviceName,
+            outputDeviceName: outputDeviceName,
+            inputBufferFrames: inputBufferFrames,
+            outputBufferFrames: outputBufferFrames,
+            estimatedRoundTripMilliseconds: estimatedRoundTripMilliseconds,
+            hasPotentialWirelessLink: Self.hasPotentialWirelessLink(
+                deviceID: inputDeviceID,
+                name: inputDeviceName
+            ) || Self.hasPotentialWirelessLink(
+                deviceID: outputDeviceID,
+                name: outputDeviceName
+            )
+        )
+    }
+
     private func applySelectedInputDevice(to inputNode: AVAudioInputNode) throws {
         guard let selectedDevice = inputDevices.first(where: { $0.id == selectedInputDeviceID }) else {
             return
@@ -321,13 +439,26 @@ final class AudioMonitorService: ObservableObject {
         }
         engine?.stop()
         engine?.reset()
+        restoreAudioDeviceBuffers()
         engine = nil
         gainMixer = nil
         voiceCleanupEQ = nil
         outputMixer = nil
         inputLevel = 0
+        latencyDiagnostics = nil
         lastMeterUpdate = .distantPast
         hasInputTap = false
+    }
+
+    private func restoreAudioDeviceBuffers() {
+        for (deviceID, frameSize) in originalBufferFrameSizes {
+            _ = Self.setUInt32Property(
+                kAudioDevicePropertyBufferFrameSize,
+                value: frameSize,
+                for: deviceID
+            )
+        }
+        originalBufferFrameSizes.removeAll()
     }
 
     private func publishMeterLevel(_ level: Float) {
@@ -424,6 +555,176 @@ final class AudioMonitorService: ObservableObject {
         guard dataStatus == noErr else { return [] }
 
         return deviceIDs
+    }
+
+    nonisolated private static func defaultAudioDevice(
+        for selector: AudioObjectPropertySelector
+    ) -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID()
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+        return status == noErr && deviceID != kAudioObjectUnknown ? deviceID : nil
+    }
+
+    nonisolated private static func preferredBufferFrames(for deviceID: AudioDeviceID) -> UInt32 {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyBufferFrameSizeRange,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var range = AudioValueRange()
+        var dataSize = UInt32(MemoryLayout<AudioValueRange>.size)
+        let status = AudioObjectGetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &range
+        )
+        guard status == noErr else { return preferredBufferFrameSize }
+
+        return UInt32(
+            min(
+                max(Double(preferredBufferFrameSize), range.mMinimum),
+                range.mMaximum
+            )
+        )
+    }
+
+    nonisolated private static func uint32Property(
+        _ selector: AudioObjectPropertySelector,
+        for deviceID: AudioDeviceID,
+        scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal
+    ) -> UInt32? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: scope,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value = UInt32()
+        var dataSize = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioObjectGetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &value
+        )
+        return status == noErr ? value : nil
+    }
+
+    nonisolated private static func float64Property(
+        _ selector: AudioObjectPropertySelector,
+        for deviceID: AudioDeviceID
+    ) -> Float64? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value = Float64()
+        var dataSize = UInt32(MemoryLayout<Float64>.size)
+        let status = AudioObjectGetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &value
+        )
+        return status == noErr ? value : nil
+    }
+
+    nonisolated private static func setUInt32Property(
+        _ selector: AudioObjectPropertySelector,
+        value: UInt32,
+        for deviceID: AudioDeviceID
+    ) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var isSettable = DarwinBoolean(false)
+        guard AudioObjectIsPropertySettable(deviceID, &address, &isSettable) == noErr,
+              isSettable.boolValue else {
+            return false
+        }
+
+        var mutableValue = value
+        let dataSize = UInt32(MemoryLayout<UInt32>.size)
+        return AudioObjectSetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            dataSize,
+            &mutableValue
+        ) == noErr
+    }
+
+    nonisolated private static func estimatedDeviceLatency(
+        deviceID: AudioDeviceID,
+        scope: AudioObjectPropertyScope
+    ) -> TimeInterval {
+        guard let sampleRate = float64Property(
+            kAudioDevicePropertyNominalSampleRate,
+            for: deviceID
+        ), sampleRate > 0 else {
+            return 0
+        }
+
+        let bufferFrames = uint32Property(
+            kAudioDevicePropertyBufferFrameSize,
+            for: deviceID
+        ) ?? 0
+        let deviceLatency = uint32Property(
+            kAudioDevicePropertyLatency,
+            for: deviceID,
+            scope: scope
+        ) ?? 0
+        let safetyOffset = uint32Property(
+            kAudioDevicePropertySafetyOffset,
+            for: deviceID,
+            scope: scope
+        ) ?? 0
+        return Double(bufferFrames + deviceLatency + safetyOffset) / sampleRate
+    }
+
+    nonisolated private static func hasPotentialWirelessLink(
+        deviceID: AudioDeviceID,
+        name: String
+    ) -> Bool {
+        let wirelessTransports: Set<UInt32> = [
+            kAudioDeviceTransportTypeBluetooth,
+            kAudioDeviceTransportTypeBluetoothLE,
+            kAudioDeviceTransportTypeAirPlay
+        ]
+        if let transport = uint32Property(
+            kAudioDevicePropertyTransportType,
+            for: deviceID
+        ), wirelessTransports.contains(transport) {
+            return true
+        }
+
+        let normalizedName = name.lowercased()
+        return normalizedName.contains("wireless")
+            || normalizedName.contains("bluetooth")
+            || normalizedName.contains("airpods")
     }
 
     nonisolated private static func hasInputChannels(_ deviceID: AudioDeviceID) -> Bool {

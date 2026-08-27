@@ -104,6 +104,8 @@ Converted in the current experience pass:
 - Room tools: the four dock actions share one controlled popover surface; only one tool can be open, and settings use hairline sections instead of nested cards.
 - History: completed packages live in Library / Room setlist surfaces, never in a persistent processing side rail. The capture workspace only shows its inline job progress.
 - Native Studio: outer cards use translucent material again; the final unpaired package option spans the full two-column row rather than leaving an empty cell.
+- Room mic monitor: the existing compact status line reports low-latency mode, estimated milliseconds, and sample rate; post-recording vocal alignment stays inside the expanded take preview instead of adding another persistent Stage control.
+- Recording review: an expanded take keeps playback, naming, vocal/music balance, alignment, backing choice, and export format in one compact instrument panel; destructive delete remains a separate confirmed icon action.
 
 ## Decisions Log
 
@@ -136,3 +138,4 @@ Converted in the current experience pass:
 | 2026-07-15 | Texture belongs below content | A single tiled noise layer now lives on the scroll canvas; transparent Studio bands reveal it while controls and text remain clean, replacing duplicated high-z overlays. |
 | 2026-07-16 | Brand mark from Foundations SVG | App icon uses rounded `Frame 3.svg` (olive tile `rx=100` + gradient monogram); in-app mark layers `Union.svg` as soft silhouette backdrop behind the main logo. |
 | 2026-07-23 | Restore translucent Native Studio cards | The solid outer-card fill was masking the material treatment; the remaining unpaired toggle now spans both grid columns for a balanced layout. |
+| 2026-07-31 | Compact post-recording review desk | Keep recording production inside the existing take expansion so Stage stays lyrics-first while users can remix, rename, export, and remove takes without leaving the room. |

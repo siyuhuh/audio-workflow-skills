@@ -13,11 +13,16 @@ export interface MicrophoneMonitorController {
   monitorGain: number;
   noiseReduction: boolean;
   status: string;
+  estimatedLatencyMs: number | null;
+  sampleRate: number | null;
+  inputLevel: number;
+  isClipping: boolean;
   setSelectedDeviceId: (deviceId: string) => void;
   setIsMonitoring: (enabled: boolean) => void;
   setMonitorGain: (gain: number) => void;
   setNoiseReduction: (enabled: boolean) => void;
   refreshDevices: () => void;
+  acquireRecordingStream: () => Promise<MediaStream>;
 }
 
 interface MicrophoneMonitorPanelProps {
@@ -26,12 +31,23 @@ interface MicrophoneMonitorPanelProps {
 
 export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps) {
   const { t } = useTranslation();
-  const displayStatus =
-    monitor.status === "Monitoring input. Use headphones to avoid feedback."
+  const defaultStatus =
+    monitor.status === "Low-latency microphone monitoring is active."
       ? t("room:mic.headphones")
       : monitor.status === "Monitor off"
         ? t("room:mic.monitorOff")
         : monitor.status;
+  const displayStatus =
+    monitor.isMonitoring && monitor.sampleRate
+      ? monitor.estimatedLatencyMs
+        ? t("room:mic.lowLatencyStatus", {
+            latency: Math.round(monitor.estimatedLatencyMs),
+            sampleRate: Math.round(monitor.sampleRate / 1000)
+          })
+        : t("room:mic.lowLatencyUnreported", {
+            sampleRate: Math.round(monitor.sampleRate / 1000)
+          })
+      : defaultStatus;
 
   return (
     <section data-monitoring={monitor.isMonitoring} className="roomMicPanel">
@@ -68,7 +84,22 @@ export function MicrophoneMonitorPanel({ monitor }: MicrophoneMonitorPanelProps)
       </select>
 
       <label className="roomMicLevel">
-        <span>{t("room:mic.level")}</span>
+        <span>
+          {t("room:mic.level")}
+          <small data-clipping={monitor.isClipping}>
+            {monitor.isClipping ? t("room:mic.clipping") : t("room:mic.signal")}
+          </small>
+        </span>
+        <span
+          className="roomMicMeter"
+          role="meter"
+          aria-label={t("room:mic.inputLevel")}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(monitor.inputLevel * 100)}
+        >
+          <i style={{ transform: `scaleX(${monitor.inputLevel})` }} />
+        </span>
         <input
           type="range"
           min="0"

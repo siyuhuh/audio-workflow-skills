@@ -13,11 +13,14 @@ import { useTranslation } from "react-i18next";
 import type {
   GeneratedAsset,
   PlaybackBundle,
+  RecordingExportFormat,
   RecordingPackage,
   RecordingSaveResult,
+  RenameRecordingRequest,
   RoomQueueItem,
   SavedJobHistory,
-  SaveRecordingTakeRequest
+  SaveRecordingTakeRequest,
+  UpdateRecordingMixRequest
 } from "../../shared/types";
 import {
   KaraokeLyricLine,
@@ -113,6 +116,9 @@ interface KaraokeRoomSceneProps {
   onScriptChange: (content: string) => void;
   onSaveLyrics: () => void | Promise<void>;
   onSaveRecording: (request: SaveRecordingTakeRequest) => Promise<RecordingSaveResult>;
+  onUpdateRecordingMix: (request: UpdateRecordingMixRequest) => Promise<RecordingPackage>;
+  onRenameRecording: (request: RenameRecordingRequest) => Promise<RecordingPackage>;
+  onDeleteRecording: (recordingPackageId: string) => Promise<RecordingPackage[]>;
   onListRecordings: (sourceSongPackageId: string) => Promise<RecordingPackage[]>;
   onGetRecordingMediaUrl: (targetPath: string) => Promise<string>;
   onOpenRecordingPath: (targetPath: string) => void | Promise<void>;
@@ -133,9 +139,61 @@ const lyricFontPreviewClasses: Record<LyricFont, string> = {
 };
 
 type RecordingPhase = "idle" | "preparing" | "countdown" | "recording" | "saving" | "complete" | "error";
+interface RecordingMixDraft {
+  vocalGain: number;
+  musicGain: number;
+  vocalOffsetMs: number;
+  preferBackingTrack: boolean;
+  exportFormat: RecordingExportFormat;
+}
+const RECORDING_VOCAL_OFFSET_LIMIT_MS = 500;
 
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function clampRecordingOffset(value: number): number {
+  return Math.round(
+    Math.max(-RECORDING_VOCAL_OFFSET_LIMIT_MS, Math.min(RECORDING_VOCAL_OFFSET_LIMIT_MS, value))
+  );
+}
+
+function recordingCalibrationStorageKey(deviceId?: string | null, deviceLabel?: string | null): string {
+  const deviceKey = deviceId?.trim() || deviceLabel?.trim() || "system-default";
+  return `vocalflow:recording-offset:${encodeURIComponent(deviceKey)}`;
+}
+
+function loadRecordingCalibration(
+  deviceId?: string | null,
+  deviceLabel?: string | null
+): number | null {
+  try {
+    const rawValue = window.localStorage.getItem(
+      recordingCalibrationStorageKey(deviceId, deviceLabel)
+    );
+    if (rawValue === null) {
+      return null;
+    }
+    const value = Number(rawValue);
+    return Number.isFinite(value) ? clampRecordingOffset(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRecordingCalibration(
+  value: number,
+  deviceId?: string | null,
+  deviceLabel?: string | null
+): void {
+  try {
+    window.localStorage.setItem(
+      recordingCalibrationStorageKey(deviceId, deviceLabel),
+      String(clampRecordingOffset(value))
+    );
+  } catch {
+    // Calibration still applies to this recording when local storage is unavailable.
+  }
 }
 
 function preferredRecordingMimeType(): string | undefined {
@@ -180,6 +238,15 @@ function primaryRecordingFile(recording: RecordingPackage): string | null {
 
 function recordingDuration(recording: RecordingPackage): number | null {
   return recording.exports[0]?.duration ?? recording.takes[0]?.duration ?? null;
+}
+
+function recordingDisplayTitle(recording: RecordingPackage, songTitle: string): string {
+  const title = recording.title.trim();
+  if (!title || /^(?:url|sample|local):/i.test(title) || /^untitled song\b/i.test(title)) {
+    const takeTitle = recording.takes[0]?.title?.trim();
+    return takeTitle ? `${songTitle} — ${takeTitle}` : songTitle;
+  }
+  return title;
 }
 
 function formatRecordingDate(value: string): string {
@@ -228,6 +295,9 @@ export function KaraokeRoomScene({
   onScriptChange,
   onSaveLyrics,
   onSaveRecording,
+  onUpdateRecordingMix,
+  onRenameRecording,
+  onDeleteRecording,
   onListRecordings,
   onGetRecordingMediaUrl,
   onOpenRecordingPath,
@@ -250,6 +320,10 @@ export function KaraokeRoomScene({
   const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
   const [activeRecordingUrl, setActiveRecordingUrl] = useState("");
   const [recordingPreviewLoadingId, setRecordingPreviewLoadingId] = useState<string | null>(null);
+  const [recordingMixDrafts, setRecordingMixDrafts] = useState<Record<string, Partial<RecordingMixDraft>>>({});
+  const [recordingRenameDrafts, setRecordingRenameDrafts] = useState<Record<string, string>>({});
+  const [recordingWorkingId, setRecordingWorkingId] = useState<string | null>(null);
+  const [recordingDeletingId, setRecordingDeletingId] = useState<string | null>(null);
   const progressRef = useRef<HTMLDivElement | null>(null);
   const toolsRef = useRef<HTMLDivElement | null>(null);
   const listRecordingsRef = useRef(onListRecordings);
@@ -258,6 +332,7 @@ export function KaraokeRoomScene({
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingStartedAtRef = useRef(0);
   const recordingGenerationRef = useRef(0);
+  const recordingDeviceRef = useRef<{ deviceId: string | null; deviceLabel: string | null } | null>(null);
 
   const previousCue = activeCueIndex > 0 ? cues[activeCueIndex - 1] : null;
   const nextCue = activeCueIndex >= 0 ? cues[activeCueIndex + 1] : cues[0] ?? null;
@@ -317,6 +392,7 @@ export function KaraokeRoomScene({
     recordingStreamRef.current = null;
     mediaRecorderRef.current = null;
     recordingChunksRef.current = [];
+    recordingDeviceRef.current = null;
   }, []);
 
   const stopAndSaveRecording = useCallback(async () => {
@@ -353,21 +429,43 @@ export function KaraokeRoomScene({
         recorder.stop();
       });
       const data = new Uint8Array(await blob.arrayBuffer());
-      const device = microphoneMonitor.devices.find(
+      const selectedDevice = microphoneMonitor.devices.find(
         (candidate) => candidate.deviceId === microphoneMonitor.selectedDeviceId
       );
+      const recordingDevice = recordingDeviceRef.current ?? {
+        deviceId: microphoneMonitor.selectedDeviceId || null,
+        deviceLabel: selectedDevice?.label ?? null
+      };
+      const savedCalibration = loadRecordingCalibration(
+        recordingDevice.deviceId,
+        recordingDevice.deviceLabel
+      );
+      const vocalOffsetMs = savedCalibration ?? 0;
       const result = await onSaveRecording({
         sourceSongPackageId: activeReview.id,
+        sourceTitle: reviewTitle,
         data,
         mimeType: blob.type || recorder.mimeType || "audio/webm",
         duration,
-        deviceId: microphoneMonitor.selectedDeviceId || null,
-        deviceLabel: device?.label ?? null,
+        deviceId: recordingDevice.deviceId,
+        deviceLabel: recordingDevice.deviceLabel,
         vocalGain: 1,
         musicGain: playbackController.muted ? 0 : playbackController.volume,
+        vocalOffsetMs,
         preferBackingTrack: mainTrackRole === "backing",
         exportFormat: "m4a"
       });
+      setRecordingMixDrafts((current) => ({
+        ...current,
+        [result.recordingPackage.id]: {
+          ...result.recordingPackage.mix,
+          vocalOffsetMs: result.recordingPackage.mix.vocalOffsetMs ?? vocalOffsetMs
+        }
+      }));
+      setRecordingRenameDrafts((current) => ({
+        ...current,
+        [result.recordingPackage.id]: result.recordingPackage.title
+      }));
       setRecordingPackages((current) => [
         result.recordingPackage,
         ...current.filter((recording) => recording.id !== result.recordingPackage.id)
@@ -377,6 +475,18 @@ export function KaraokeRoomScene({
           (result.mixExport ? t("room:recording.savedMix") : t("room:recording.savedVocal"))
       );
       setRecordingPhase("complete");
+      const filePath = primaryRecordingFile(result.recordingPackage);
+      if (filePath) {
+        try {
+          const mediaUrl = await onGetRecordingMediaUrl(filePath);
+          setActiveRecordingId(result.recordingPackage.id);
+          setActiveRecordingUrl(mediaUrl);
+        } catch {
+          // The recording is safely persisted even if its immediate preview cannot open.
+        }
+      }
+      playbackController.pause();
+      setOpenTool("recordings");
     } catch (error) {
       setRecordingMessage(error instanceof Error ? error.message : t("room:recording.saveFailed"));
       setRecordingPhase("error");
@@ -388,8 +498,10 @@ export function KaraokeRoomScene({
     mainTrackRole,
     microphoneMonitor.devices,
     microphoneMonitor.selectedDeviceId,
+    onGetRecordingMediaUrl,
     onSaveRecording,
     playbackController,
+    reviewTitle,
     recordingPhase,
     releaseRecordingStream,
     t
@@ -412,23 +524,22 @@ export function KaraokeRoomScene({
     setRecordingPhase("preparing");
     setRecordingMessage(t("room:recording.preparing"));
 
-    const audioConstraints: MediaTrackConstraints = {
-      echoCancellation: microphoneMonitor.noiseReduction,
-      noiseSuppression: microphoneMonitor.noiseReduction,
-      autoGainControl: microphoneMonitor.noiseReduction,
-      channelCount: 1,
-      sampleRate: 48_000
-    };
-    if (microphoneMonitor.selectedDeviceId) {
-      audioConstraints.deviceId = { exact: microphoneMonitor.selectedDeviceId };
-    }
-
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      const stream = await microphoneMonitor.acquireRecordingStream();
       if (recordingGenerationRef.current !== generation) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
+      const trackSettings = stream.getAudioTracks()[0]?.getSettings();
+      const resolvedDeviceId =
+        trackSettings?.deviceId ?? (microphoneMonitor.selectedDeviceId || null);
+      const resolvedDevice = microphoneMonitor.devices.find(
+        (candidate) => candidate.deviceId === resolvedDeviceId
+      );
+      recordingDeviceRef.current = {
+        deviceId: resolvedDeviceId,
+        deviceLabel: resolvedDevice?.label ?? null
+      };
       const mimeType = preferredRecordingMimeType();
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 192_000 })
@@ -470,6 +581,7 @@ export function KaraokeRoomScene({
     }
   }, [
     hasPlayableMedia,
+    microphoneMonitor.devices,
     microphoneMonitor.noiseReduction,
     microphoneMonitor.selectedDeviceId,
     playbackController,
@@ -488,6 +600,10 @@ export function KaraokeRoomScene({
     setRecordingsError("");
     setActiveRecordingId(null);
     setActiveRecordingUrl("");
+    setRecordingMixDrafts({});
+    setRecordingRenameDrafts({});
+    setRecordingWorkingId(null);
+    setRecordingDeletingId(null);
     void listRecordingsRef.current(activeReview.id)
       .then((recordings) => {
         if (!cancelled) {
@@ -591,6 +707,125 @@ export function KaraokeRoomScene({
       );
     } finally {
       setRecordingPreviewLoadingId(null);
+    }
+  }
+
+  async function applyRecordingMix(recording: RecordingPackage) {
+    const draft = recordingMixDrafts[recording.id] ?? {};
+    const vocalOffsetMs = clampRecordingOffset(
+      draft.vocalOffsetMs ?? recording.mix.vocalOffsetMs ?? 0
+    );
+    setRecordingWorkingId(recording.id);
+    setRecordingsError("");
+    try {
+      const updatedRecording = await onUpdateRecordingMix({
+        recordingPackageId: recording.id,
+        vocalGain: draft.vocalGain ?? recording.mix.vocalGain,
+        musicGain: draft.musicGain ?? recording.mix.musicGain,
+        vocalOffsetMs,
+        preferBackingTrack: draft.preferBackingTrack ?? recording.mix.preferBackingTrack,
+        exportFormat: draft.exportFormat ?? recording.mix.exportFormat
+      });
+      setRecordingPackages((current) =>
+        current.map((candidate) =>
+          candidate.id === updatedRecording.id ? updatedRecording : candidate
+        )
+      );
+      setRecordingMixDrafts((current) => ({
+        ...current,
+        [updatedRecording.id]: {
+          ...updatedRecording.mix,
+          vocalOffsetMs: updatedRecording.mix.vocalOffsetMs ?? vocalOffsetMs
+        }
+      }));
+      const take = updatedRecording.takes.find(
+        (candidate) => candidate.id === updatedRecording.mix.activeTakeId
+      ) ?? updatedRecording.takes[0];
+      saveRecordingCalibration(vocalOffsetMs, take?.deviceId, take?.deviceLabel);
+
+      const filePath = primaryRecordingFile(updatedRecording);
+      if (filePath) {
+        const mediaUrl = await onGetRecordingMediaUrl(filePath);
+        setActiveRecordingId(updatedRecording.id);
+        setActiveRecordingUrl(mediaUrl);
+      }
+      setRecordingMessage(t("room:recording.mixUpdated"));
+    } catch (error) {
+      setRecordingsError(
+        error instanceof Error ? error.message : t("room:recording.mixFailed")
+      );
+    } finally {
+      setRecordingWorkingId(null);
+    }
+  }
+
+  async function applyRecordingRename(recording: RecordingPackage) {
+    const title = (
+      recordingRenameDrafts[recording.id]
+      ?? recordingDisplayTitle(recording, reviewTitle)
+    ).trim();
+    if (!title || title === recording.title) {
+      return;
+    }
+    setRecordingWorkingId(recording.id);
+    setRecordingsError("");
+    try {
+      const updatedRecording = await onRenameRecording({
+        recordingPackageId: recording.id,
+        title
+      });
+      setRecordingPackages((current) =>
+        current.map((candidate) =>
+          candidate.id === updatedRecording.id ? updatedRecording : candidate
+        )
+      );
+      setRecordingRenameDrafts((current) => ({
+        ...current,
+        [updatedRecording.id]: updatedRecording.title
+      }));
+      setRecordingMessage(t("room:recording.renamed"));
+    } catch (error) {
+      setRecordingsError(
+        error instanceof Error ? error.message : t("room:recording.renameFailed")
+      );
+    } finally {
+      setRecordingWorkingId(null);
+    }
+  }
+
+  async function removeRecording(recording: RecordingPackage) {
+    const title = recordingDisplayTitle(recording, reviewTitle);
+    if (!window.confirm(t("room:recording.deleteConfirm", { title }))) {
+      return;
+    }
+    setRecordingDeletingId(recording.id);
+    setRecordingsError("");
+    try {
+      const remaining = await onDeleteRecording(recording.id);
+      setRecordingPackages(
+        remaining.filter((candidate) => candidate.sourceSongPackageId === activeReview.id)
+      );
+      setRecordingMixDrafts((current) => {
+        const next = { ...current };
+        delete next[recording.id];
+        return next;
+      });
+      setRecordingRenameDrafts((current) => {
+        const next = { ...current };
+        delete next[recording.id];
+        return next;
+      });
+      if (activeRecordingId === recording.id) {
+        setActiveRecordingId(null);
+        setActiveRecordingUrl("");
+      }
+      setRecordingMessage(t("room:recording.deleted"));
+    } catch (error) {
+      setRecordingsError(
+        error instanceof Error ? error.message : t("room:recording.deleteFailed")
+      );
+    } finally {
+      setRecordingDeletingId(null);
     }
   }
 
@@ -999,11 +1234,41 @@ export function KaraokeRoomScene({
                     ) : (
                       <div className="roomRecordingList" role="list">
                         {recordingPackages.map((recording, index) => {
+                          const displayTitle = recordingDisplayTitle(recording, reviewTitle);
                           const filePath = primaryRecordingFile(recording);
                           const duration = recordingDuration(recording);
                           const format = recording.exports[0]?.format ?? "wav";
                           const isPreviewOpen =
                             activeRecordingId === recording.id && Boolean(activeRecordingUrl);
+                          const mixDraft = recordingMixDrafts[recording.id] ?? {};
+                          const draftVocalGain = mixDraft.vocalGain ?? recording.mix.vocalGain;
+                          const draftMusicGain = mixDraft.musicGain ?? recording.mix.musicGain;
+                          const savedVocalOffsetMs = recording.mix.vocalOffsetMs ?? 0;
+                          const draftVocalOffsetMs =
+                            mixDraft.vocalOffsetMs ?? savedVocalOffsetMs;
+                          const draftPreferBacking =
+                            mixDraft.preferBackingTrack ?? recording.mix.preferBackingTrack;
+                          const draftExportFormat =
+                            mixDraft.exportFormat ?? recording.mix.exportFormat;
+                          const renameDraft =
+                            recordingRenameDrafts[recording.id] ?? displayTitle;
+                          const mixChanged =
+                            !recording.exports[0]
+                            || draftVocalGain !== recording.mix.vocalGain
+                            || draftMusicGain !== recording.mix.musicGain
+                            || draftVocalOffsetMs !== savedVocalOffsetMs
+                            || draftPreferBacking !== recording.mix.preferBackingTrack
+                            || draftExportFormat !== recording.mix.exportFormat;
+                          const vocalOffsetLabel =
+                            draftVocalOffsetMs > 0
+                              ? t("room:recording.advanceVocal", {
+                                  value: draftVocalOffsetMs
+                                })
+                              : draftVocalOffsetMs < 0
+                                ? t("room:recording.delayVocal", {
+                                    value: Math.abs(draftVocalOffsetMs)
+                                  })
+                                : t("room:recording.noOffset");
                           return (
                             <article
                               className="roomRecordingItem"
@@ -1017,7 +1282,7 @@ export function KaraokeRoomScene({
                                   {String(recordingPackages.length - index).padStart(2, "0")}
                                 </span>
                                 <div>
-                                  <strong>{recording.takes[0]?.title ?? recording.title}</strong>
+                                  <strong>{displayTitle}</strong>
                                   <span>
                                     <time dateTime={recording.createdAt}>
                                       {formatRecordingDate(recording.createdAt)}
@@ -1064,15 +1329,200 @@ export function KaraokeRoomScene({
                                 >
                                   <Icon name="folder" />
                                 </button>
+                                <button
+                                  type="button"
+                                  className="roomRecordingDelete"
+                                  onClick={() => void removeRecording(recording)}
+                                  disabled={recordingDeletingId === recording.id}
+                                  aria-label={t("room:recording.delete")}
+                                  title={t("room:recording.delete")}
+                                >
+                                  <Icon name="trash" />
+                                </button>
                               </div>
                               {isPreviewOpen ? (
-                                <audio
-                                  className="roomRecordingAudio"
-                                  src={activeRecordingUrl}
-                                  controls
-                                  autoPlay
-                                  preload="metadata"
-                                />
+                                <>
+                                  <audio
+                                    className="roomRecordingAudio"
+                                    src={activeRecordingUrl}
+                                    controls
+                                    autoPlay
+                                    preload="metadata"
+                                  />
+                                  <div className="roomRecordingReviewEditor">
+                                    <div className="roomRecordingRename">
+                                      <input
+                                        type="text"
+                                        value={renameDraft}
+                                        maxLength={120}
+                                        aria-label={t("room:recording.name")}
+                                        onChange={(event) => {
+                                          setRecordingRenameDrafts((current) => ({
+                                            ...current,
+                                            [recording.id]: event.currentTarget.value
+                                          }));
+                                        }}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter") {
+                                            void applyRecordingRename(recording);
+                                          }
+                                        }}
+                                      />
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          recordingWorkingId === recording.id
+                                          || !renameDraft.trim()
+                                          || renameDraft.trim() === recording.title
+                                        }
+                                        onClick={() => void applyRecordingRename(recording)}
+                                      >
+                                        {t("room:recording.rename")}
+                                      </button>
+                                    </div>
+
+                                    <div className="roomRecordingMixGrid">
+                                      <label>
+                                        <span>{t("room:recording.vocalGain")}</span>
+                                        <strong>{draftVocalGain.toFixed(2)}×</strong>
+                                        <input
+                                          type="range"
+                                          min={0}
+                                          max={2}
+                                          step={0.05}
+                                          value={draftVocalGain}
+                                          onChange={(event) => {
+                                            const vocalGain = Number(event.currentTarget.value);
+                                            setRecordingMixDrafts((current) => ({
+                                              ...current,
+                                              [recording.id]: {
+                                                ...current[recording.id],
+                                                vocalGain
+                                              }
+                                            }));
+                                          }}
+                                        />
+                                      </label>
+                                      <label>
+                                        <span>{t("room:recording.musicGain")}</span>
+                                        <strong>{draftMusicGain.toFixed(2)}×</strong>
+                                        <input
+                                          type="range"
+                                          min={0}
+                                          max={2}
+                                          step={0.05}
+                                          value={draftMusicGain}
+                                          onChange={(event) => {
+                                            const musicGain = Number(event.currentTarget.value);
+                                            setRecordingMixDrafts((current) => ({
+                                              ...current,
+                                              [recording.id]: {
+                                                ...current[recording.id],
+                                                musicGain
+                                              }
+                                            }));
+                                          }}
+                                        />
+                                      </label>
+                                    </div>
+
+                                    <div className="roomRecordingCalibration">
+                                      <div>
+                                        <strong>{t("room:recording.alignment")}</strong>
+                                        <span>{vocalOffsetLabel}</span>
+                                      </div>
+                                      <input
+                                        type="range"
+                                        min={-RECORDING_VOCAL_OFFSET_LIMIT_MS}
+                                        max={RECORDING_VOCAL_OFFSET_LIMIT_MS}
+                                        step={10}
+                                        value={draftVocalOffsetMs}
+                                        onChange={(event) => {
+                                          const vocalOffsetMs = clampRecordingOffset(
+                                            Number(event.currentTarget.value)
+                                          );
+                                          setRecordingMixDrafts((current) => ({
+                                            ...current,
+                                            [recording.id]: {
+                                              ...current[recording.id],
+                                              vocalOffsetMs
+                                            }
+                                          }));
+                                        }}
+                                        aria-label={t("room:recording.alignment")}
+                                      />
+                                    </div>
+
+                                    <div className="roomRecordingExportRow">
+                                      <label>
+                                        <span>{t("room:recording.format")}</span>
+                                        <select
+                                          value={draftExportFormat}
+                                          onChange={(event) => {
+                                            const exportFormat = event.currentTarget.value as RecordingExportFormat;
+                                            setRecordingMixDrafts((current) => ({
+                                              ...current,
+                                              [recording.id]: {
+                                                ...current[recording.id],
+                                                exportFormat
+                                              }
+                                            }));
+                                          }}
+                                        >
+                                          <option value="m4a">M4A</option>
+                                          <option value="mp3">MP3</option>
+                                          <option value="wav">WAV</option>
+                                        </select>
+                                      </label>
+                                      <label className="roomRecordingBackingChoice">
+                                        <input
+                                          type="checkbox"
+                                          checked={draftPreferBacking}
+                                          disabled={!trackAssets.backing}
+                                          onChange={(event) => {
+                                            const preferBackingTrack = event.currentTarget.checked;
+                                            setRecordingMixDrafts((current) => ({
+                                              ...current,
+                                              [recording.id]: {
+                                                ...current[recording.id],
+                                                preferBackingTrack
+                                              }
+                                            }));
+                                          }}
+                                        />
+                                        <span>{t("room:recording.useBacking")}</span>
+                                      </label>
+                                    </div>
+
+                                    <div className="roomRecordingCalibrationActions">
+                                      <button
+                                        type="button"
+                                        disabled={draftVocalOffsetMs === 0}
+                                        onClick={() => {
+                                          setRecordingMixDrafts((current) => ({
+                                            ...current,
+                                            [recording.id]: {
+                                              ...current[recording.id],
+                                              vocalOffsetMs: 0
+                                            }
+                                          }));
+                                        }}
+                                      >
+                                        {t("room:recording.resetAlignment")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="roomRecordingApplyMix"
+                                        disabled={recordingWorkingId === recording.id || !mixChanged}
+                                        onClick={() => void applyRecordingMix(recording)}
+                                      >
+                                        {recordingWorkingId === recording.id
+                                          ? t("room:recording.remixing")
+                                          : t("room:recording.applyMix")}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </>
                               ) : null}
                             </article>
                           );
