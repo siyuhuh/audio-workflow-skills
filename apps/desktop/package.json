@@ -45,7 +45,7 @@
     "@types/three": "^0.184.0",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.1.0",
-    "electron": "^37.0.0",
+    "electron": "^44.8.0",
     "electron-builder": "^26.15.3",
     "electron-builder-squirrel-windows": "^26.15.3",
     "tailwindcss": "^4.2.4",
