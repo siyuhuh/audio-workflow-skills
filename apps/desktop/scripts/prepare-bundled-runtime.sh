@@ -33,13 +33,15 @@ if [[ -z "$python_bin" ]]; then
 fi
 
 echo "[runtime] Python: $python_bin"
+node "$script_dir/bundle-node-runtime.mjs" "$python_bin"
 "$python_bin" -m ensurepip --upgrade
 "$python_bin" -m pip install --upgrade pip wheel setuptools
 "$python_bin" -m pip install --upgrade \
-  "yt-dlp" \
-  "faster-whisper" \
-  "audio-separator[cpu]" \
-  "zhconv"
+  "yt-dlp[default]==2026.8.19" \
+  "faster-whisper==1.2.1" \
+  "audio-separator[cpu]==0.47.0" \
+  "zhconv==1.4.3" \
+  "audioread==3.1.0"
 
 # Wheels include development headers and bytecode caches that are not used by
 # VocalFlow at runtime. Removing them keeps the installer smaller and avoids
@@ -60,6 +62,9 @@ find "$site_packages" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
 "$python_bin" - <<'PY'
 import importlib.util
 import sys
+from audio_separator.separator import Separator
+from faster_whisper import WhisperModel
+import yt_dlp_ejs
 
 required = ("yt_dlp", "faster_whisper", "audio_separator", "zhconv")
 missing = [name for name in required if importlib.util.find_spec(name) is None]

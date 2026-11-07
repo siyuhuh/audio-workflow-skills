@@ -44,7 +44,43 @@ export REQUIRE_BUNDLED_RUNTIME=1
 apps/mac/VocalFlowMini/scripts/build-dmg.sh release
 ```
 
-## iPhone / TestFlight
+## Local signed Electron DMG
+
+Use a local Developer ID Application identity and a validated `notarytool`
+Keychain profile. Never commit API keys or signing private keys. Xcode login
+alone does not configure notarization.
+
+```bash
+pnpm --dir apps/desktop build
+CSC_NAME="Your Company (TEAMID)" pnpm --dir apps/desktop exec electron-builder \
+  --mac dmg --publish never --config.directories.output=release-signed \
+  --config.mac.notarize=false
+```
+
+`CSC_NAME` omits the `Developer ID Application:` prefix. The separate output
+directory preserves earlier unsigned test artifacts. Before distributing:
+
+1. Verify the app with `codesign --verify --deep --strict --verbose=2` and run
+   `node apps/desktop/scripts/verify-bundled-release.mjs apps/desktop/release-signed`.
+2. Mount the generated DMG read-only and run the same strict signature check
+   against the app **inside the mounted image**. Checking only the staging app
+   is insufficient: a beta.9 build lost framework binaries during DMG packaging
+   even though its staging app and image checksum passed validation. Do not
+   upload an image whose mounted app fails verification. If necessary, recreate
+   the image using `hdiutil create -srcfolder <signed-app-directory> -format UDZO
+   <new-dmg-path>` and verify its mounted contents again.
+3. Sign the DMG with the full Developer ID Application identity and a secure timestamp.
+4. Submit the exact DMG with `xcrun notarytool submit <dmg> --keychain-profile
+   vocalflow-notary --wait`. Require an `Accepted` result; save the submission ID.
+5. Run `xcrun stapler staple <dmg>` and `xcrun stapler validate <dmg>`.
+6. Verify the image with `hdiutil verify <dmg>` and assess it with
+   `spctl --assess --type open --context context:primary-signature --verbose=2 <dmg>`.
+7. Compute the final SHA-256 **after** stapling, and test installation on a clean Mac.
+
+Successful signing is not evidence of successful notarization. Notarization also
+does not verify model quality, media-site access, or clean-machine functionality.
+
+## iPhone / TestFlight credentials
 
 The manual `iOS TestFlight` workflow needs these GitHub Actions secrets:
 

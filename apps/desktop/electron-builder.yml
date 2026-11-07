@@ -29,6 +29,7 @@ extraResources:
       - "**/*.onnx"
       - "**/*.pth"
       - "**/*.ckpt"
+      - "*.json"
   - from: vendor/whisper-models
     to: whisper-models
     filter:
@@ -37,6 +38,11 @@ mac:
   category: public.app-category.music
   icon: build/icon.icns
   hardenedRuntime: true
+  # These are model data and Python bytecode, not native executable code.
+  # The app resource seal still protects them; native libraries remain signed.
+  signIgnore:
+    - '\.(pyc|pyo|pb|onnx|pth|ckpt|npz|npy)$'
+    - '/whisper-models/[^/]+/model\.bin$'
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

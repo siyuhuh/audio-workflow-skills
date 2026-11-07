@@ -105,7 +105,7 @@ interface ProcessedResourceCardEntryProps {
 
 function ProcessedResourceCardEntry({ entry, onEnter, onReview, onDelete }: ProcessedResourceCardEntryProps) {
   const title = reviewDisplayTitle(entry);
-  const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
+  const canEnter = Boolean(entry.playbackBundle.controllable);
   const isSample = isSampleHistoryEntry(entry);
   const hasStems = entry.assets.some(
     (asset) => asset.exists && asset.role === "backing"
@@ -143,7 +143,7 @@ interface FeaturedPackageEntryProps {
 
 function FeaturedPackageEntry({ entry, variant, onEnter, onOpen, onDelete }: FeaturedPackageEntryProps) {
   const title = reviewDisplayTitle(entry);
-  const canEnter = Boolean(entry.playbackBundle.controllable && entry.primarySubtitle);
+  const canEnter = Boolean(entry.playbackBundle.controllable);
   const coverPath =
     entry.playbackBundle.videoPreviewPath ??
     (entry.playbackBundle.localVideoPath && isVideoPath(entry.playbackBundle.localVideoPath)
@@ -589,7 +589,7 @@ export default function App() {
       orderedKaraokePackages.map((entry) => ({
         entry,
         title: reviewDisplayTitle(entry),
-        ready: Boolean(entry.workflowMode === "karaoke" && entry.playbackBundle.controllable && entry.primarySubtitle)
+        ready: Boolean(entry.workflowMode === "karaoke" && entry.playbackBundle.controllable)
       })),
     [orderedKaraokePackages]
   );
@@ -620,7 +620,7 @@ export default function App() {
   const currentNavTarget: AppNavTarget =
     appScene === "karaoke-room" || appScene === "lyrics-review" ? "karaoke" : workspaceMode;
   const canEnterActiveStage = Boolean(
-    activeReview?.workflowMode === "karaoke" && activeReview.playbackBundle.controllable && selectedSubtitlePath
+    activeReview?.workflowMode === "karaoke" && activeReview.playbackBundle.controllable
   );
 
   useEffect(() => {
@@ -1400,7 +1400,7 @@ export default function App() {
       historyId ??
       (selectedHistoryId && orderedKaraokePackages.some((entry) => entry.id === selectedHistoryId)
         ? selectedHistoryId
-        : orderedKaraokePackages.find((entry) => entry.playbackBundle.controllable && entry.primarySubtitle)?.id) ??
+        : orderedKaraokePackages.find((entry) => entry.playbackBundle.controllable)?.id) ??
       orderedKaraokePackages[0]?.id;
     if (!targetId) {
       navigateKaraokeLobby();
@@ -1411,7 +1411,7 @@ export default function App() {
       navigateKaraokeLobby();
       return;
     }
-    if (!entry.playbackBundle.controllable || !entry.primarySubtitle) {
+    if (!entry.playbackBundle.controllable) {
       selectHistoryEntry(entry.id);
       return;
     }
@@ -2578,7 +2578,7 @@ export default function App() {
                       variant="primary"
                       onClick={() => setAppScene("karaoke-room")}
                       disabled={
-                        !selectedSubtitlePath || !activeReview.playbackBundle.controllable
+                        !activeReview.playbackBundle.controllable
                       }
                     >
                       {t("package:enterKaraoke")}

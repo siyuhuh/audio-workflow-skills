@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { execFileSync } from "node:child_process";
 
 const MIN_SEPARATOR_BYTES = 50 * 1024 * 1024;
 const MIN_WHISPER_BYTES = 400 * 1024 * 1024;
@@ -79,6 +80,9 @@ for (const resources of resourceRoots) {
     MIN_WHISPER_BYTES
   );
   requireFile(resources, path.join("whisper-models", "small", "config.json"));
+  for (const metadata of ["download_checks.json", "vr_model_data.json", "mdx_model_data.json"]) {
+    requireFile(resources, path.join("separator-models", metadata));
+  }
   requireFile(resources, path.join("audio-subtitles", "scripts", "generate_subtitles.py"));
   const python = requireOneOf(resources, [
     path.join("python-runtime", "python", "bin", "python3"),
@@ -90,8 +94,14 @@ for (const resources of resourceRoots) {
     path.join("ffmpeg-static", "ffmpeg.exe"),
     path.join("bin", "ffmpeg")
   ]);
+  const node = requireOneOf(path.dirname(python), ["node", "node.exe"]);
+  const version = execFileSync(node, ["--version"], { encoding: "utf8", timeout: 15000 }).trim();
+  if (Number(version.replace(/^v/, "").split(".")[0]) < 22) throw new Error("Bundled Node must be 22+");
+  execFileSync(python, ["-s", "-c", "import yt_dlp; import yt_dlp_ejs; from faster_whisper import WhisperModel; from audio_separator.separator import Separator; import zhconv"], {
+    env: { ...process.env, PYTHONNOUSERSITE: "1", PYTHONDONTWRITEBYTECODE: "1" }, timeout: 120000, stdio: "pipe"
+  });
 
-  console.log(`Verified offline bundle: ${resources}`);
+  console.log(`Verified bundle contents (processing smoke test still required): ${resources}`);
   console.log(`  separator: ${separator.bytes} bytes`);
   console.log(`  whisper:   ${whisper.bytes} bytes`);
   console.log(`  python:    ${python}`);

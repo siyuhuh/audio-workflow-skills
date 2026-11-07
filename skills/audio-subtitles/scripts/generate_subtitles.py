@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import importlib.util
+import importlib.metadata
+import hashlib
 from html import unescape
 import json
 import math
@@ -15,6 +18,8 @@ import tempfile
 import threading
 import time
 from dataclasses import asdict, dataclass
+from difflib import SequenceMatcher
+import unicodedata
 from pathlib import Path
 from typing import Callable, Iterable
 from urllib.parse import urlencode, urlparse
@@ -117,21 +122,22 @@ def main() -> int:
 
     formats = parse_formats(args.formats)
     is_url_input = is_url(args.input)
-    # Kick off the whisper model load in a background daemon thread so the
-    # ~5-20 s load overlaps with download + separation + convert. The
-    # `transcribe()` call later joins the thread before running.
-    # If the captions branch returns early without transcribing, the daemon
-    # thread is killed on process exit — wasted RAM is bounded by the
-    # selection rules in `should_preload_whisper`.
-    preload_thread = (
-        _start_whisper_preload(args)
-        if should_preload_whisper(args, is_url_input)
-        else None
-    )
-    if is_url_input and args.subtitle_source != "local" and not args.separate:
+    # Resolve captions before loading a model. Karaoke auto mode uses local
+    # recognition as independent evidence, not as a prompt containing lyrics.
+    platform_result = None
+    if is_url_input and args.subtitle_source != "local":
         emit_progress("download", progress=0.0, message="Fetching platform subtitles")
-        platform_result = download_url_subtitles(args.input, output_dir, args)
-        if platform_result is not None:
+        try:
+            platform_result = download_url_subtitles(args.input, output_dir, args)
+        except (SystemExit, Exception) as exc:
+            # Optional caption metadata can fail before the download helper's
+            # fallback handler (for example, a timedtext rate limit).
+            if args.subtitle_source != "auto" or not (
+                args.local_fallback or should_default_to_local_fallback(args.input, args)
+            ):
+                raise
+            print(f"Platform subtitles unavailable; using local transcription: {exc}", file=sys.stderr)
+        if platform_result is not None and not args.separate:
             base_name, cues, metadata = platform_result
             emit_progress("download", progress=1.0, message="Platform subtitles ready", done=True)
             cues = maybe_simplify_chinese(cues, metadata, args)
@@ -157,15 +163,22 @@ def main() -> int:
                 print(path)
             return 0
         local_fallback = args.local_fallback or should_default_to_local_fallback(args.input, args)
-        if args.subtitle_source == "platform" or not local_fallback:
+        if platform_result is None and (args.subtitle_source == "platform" or not local_fallback):
             emit_progress("download", progress=1.0, message="No platform subtitles", failed=True, done=True)
             raise SystemExit(
                 "No platform subtitles found for the requested language(s). "
-                "Rerun with --local-fallback to use the local Whisper model, "
+                "Rerun with --subtitle-source auto --local-fallback to use the local Whisper model, "
                 "or use --subtitle-source local to skip platform subtitles."
             )
-        emit_progress("download", progress=1.0, message="No platform subtitles, using local transcription", done=True)
-        print("No platform subtitles found; falling back to local transcription.", file=sys.stderr)
+        if platform_result is None:
+            emit_progress("download", progress=1.0, message="No platform subtitles, using local transcription", done=True)
+            print("No platform subtitles found; falling back to local transcription.", file=sys.stderr)
+
+    preload_thread = (
+        _start_whisper_preload(args)
+        if (platform_result is None or args.subtitle_source == "auto") and should_preload_whisper(args, is_url_input)
+        else None
+    )
 
     cleanups: list[Callable[[], None]] = []
     emit_progress("download", progress=0.0, message="Fetching media")
@@ -222,8 +235,32 @@ def main() -> int:
     cleanups.append(cleanup)
     emit_progress("convert", progress=1.0, done=True)
     try:
-        emit_progress("transcribe", progress=0.0, message="Running speech-to-text")
-        cues, metadata = transcribe(audio_path, args, preload_thread=preload_thread)
+        if platform_result is not None:
+            _, cues, metadata = platform_result
+            emit_progress("transcribe", progress=0.0, message="Using platform captions with line-level timing")
+            if args.subtitle_source == "auto":
+                emit_progress("transcribe", progress=0.0, message="Checking captions against local recognition")
+                try:
+                    observed, observed_metadata = transcribe(audio_path, args, preload_thread=preload_thread)
+                except (Exception, SystemExit) as exc:
+                    # A failed optional check must not discard usable captions
+                    # and stems, or silently claim that the text was verified.
+                    metadata = dict(metadata, lyrics_needs_review=True,
+                                    lyrics_validation={"status": "unavailable", "error_type": type(exc).__name__})
+                    print("Caption audio check unavailable; retaining unverified platform captions.", file=sys.stderr)
+                else:
+                    report = assess_caption_support(cues, observed)
+                    if report["status"] == "mismatch" and local_fallback:
+                        cues = observed
+                        metadata = dict(observed_metadata, lyrics_source="local_asr", lyrics_needs_review=True,
+                                        lyrics_validation=report, rejected_lyrics_source=metadata.get("lyrics_source", "platform"))
+                        print("Platform captions lack audio support; using local recognition draft.", file=sys.stderr)
+                    else:
+                        metadata = dict(metadata, lyrics_needs_review=True, lyrics_validation=report)
+        else:
+            emit_progress("transcribe", progress=0.0, message="Running speech-to-text")
+            cues, metadata = transcribe(audio_path, args, preload_thread=preload_thread)
+            metadata.update(lyrics_source="local_asr", lyrics_needs_review=True)
         emit_progress("transcribe", progress=1.0, done=True)
     except SystemExit:
         emit_progress("transcribe", progress=1.0, failed=True, done=True)
@@ -435,6 +472,8 @@ def default_output_dir(input_value: str) -> Path:
 
 
 def require_binary(name: str) -> None:
+    if name == "yt-dlp" and importlib.util.find_spec("yt_dlp") is not None:
+        return
     if shutil.which(name) is None:
         raise SystemExit(f"Missing dependency: {name}. Install ffmpeg first.")
 
@@ -644,6 +683,10 @@ def _run_with_live_stderr(cmd: list[str], *, check: bool = True) -> "subprocess.
     raises) so callers can keep producing the same failure messages they did
     before — the desktop just additionally sees the live progress stream.
     """
+    if cmd and cmd[0] == "yt-dlp" and importlib.util.find_spec("yt_dlp") is not None:
+        node = Path(sys.executable).parent / ("node.exe" if os.name == "nt" else "node")
+        runtime_args = ["--js-runtimes", f"node:{node}"] if node.is_file() else []
+        cmd = [sys.executable, "-m", "yt_dlp", *runtime_args, *cmd[1:]]
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -671,11 +714,11 @@ def yt_dlp_failure_message(error: subprocess.CalledProcessError, *, browser: str
     normalized = output.lower()
 
     if "older than 90 days" in normalized or "http error 403" in normalized or "403: forbidden" in normalized:
-        advice = "Update yt-dlp with `brew upgrade yt-dlp`"
+        advice = "Check for a VocalFlow update and confirm the media plays in your browser"
         if browser:
             advice += ", then confirm the selected browser is signed in to the media site"
         else:
-            advice += ", then retry; if the site still blocks the request, select Chrome or Safari cookies in VocalFlow"
+            advice += ", then retry or import an authorized local file; HTTP 403 alone does not establish that cookies are required"
         return f"Media download was rejected by the site. {advice}. Details: {detail}"
 
     if "sign in to confirm" in normalized or "not a bot" in normalized or "cookies-from-browser" in normalized:
@@ -687,8 +730,8 @@ def yt_dlp_failure_message(error: subprocess.CalledProcessError, *, browser: str
 
     if "javascript runtime" in normalized or "challenge" in normalized and "failed" in normalized:
         return (
-            "YouTube challenge solving failed. Install or update Deno with `brew install deno` "
-            "and update yt-dlp with `brew upgrade yt-dlp`, then retry. "
+            "YouTube challenge solving failed. Check for a VocalFlow update, "
+            "or import an authorized local file. "
             f"Details: {detail}"
         )
 
@@ -849,7 +892,7 @@ def download_url_subtitles(url: str, output_dir: Path, args: argparse.Namespace)
             return None
         subtitle_path = choose_subtitle_file(candidates, args.language)
         cues = parse_vtt(subtitle_path)
-        if not cues:
+        if not valid_platform_cues(cues):
             return None
         base_name = strip_subtitle_suffix(subtitle_path)
         metadata = {
@@ -867,6 +910,10 @@ def download_url_subtitles(url: str, output_dir: Path, args: argparse.Namespace)
             "word_engine": "platform",
             "word_timing_source": "estimated",
             "has_word_timestamps": False,
+            "lyrics_source": f"platform_{subtitle_kind}",
+            "lyrics_needs_review": True,
+            "timing_precision": "line",
+            "source_url": url,
         }
         return base_name, cues, metadata
     except subprocess.CalledProcessError as exc:
@@ -903,6 +950,23 @@ def fetch_url_info(url: str, args: argparse.Namespace) -> dict:
 def choose_subtitle_language(info: dict, args: argparse.Namespace) -> tuple[str, str] | None:
     manual = sorted(code for code in (info.get("subtitles") or {}) if "live_chat" not in code)
     automatic = sorted(code for code in (info.get("automatic_captions") or {}) if "live_chat" not in code)
+    if args.separate and args.subtitle_source == "auto":
+        # Karaoke must not silently prefer an English translation or automatic
+        # captions over the sung language. Unknown language falls back to ASR.
+        language = args.language or info.get("language")
+        if not language:
+            return None
+        manual = [code for code in manual if (info.get("subtitles") or {}).get(code) and all(
+            isinstance(track, dict) and "tlang=" not in track.get("url", "")
+            for track in (info.get("subtitles") or {}).get(code, [])
+        )]
+        if args.sub_langs:
+            allowed = [selector.strip() for selector in args.sub_langs.split(",")]
+            manual = [code for code in manual if any(
+                selector == "all" or any(subtitle_code_matches(code, pattern) for pattern in selector_patterns(selector))
+                for selector in allowed if selector and not selector.startswith("-")
+            )]
+        return match_subtitle_selector(language, manual, [])
     if not manual and not automatic:
         return None
 
@@ -926,6 +990,65 @@ def choose_subtitle_language(info: dict, args: argparse.Namespace) -> tuple[str,
     if manual:
         return manual[0], "manual"
     return automatic[0], "automatic"
+
+
+def valid_platform_cues(cues: list[Cue]) -> bool:
+    """Reject malformed tracks; this is not acoustic or lyric verification."""
+    previous_start = -1.0
+    for cue in cues:
+        if (not math.isfinite(cue.start) or not math.isfinite(cue.end)
+                or cue.start < 0 or cue.end <= cue.start
+                or cue.start < previous_start or not cue.text.strip()):
+            return False
+        previous_start = cue.start
+    return bool(cues)
+
+
+def assess_caption_support(captions: list[Cue], observed: list[Cue]) -> dict:
+    """Conservative ASR agreement heuristic, not proof or forced alignment.
+
+    Keep repeated text and compare both directions so a single matching chorus
+    cannot validate an otherwise unrelated or incomplete track. Match timing
+    coarsely to reject the same text attached to a different recording offset.
+    Original text and caption timestamps are never rewritten by this check.
+    """
+    def units(cues: list[Cue]) -> tuple[str, list[tuple[float, float]]]:
+        text, intervals = [], []
+        for cue in cues:
+            normalized = unicodedata.normalize("NFKC", cue.text).casefold()
+            for char in normalized:
+                if char.isalnum():
+                    text.append(char)
+                    intervals.append((cue.start, cue.end))
+                    if len(text) > 20000:
+                        return "".join(text), intervals
+        return "".join(text), intervals
+
+    if not valid_platform_cues(captions) or not valid_platform_cues(observed):
+        return {"status": "inconclusive", "reason": "invalid_or_empty_evidence"}
+    expected, expected_times = units(captions)
+    actual, actual_times = units(observed)
+    if min(len(expected), len(actual)) < 12 or max(len(expected), len(actual)) > 20000:
+        return {"status": "inconclusive", "reason": "evidence_size", "method": "asr_agreement_v1"}
+    matched = timed = 0
+    for block in SequenceMatcher(None, expected, actual, autojunk=False).get_matching_blocks():
+        matched += block.size
+        for offset in range(block.size):
+            left = expected_times[block.a + offset]
+            right = actual_times[block.b + offset]
+            if left[0] <= right[1] + 3 and right[0] <= left[1] + 3:
+                timed += 1
+    support = matched / len(expected)
+    coverage = matched / len(actual)
+    temporal = timed / max(1, matched)
+    # Correct text with a shifted display clock needs timing review, not
+    # replacement with potentially less accurate ASR text.
+    status = "mismatch" if min(support, coverage) < 0.6 else (
+        "supported" if temporal >= 0.6 else "timing_review"
+    )
+    return {"status": status,
+            "method": "asr_agreement_v1", "text_support": round(support, 4),
+            "audio_text_coverage": round(coverage, 4), "temporal_support": round(temporal, 4)}
 
 
 def match_subtitle_selector(selector: str, manual: list[str], automatic: list[str]) -> tuple[str, str] | None:
@@ -1097,12 +1220,20 @@ def dedupe_adjacent_cues(cues: list[Cue]) -> list[Cue]:
 
 
 def separate_source(source: Path, output_dir: Path, args: argparse.Namespace) -> Path:
-    separator = find_audio_separator()
+    separator = audio_separator_command()
     stems_dir = Path(args.separator_output_dir).expanduser() if args.separator_output_dir else output_dir / "stems"
     stems_dir.mkdir(parents=True, exist_ok=True)
+    signature = separation_signature(source, args)
+    cached = load_separation_checkpoint(stems_dir, signature)
+    if cached is not None:
+        vocal, outputs = cached
+        print("Reusing verified separation outputs.", file=sys.stderr)
+        for output in outputs:
+            print(output)
+        return vocal
     before = {path.resolve() for path in stems_dir.rglob("*") if path.is_file()}
     cmd = [
-        str(separator),
+        *separator,
         str(source),
         "--output_dir",
         str(stems_dir),
@@ -1133,15 +1264,88 @@ def separate_source(source: Path, output_dir: Path, args: argparse.Namespace) ->
     ]
     candidates = [path for path in after if path.suffix.lower() in MEDIA_EXTS]
     if not candidates:
-        candidates = [path for path in stems_dir.rglob("*") if path.is_file() and path.suffix.lower() in MEDIA_EXTS]
-    if not candidates:
         raise SystemExit(f"audio-separator produced no supported stem files in: {stems_dir}")
     vocal = choose_stem(candidates, "vocals")
     print(f"Separated stems directory: {stems_dir}", file=sys.stderr)
     print(f"Transcribing vocal stem: {vocal}", file=sys.stderr)
     for path in sorted(candidates):
         print(path)
+    if signature is not None and len(candidates) >= 2:
+        save_separation_checkpoint(stems_dir, signature, vocal, candidates)
     return vocal
+
+
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def separation_signature(source: Path, args: argparse.Namespace) -> dict | None:
+    # Presets can choose several models internally. Until their full dependency
+    # set is known, do not pretend a preset name alone is a cache identity.
+    if args.separator_preset or not args.separator_model or not args.separator_model_dir:
+        return None
+    model = Path(args.separator_model_dir).expanduser() / args.separator_model
+    if not model.is_file():
+        return None
+    try:
+        version = importlib.metadata.version("audio-separator")
+        return {"schema": 1, "source": file_digest(source), "model": file_digest(model),
+                "format": args.separator_format, "separator_version": version,
+                "implementation": file_digest(Path(__file__))}
+    except (OSError, importlib.metadata.PackageNotFoundError):
+        return None
+
+
+def load_separation_checkpoint(stems_dir: Path, signature: dict | None) -> tuple[Path, list[Path]] | None:
+    if signature is None:
+        return None
+    try:
+        packet = json.loads((stems_dir / ".vocalflow-separation.json").read_text())
+        if packet["signature"] != signature or len(packet["outputs"]) < 2:
+            return None
+        outputs = []
+        root = stems_dir.resolve()
+        for name, expected in packet["outputs"].items():
+            candidate = stems_dir / name
+            if candidate.is_symlink() or not candidate.resolve().is_relative_to(root):
+                return None
+            if not candidate.is_file() or candidate.stat().st_size == 0 or file_digest(candidate) != expected:
+                return None
+            outputs.append(candidate)
+        vocal = stems_dir / packet["vocal"]
+        if vocal not in outputs:
+            return None
+        return vocal, outputs
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def save_separation_checkpoint(stems_dir: Path, signature: dict, vocal: Path, outputs: list[Path]) -> None:
+    temporary = None
+    try:
+        packet = {"signature": signature, "vocal": str(vocal.relative_to(stems_dir)),
+                  "outputs": {str(item.relative_to(stems_dir)): file_digest(item) for item in outputs}}
+        with tempfile.NamedTemporaryFile(mode="w", dir=stems_dir, prefix=".checkpoint-", delete=False) as handle:
+            temporary = Path(handle.name)
+            json.dump(packet, handle)
+        temporary.replace(stems_dir / ".vocalflow-separation.json")
+    except (OSError, ValueError) as exc:
+        print(f"Could not save separation checkpoint: {exc}", file=sys.stderr)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def audio_separator_command() -> list[str]:
+    # pip console scripts contain absolute build-machine interpreter paths.
+    # Invoke the installed entry point with this runtime on every platform.
+    if importlib.util.find_spec("audio_separator") is not None:
+        return [sys.executable, "-c", "from audio_separator.utils.cli import main; main()"]
+    return [str(find_audio_separator())]
 
 
 def find_audio_separator() -> Path:

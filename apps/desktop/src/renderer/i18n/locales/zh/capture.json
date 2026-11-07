@@ -130,9 +130,17 @@
     "redownload": "重新下载"
   },
   "error": {
+    "runtimeIncomplete": {
+      "title": "内置处理引擎不完整",
+      "body": "安装包中的依赖缺失或无法启动。请保存诊断日志，并使用经过校验的安装包重新安装。默认引擎不应要求你安装 Python、Homebrew 或填写 HF Token 来修复。"
+    },
     "authRequired": {
       "title": "需要登录",
-      "body": "目标网站需要 cookies。打开桌面选项粘贴浏览器 cookies 后重试。"
+      "body": "网站要求登录或验证，请先在浏览器中确认能否访问。也可以导入你有权使用的本地文件。Cookies 属于敏感登录凭据，请勿附在日志或反馈中发送。"
+    },
+    "sourceBlocked": {
+      "title": "网站拒绝了下载请求",
+      "body": "这不一定是未登录导致的。请先确认视频能在浏览器播放，再重试或导入有权使用的本地文件。持续失败时可复制诊断日志，请勿发送浏览器 Cookies。"
     },
     "noCaptions": {
       "title": "未找到字幕",

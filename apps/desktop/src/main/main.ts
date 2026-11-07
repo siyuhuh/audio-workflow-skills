@@ -34,6 +34,9 @@ import type {
 } from "../shared/types.js";
 import type { JobEvent } from "../shared/job-events.js";
 import { classifyError } from "./lib/errorReason.js";
+import { loadRoomQueue, saveRoomQueue } from "./lib/roomQueueStore.js";
+import { JobRetryStore } from "./lib/jobRetryStore.js";
+import { partialPlaybackAssets } from "./lib/partialPlayback.js";
 import { prefetchUrlMetadata } from "./lib/urlMetadata.js";
 import {
   createParseState,
@@ -68,6 +71,7 @@ type JobFailedEvent = Extract<JobEvent, { kind: "failed" }>;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDisplayName = "VocalFlow";
 const runningJobs = new Map<string, ChildProcessByStdio<null, Readable, Readable>>();
+let workflowBusy = false;
 const knownFilePaths = new Set<string>();
 const knownOutputDirs = new Set<string>();
 const mediaUrlTokens = new Map<string, string>();
@@ -88,6 +92,7 @@ let webApiServer: Server | null = null;
 const roomToken = randomUUID().replaceAll("-", "").slice(0, 12);
 let roomQueue: RoomQueueItem[] = [];
 let roomNowPlaying: RoomQueueItem | null = null;
+let roomQueueStorageError: string | null = null;
 
 const jobProgressClients = new Set<Electron.WebContents>();
 
@@ -139,14 +144,14 @@ interface SamplePackageManifest {
 }
 
 const runtimePackageChecks = {
-  ytDlp: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('yt_dlp') else 1)",
-  whisper: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('faster_whisper') else 1)",
-  separator: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('audio_separator') else 1)",
-  zhconv: "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('zhconv') else 1)"
+  ytDlp: "import yt_dlp; import yt_dlp_ejs",
+  whisper: "from faster_whisper import WhisperModel",
+  separator: "from audio_separator.separator import Separator",
+  zhconv: "import zhconv"
 };
 
 const runtimePackages = {
-  ytDlp: "yt-dlp",
+  ytDlp: "yt-dlp[default]",
   whisper: "faster-whisper",
   separator: "audio-separator[cpu]",
   zhconv: "zhconv"
@@ -298,6 +303,13 @@ app.whenReady().then(() => {
 
   loadSavedHistory();
   loadUserSettings();
+  try {
+    roomQueue = loadRoomQueue(path.join(app.getPath("userData"), "room-queue.json"));
+  } catch (error) {
+    // Do not overwrite unreadable or newer-version state with an empty queue.
+    roomQueueStorageError = "Saved room queue could not be read. Its file has been preserved.";
+    console.warn("[room-queue] Failed to restore queue:", error);
+  }
   // Auto-detect UVR before the renderer mounts so settings load with the
   // shadow folder already wired in. Failures are non-fatal and the
   // renderer can re-trigger detection from the Settings drawer.
@@ -894,7 +906,21 @@ function parseProgressEvent(jobId: string, rawLine: string): JobProgressStage | 
 const STDERR_TAIL_MAX_LINES = 40;
 
 async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: (log: { jobId: string; stream: "stdout" | "stderr"; chunk: string }) => void): Promise<JobResult> {
+  if (workflowBusy) throw new Error("Another song is being prepared. Wait for it to finish or cancel it first.");
+  workflowBusy = true;
+  try {
+    return await executeAudioWorkflowJob(jobId, options, emitLog);
+  } finally {
+    workflowBusy = false;
+  }
+}
+
+async function executeAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: (log: { jobId: string; stream: "stdout" | "stderr"; chunk: string }) => void): Promise<JobResult> {
   const jobOptions = withDefaultDesktopOutputDir(withAutomaticLocalFallback(options), jobId);
+  const retries = new JobRetryStore(path.join(app.getPath("userData"), "job-retries.json"));
+  const retry = retries.begin(jobOptions);
+  jobOptions.outputDir = retry.outputDir;
+  if (retry.resumed) emitLog({ jobId, stream: "stderr", chunk: "[recovery] Reusing the previous attempt directory; completed stages will be validated before reuse.\n" });
   const runtime = await prepareAudioRuntime(jobOptions, (chunk) => {
     emitLog({ jobId, stream: "stderr", chunk });
   });
@@ -922,6 +948,7 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
     let stderrBuffer = "";
     const stderrTail: string[] = [];
     const parseState: RawParseState = createParseState();
+    let separationComplete = false;
 
     const pushStderrLine = (line: string): void => {
       if (!line) {
@@ -934,6 +961,7 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
     };
 
     const emitStageFromEnvelope = (event: JobProgressStage): void => {
+      if (event.name === "separate" && event.done) separationComplete = !event.failed;
       const mappedStage = mapScriptStage(event.name);
       if (!mappedStage) {
         return;
@@ -1061,7 +1089,11 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
         stderrBuffer = "";
       }
       const success = exitCode === 0 && signal === null;
-      const rawParsed = parseGeneratedOutput(output);
+      if (success) {
+        try { retries.complete(jobOptions); }
+        catch (error) { console.warn("[recovery] Could not clear successful retry journal entry:", error); }
+      }
+      const rawParsed = { ...parseGeneratedOutput(output), outputDir: jobOptions.outputDir };
       const parsed = success ? simplifyKaraokeOutput(jobOptions, rawParsed, startedAtMs) : rawParsed;
       if (!success) {
         emitFailure(exitCode, signal);
@@ -1069,6 +1101,24 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
       let historyEntry = success ? createSavedHistoryEntry(jobId, jobOptions, parsed, startedAtMs) : null;
       const discovered = historyEntry ? null : discoverAssets(jobOptions, parsed, startedAtMs);
       const fallbackAssets = discovered?.assets ?? [];
+      if (!success) {
+        const playable = partialPlaybackAssets(fallbackAssets.filter((asset) => {
+          try { return statSync(asset.path).isFile() && statSync(asset.path).size > 0; }
+          catch { return false; }
+        }), { karaoke: jobOptions.workflowMode === "karaoke", separationComplete, exitCode, signal });
+        if (playable.length) {
+          historyEntry = {
+            id: jobId, input: jobOptions.input.trim(), workflowMode: jobOptions.workflowMode,
+            createdAt: new Date().toISOString(), outputDir: jobOptions.outputDir,
+            generatedFiles: playable.map((asset) => asset.path), assets: playable,
+            sourceUrl: sourceUrlForInput(jobOptions.input), primarySubtitle: null,
+            primaryMedia: playable.find((asset) => asset.role === "backing")!.path,
+            playbackBundle: buildPlaybackBundle(jobOptions, playable), preparationStatus: "audio_only"
+          };
+          registerHistoryAccess(historyEntry);
+          emitLog({ jobId, stream: "stderr", chunk: "[recovery] Backing audio was saved to the library. Lyrics preparation remains incomplete; retry is still available.\n" });
+        }
+      }
       if (historyEntry) {
         historyEntry = saveHistoryEntry(historyEntry);
       }
@@ -1103,7 +1153,7 @@ async function runAudioWorkflowJob(jobId: string, options: JobOptions, emitLog: 
         jobId,
         exitCode,
         signal,
-        outputDir: parsed.outputDir,
+        outputDir: parsed.outputDir ?? jobOptions.outputDir,
         generatedFiles: parsed.generatedFiles,
         assets: historyEntry?.assets ?? fallbackAssets,
         sourceUrl: historyEntry?.sourceUrl ?? sourceUrlForInput(jobOptions.input),
@@ -1224,7 +1274,7 @@ function enqueueRoomSong(input: string, title: string, requestedBy: string): Roo
     throw new Error("Song URL or input is required.");
   }
   const safeTitle = title.trim() || shortTitleFromInput(safeInput);
-  roomQueue = [
+  commitRoomQueue([
     ...roomQueue,
     {
       id: randomUUID(),
@@ -1236,7 +1286,7 @@ function enqueueRoomSong(input: string, title: string, requestedBy: string): Roo
       resultHistoryId: null,
       error: null
     }
-  ];
+  ]);
   broadcastRoomStatus();
   return roomStatus();
 }
@@ -1246,7 +1296,7 @@ function startRoomQueueItem(itemId: string): RoomStatus {
   if (!item) {
     throw new Error("Queue item not found.");
   }
-  roomQueue = roomQueue.map((entry) => (entry.id === itemId ? { ...entry, status: "running", error: null } : entry));
+  commitRoomQueue(roomQueue.map((entry) => (entry.id === itemId ? { ...entry, status: "running", error: null } : entry)));
   roomNowPlaying = { ...item, status: "running", error: null };
   broadcastRoomStatus();
   return roomStatus();
@@ -1254,7 +1304,7 @@ function startRoomQueueItem(itemId: string): RoomStatus {
 
 function finishRoomQueueItem(itemId: string, status: RoomQueueItem["status"], resultHistoryId?: string | null, error?: string | null): RoomStatus {
   const finishedStatus = status === "complete" || status === "failed" || status === "canceled" ? status : "complete";
-  roomQueue = roomQueue.map((entry) =>
+  commitRoomQueue(roomQueue.map((entry) =>
     entry.id === itemId
       ? {
           ...entry,
@@ -1263,7 +1313,7 @@ function finishRoomQueueItem(itemId: string, status: RoomQueueItem["status"], re
           error: error ?? null
         }
       : entry
-  );
+  ));
   if (roomNowPlaying?.id === itemId) {
     roomNowPlaying = roomQueue.find((entry) => entry.id === itemId) ?? null;
   }
@@ -1272,7 +1322,7 @@ function finishRoomQueueItem(itemId: string, status: RoomQueueItem["status"], re
 }
 
 function removeRoomQueueItem(itemId: string): RoomStatus {
-  roomQueue = roomQueue.filter((entry) => entry.id !== itemId);
+  commitRoomQueue(roomQueue.filter((entry) => entry.id !== itemId));
   if (roomNowPlaying?.id === itemId) {
     roomNowPlaying = null;
   }
@@ -1281,7 +1331,8 @@ function removeRoomQueueItem(itemId: string): RoomStatus {
 }
 
 function clearRoomQueue(): RoomStatus {
-  roomQueue = roomQueue.filter((entry) => entry.status === "running");
+  commitRoomQueue(roomQueue.filter((entry) => entry.status === "running"));
+  if (roomNowPlaying && !roomQueue.some((entry) => entry.id === roomNowPlaying?.id)) roomNowPlaying = null;
   broadcastRoomStatus();
   return roomStatus();
 }
@@ -1294,6 +1345,13 @@ function shortTitleFromInput(input: string): string {
   } catch {
     return path.basename(input) || input;
   }
+}
+
+function commitRoomQueue(next: RoomQueueItem[]): void {
+  if (roomQueueStorageError) throw new Error(roomQueueStorageError);
+  // Persist before acknowledging the mutation to local or remote clients.
+  saveRoomQueue(path.join(app.getPath("userData"), "room-queue.json"), next);
+  roomQueue = next;
 }
 
 function attachRoomEventClient(request: IncomingMessage, response: ServerResponse): void {
@@ -1319,7 +1377,7 @@ function broadcastRoomStatus(): void {
 
 function remoteRoomHtml(): string {
   return `<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -1345,40 +1403,47 @@ function remoteRoomHtml(): string {
     .title { font-weight: 600; line-height: 1.3; }
     .sub { color: oklch(0.7155 0 0); font-size: 12px; margin-top: 4px; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    input { min-width: 0; font-size: 16px; box-sizing: border-box; }
+    input[type="radio"] { min-height: auto; accent-color: #70da67; }
+    summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+    button, summary { touch-action: manipulation; }
   </style>
 </head>
 <body>
   <main>
     <section class="card">
       <h1>VocalFlow Remote</h1>
-      <p class="muted">Search YouTube, request a song, and let the desktop host process the room queue.</p>
-      <p id="status" class="status">Connecting...</p>
+      <button id="language" type="button" lang="en">English</button>
+      <p class="muted" data-i18n="intro"></p>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
     </section>
 
     <section class="card">
-      <h2>Request a Song</h2>
-      <div class="row" style="margin-top: 12px;">
-        <label>Your name <input id="name" autocomplete="name" placeholder="Guest" /></label>
-        <label>Direct URL <input id="directUrl" inputmode="url" placeholder="https://www.youtube.com/watch?v=..." /></label>
-        <button id="addDirect" type="button">Add</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>Media Search</h2>
+      <h2 data-i18n="find"></h2>
       <div class="row" style="margin-top: 12px;">
         <label style="display:flex;align-items:center;gap:8px;"><input type="radio" name="platform" value="youtube" checked /> YouTube</label>
         <label style="display:flex;align-items:center;gap:8px;"><input type="radio" name="platform" value="bilibili" /> Bilibili</label>
       </div>
-      <div class="row" style="margin-top: 12px;">
-        <label>Keywords <input id="query" placeholder="artist song title" /></label>
-        <button id="search" type="button">Search</button>
-      </div>
+      <form id="searchForm" class="row" style="margin-top: 12px;">
+        <label><span data-i18n="keywords"></span><input id="query" type="search" enterkeyhint="search" maxlength="200" required /></label>
+        <button id="search" type="submit" data-i18n="search"></button>
+      </form>
       <ul id="results" class="results"></ul>
     </section>
 
     <section class="card">
-      <h2>Room Queue</h2>
+      <label><span data-i18n="name"></span><input id="name" autocomplete="name" maxlength="80" /></label>
+      <details>
+        <summary data-i18n="paste"></summary>
+        <form id="directForm" class="row">
+          <label><span data-i18n="url"></span><input id="directUrl" type="url" inputmode="url" placeholder="https://…" required /></label>
+          <button id="addDirect" type="submit" data-i18n="add"></button>
+        </form>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="queue"></h2>
       <ul id="queue" class="queue"></ul>
     </section>
   </main>
@@ -1390,9 +1455,34 @@ function remoteRoomHtml(): string {
     const nameEl = document.getElementById("name");
     const directUrlEl = document.getElementById("directUrl");
     const queryEl = document.getElementById("query");
-    const savedName = localStorage.getItem("vocalflow-remote-name") || "";
+    function stored(key) { try { return localStorage.getItem(key) || ""; } catch { return ""; } }
+    function save(key, value) { try { localStorage.setItem(key, value); } catch {} }
+    let language = stored("vocalflow-remote-language") === "en" ? "en" : "zh";
+    const copy = {
+      zh: { intro: "搜索歌曲，一键加入队列，由电脑准备伴奏。手机和电脑需连接同一 Wi-Fi。", find: "搜索点歌", keywords: "歌名或歌手", search: "搜索", name: "你的昵称（选填）", guest: "访客", paste: "已有视频链接？粘贴点歌", url: "YouTube / Bilibili 链接", add: "加入队列", queue: "点歌队列", connecting: "正在连接…", connected: "已连接房间", searching: "正在搜索…", pick: "选择歌曲加入队列", empty: "没有找到结果，试试其他关键词或切换平台。", added: "已加入队列", failed: "点歌失败，请重试。", searchFailed: "搜索失败，请重试或切换平台。", disconnected: "连接中断，请检查 Wi-Fi 或重新扫码。", queueEmpty: "还没有人点歌，搜索你想唱的第一首吧。", by: "点歌人", queued: "等待准备", running: "正在准备", done: "已完成", preparing: "正在准备", ready: "已就绪", playing: "正在播放", error: "失败" },
+      en: { intro: "Find a song and add it to the queue. Your desktop prepares the backing. Keep both devices on the same Wi-Fi.", find: "Find a song", keywords: "Song or artist", search: "Search", name: "Your name (optional)", guest: "Guest", paste: "Have a video link? Paste it here", url: "YouTube / Bilibili URL", add: "Add to queue", queue: "Room queue", connecting: "Connecting…", connected: "Connected to room", searching: "Searching…", pick: "Pick a song to add", empty: "No results. Try another keyword or platform.", added: "Added to queue", failed: "Could not add song. Please retry.", searchFailed: "Search failed. Retry or switch platforms.", disconnected: "Disconnected. Check Wi-Fi or scan again.", queueEmpty: "No songs yet. Search for your first song.", by: "Requested by", queued: "Queued", running: "Preparing", done: "Done", preparing: "Preparing", ready: "Ready", playing: "Playing", error: "Failed" }
+    };
+    const t = key => copy[language][key] || key;
+    let statusKey = "connecting";
+    let latestQueue = { queue: [] };
+    function setStatus(key) { statusKey = key; statusEl.textContent = t(key); }
+    function applyLanguage() {
+      document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+      document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+      document.getElementById("language").textContent = language === "zh" ? "English" : "中文";
+      queryEl.placeholder = t("keywords");
+      nameEl.placeholder = t("guest");
+      setStatus(statusKey);
+      renderQueue(latestQueue);
+    }
+    document.getElementById("language").addEventListener("click", () => {
+      language = language === "zh" ? "en" : "zh";
+      save("vocalflow-remote-language", language);
+      applyLanguage();
+    });
+    const savedName = stored("vocalflow-remote-name");
     nameEl.value = savedName;
-    nameEl.addEventListener("change", () => localStorage.setItem("vocalflow-remote-name", nameEl.value.trim()));
+    nameEl.addEventListener("change", () => save("vocalflow-remote-name", nameEl.value.trim()));
 
     async function post(path, body) {
       const response = await fetch(path, {
@@ -1404,73 +1494,88 @@ function remoteRoomHtml(): string {
       return response.json();
     }
 
-    function who() { return nameEl.value.trim() || "Guest"; }
+    function who() { return nameEl.value.trim() || t("guest"); }
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
 
     async function enqueue(input, title) {
       await post("/api/room/enqueue", { input, title, requestedBy: who() });
-      directUrlEl.value = "";
-      statusEl.textContent = "Added to queue.";
+      setStatus("added");
     }
 
-    document.getElementById("addDirect").addEventListener("click", async () => {
+    document.getElementById("directForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = document.getElementById("addDirect");
+      if (button.disabled) return;
+      button.disabled = true;
       try {
         const value = directUrlEl.value.trim();
         if (!value) return;
         await enqueue(value, value);
+        directUrlEl.value = "";
       } catch (error) {
-        statusEl.textContent = error.message || "Failed to add song.";
-      }
+        setStatus("failed");
+      } finally { button.disabled = false; }
     });
 
-    document.getElementById("search").addEventListener("click", async () => {
+    document.getElementById("searchForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = document.getElementById("search");
+      if (button.disabled) return;
       const query = queryEl.value.trim();
       if (!query) return;
+      button.disabled = true;
       resultsEl.innerHTML = "";
-      statusEl.textContent = "Searching...";
+      setStatus("searching");
       try {
         const platform = document.querySelector('input[name="platform"]:checked')?.value || "youtube";
         const endpoint = platform === "bilibili" ? "/api/bilibili-search" : "/api/youtube-search";
-        const results = await post(endpoint, { query, appendKaraoke: true });
-        statusEl.textContent = results.length ? "Pick a result to add it." : "No results.";
+        const results = await post(endpoint, { query, appendKaraoke: false });
+        setStatus(results.length ? "pick" : "empty");
         resultsEl.innerHTML = results.map(row => \`
           <li>
             <div class="title">\${escapeHtml(row.title)}</div>
             <div class="sub">\${escapeHtml(row.channel || "")} \${escapeHtml(row.durationLabel || "")}</div>
             <div class="actions">
-              <button type="button" data-url="\${escapeHtml(row.url)}" data-title="\${escapeHtml(row.title)}">Add to queue</button>
+              <button type="button" data-i18n="add" data-url="\${escapeHtml(row.url)}" data-title="\${escapeHtml(row.title)}">\${t("add")}</button>
             </div>
           </li>\`).join("");
       } catch (error) {
-        statusEl.textContent = error.message || "Search failed.";
-      }
+        setStatus("searchFailed");
+      } finally { button.disabled = false; }
     });
 
     resultsEl.addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-url]");
-      if (!button) return;
+      if (!button || button.disabled) return;
+      button.disabled = true;
       try {
         await enqueue(button.dataset.url, button.dataset.title);
+        button.dataset.i18n = "added";
+        button.textContent = t("added");
       } catch (error) {
-        statusEl.textContent = error.message || "Failed to add song.";
+        button.disabled = false;
+        setStatus("failed");
       }
     });
 
     function renderQueue(status) {
+      latestQueue = status;
       const items = status.queue || [];
       queueEl.innerHTML = items.length ? items.map((item, index) => \`
         <li>
           <div class="title">\${index + 1}. \${escapeHtml(item.title)}</div>
-          <div class="sub">Requested by \${escapeHtml(item.requestedBy)} · \${escapeHtml(item.status)}</div>
-        </li>\`).join("") : '<li class="sub">Queue is empty.</li>';
+          <div class="sub">\${t("by")} \${escapeHtml(item.requestedBy)} · \${escapeHtml(t(item.status === "failed" ? "error" : item.status))}</div>
+        </li>\`).join("") : '<li class="sub">' + t("queueEmpty") + '</li>';
     }
 
+    applyLanguage();
     const events = new EventSource("/api/room/events?token=" + encodeURIComponent(token));
+    events.onopen = () => setStatus("connected");
     events.addEventListener("room", (event) => renderQueue(JSON.parse(event.data)));
-    events.onerror = () => { statusEl.textContent = "Disconnected. Check Wi-Fi and room link."; };
-    fetch("/api/room/status?token=" + encodeURIComponent(token)).then(r => r.json()).then(renderQueue).catch(() => {});
+    events.onerror = () => setStatus("disconnected");
+    fetch("/api/room/status?token=" + encodeURIComponent(token)).then(r => { if (!r.ok) throw new Error("Room unavailable"); return r.json(); }).then(renderQueue).catch(() => setStatus("disconnected"));
   </script>
 </body>
 </html>`;
@@ -2361,6 +2466,7 @@ function migrateHistoryWithManifests(entries: SavedJobHistory[]): SavedJobHistor
   const backfillOwners = new Map<string, SavedJobHistory>();
 
   const hydrated = entries.map((entry) => {
+    if (entry.preparationStatus === "audio_only") return entry;
     const outputDir = entry.outputDir?.trim();
     if (!outputDir) {
       return entry;
@@ -2413,6 +2519,11 @@ function migrateHistoryWithManifests(entries: SavedJobHistory[]): SavedJobHistor
 function saveHistoryEntry(entry: SavedJobHistory): SavedJobHistory {
   const entryKey = historyPackageKey(entry);
   const existing = savedHistory.find((item) => item.id === entry.id || (entryKey && historyPackageKey(item) === entryKey));
+  // A failed reprocessing attempt must not downgrade an existing complete song
+  // or merge incomplete new assets into its previously working lyrics.
+  if (entry.preparationStatus === "audio_only" && existing && existing.preparationStatus !== "audio_only") {
+    return refreshHistoryEntry(existing);
+  }
   const merged = existing ? mergeHistoryEntries(existing, entry) : refreshHistoryEntry(entry);
   const mergedKey = historyPackageKey(merged);
   savedHistory = [
@@ -3415,6 +3526,9 @@ function buildCommandPreview(options: JobOptions, runtime?: PreparedRuntime): Co
 
 async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promise<PreparedRuntime> {
   const bundledPython = bundledPythonInvocation();
+  if (app.isPackaged && !bundledPython) {
+    throw new Error("Bundled runtime is incomplete: Python is missing. Reinstall VocalFlow from a verified installer. No system Python installation is required.");
+  }
   const pathDirs = [
     bundledPython ? path.dirname(bundledPython.command) : null,
     venvBinDir(runtimeVenvDir()),
@@ -3456,7 +3570,10 @@ async function prepareAudioRuntime(options: JobOptions, log: RuntimeLog): Promis
       log("[runtime] Using complete offline runtime bundled with VocalFlow Studio.\n");
       return { env: bundledEnv, python: bundledPython };
     }
-    log(`[runtime] Bundled runtime is incomplete (${bundledMissing.join(", ")}); preparing a repair environment.\n`);
+    throw new Error(
+      `Bundled runtime is incomplete: ${bundledMissing.join(", ")} failed its import check. ` +
+      "Reinstall VocalFlow from a verified installer. Automatic dependency downloads are disabled for packaged apps."
+    );
   }
 
   const venvDir = runtimeVenvDir();
@@ -3656,7 +3773,7 @@ async function runMediaSearch(platform: "youtube" | "bilibili", query: string, a
 
   const searchPrefix = platform === "bilibili" ? "bilisearch" : "ytsearch";
   const searchArg = `${searchPrefix}${MEDIA_SEARCH_MAX_RESULTS}:${effective}`;
-  const args = ["-m", "yt_dlp", "-j", "--no-playlist", "--flat-playlist", "--socket-timeout", "20", searchArg];
+  const args = ["-m", "yt_dlp", ...bundledYtdlpRuntimeArgs(python), "-j", "--no-playlist", "--flat-playlist", "--socket-timeout", "20", searchArg];
 
   const stdout = await new Promise<string>((resolve, reject) => {
     const child = spawn(python, args, {
@@ -4013,8 +4130,12 @@ function pythonCheck(python: string, code: string, env: NodeJS.ProcessEnv): Prom
       env,
       stdio: ["ignore", "ignore", "ignore"]
     });
-    child.on("error", () => resolve(false));
-    child.on("close", (exitCode) => resolve(exitCode === 0));
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve(false);
+    }, 120_000);
+    child.on("error", () => { clearTimeout(timer); resolve(false); });
+    child.on("close", (exitCode) => { clearTimeout(timer); resolve(exitCode === 0); });
   });
 }
 
@@ -4280,6 +4401,11 @@ function normalizeFormats(formats: OutputFormat[]): OutputFormat[] {
  * Bilibili only publishes DASH (video-only + audio-only). Prefer a muted
  * ≤720p AVC video stream; combined `b[ext=mp4]` almost never exists there.
  */
+function bundledYtdlpRuntimeArgs(python: string): string[] {
+  const node = path.join(path.dirname(python), process.platform === "win32" ? "node.exe" : "node");
+  return existsSync(node) ? ["--js-runtimes", `node:${node}`] : [];
+}
+
 function resolveDirectStreamUrl(
   url: string,
   python: { command: string; argsPrefix: string[] },
@@ -4293,6 +4419,7 @@ function resolveDirectStreamUrl(
       ...python.argsPrefix,
       "-m",
       "yt_dlp",
+      ...bundledYtdlpRuntimeArgs(python.command),
       "--no-playlist",
       "--socket-timeout",
       "20",
