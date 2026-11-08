@@ -64,6 +64,8 @@ export interface PlaybackBundle {
 
 export interface SavedJobHistory {
   id: string;
+  /** Partial audio remains playable; the failed job still requires retry. */
+  preparationStatus?: "complete" | "audio_only";
   title?: string;
   input: string;
   workflowMode: WorkflowMode;

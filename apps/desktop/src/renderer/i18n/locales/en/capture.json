@@ -130,9 +130,17 @@
     "redownload": "Re-download"
   },
   "error": {
+    "runtimeIncomplete": {
+      "title": "Built-in processing engine is incomplete",
+      "body": "A bundled dependency is missing or cannot start. Save the diagnostic log and reinstall VocalFlow from a verified installer. You should not need Python, Homebrew or an HF token to repair the default engine."
+    },
     "authRequired": {
       "title": "Sign-in required",
-      "body": "The site needs cookies. Open desktop options, paste browser cookies, then retry."
+      "body": "The site requested sign-in or verification. Check access in your browser first. You can also import a local file you are authorized to use. Cookies are sensitive credentials; do not share them in logs or support messages."
+    },
+    "sourceBlocked": {
+      "title": "The site rejected the download",
+      "body": "This does not necessarily mean sign-in is required. Check whether the video plays in your browser, then retry or import an authorized local file. If it persists, copy the diagnostic log; do not send browser cookies."
     },
     "noCaptions": {
       "title": "No captions found",

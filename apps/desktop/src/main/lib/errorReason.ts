@@ -22,14 +22,23 @@ interface ReasonRule {
 
 const REASON_RULES: ReasonRule[] = [
   {
+    reason: "runtime_incomplete",
+    actionId: "copyLog",
+    patterns: [/bundled runtime is incomplete/i]
+  },
+  {
     reason: "auth_required",
     actionId: "openAdvancedCookies",
     patterns: [
       /sign in to confirm/i,
       /cookies are required/i,
-      /http error 403\b/i,
       /login required/i
     ]
+  },
+  {
+    reason: "source_blocked",
+    actionId: "copyLog",
+    patterns: [/http error 403\b/i, /403: forbidden/i, /challenge solving failed/i]
   },
   {
     reason: "no_captions",

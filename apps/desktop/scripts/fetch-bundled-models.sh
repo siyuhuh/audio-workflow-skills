@@ -77,6 +77,33 @@ print(f"[separator] Wrote {final}")
 PY
 fi
 
+# UVR also needs its catalog and architecture parameters, even when weights exist.
+SEP_DIR="$SEP_DIR" "$PYTHON_BIN" - <<'PY'
+import json
+import os
+from pathlib import Path
+from urllib.request import urlopen
+
+base = "https://raw.githubusercontent.com/TRvlvr/application_data/main"
+sources = {
+    "download_checks.json": "filelists/download_checks.json",
+    "vr_model_data.json": "vr_model_data/model_data_new.json",
+    "mdx_model_data.json": "mdx_model_data/model_data_new.json",
+}
+for filename, source in sources.items():
+    target = Path(os.environ["SEP_DIR"]) / filename
+    if target.exists():
+        json.loads(target.read_text(encoding="utf-8"))
+        continue
+    with urlopen(f"{base}/{source}", timeout=60) as response:
+        data = response.read()
+    json.loads(data)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_bytes(data)
+    temporary.replace(target)
+    print(f"[separator] Bundled metadata: {filename}")
+PY
+
 # ----- 2. Whisper model (read directly; no duplicate HF blob cache) -----
 if [[ -f "$WHISPER_LOCAL/model.bin" && -f "$WHISPER_LOCAL/config.json" ]]; then
   echo "[whisper] $WHISPER_REPO model already present — skipping"

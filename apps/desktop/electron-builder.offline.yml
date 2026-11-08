@@ -25,6 +25,7 @@ extraResources:
       - "**/*.onnx"
       - "**/*.pth"
       - "**/*.ckpt"
+      - "*.json"
   - from: vendor/whisper-models
     to: whisper-models
     filter:

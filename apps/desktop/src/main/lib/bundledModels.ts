@@ -46,6 +46,7 @@ const SEPARATOR_BUNDLE_NAME = "separator-models";
 const WHISPER_BUNDLE_NAME = "whisper-models";
 
 const MODEL_EXTENSIONS = new Set([".onnx", ".pth", ".ckpt"]);
+const MODEL_METADATA = new Set(["download_checks.json", "vr_model_data.json", "mdx_model_data.json"]);
 
 interface ResourcePathOpts {
   /** `app.isPackaged` — toggles between `process.resourcesPath` and the dev `vendor/` folder. */
@@ -106,7 +107,7 @@ export function seedBundledSeparator(bundleDirPath: string, targetDir: string): 
     return 0;
   }
   for (const entry of entries) {
-    if (!MODEL_EXTENSIONS.has(path.extname(entry).toLowerCase())) {
+    if (!MODEL_EXTENSIONS.has(path.extname(entry).toLowerCase()) && !MODEL_METADATA.has(entry)) {
       continue;
     }
     const src = path.join(bundleDirPath, entry);

@@ -23,7 +23,9 @@ export type JobStage =
  * local fallback"). Unknown failures fall back to a generic copy log dialog.
  */
 export type JobErrorReason =
+  | "runtime_incomplete"
   | "auth_required"
+  | "source_blocked"
   | "no_captions"
   | "rate_limited"
   | "hf_rate_limited"

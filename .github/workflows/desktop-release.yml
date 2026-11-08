@@ -110,6 +110,22 @@ jobs:
         shell: bash
         run: node apps/desktop/scripts/verify-bundled-release.mjs apps/desktop/release
 
+      - name: Smoke test packaged macOS processing without network access
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          resources="$PWD/apps/desktop/release/mac-arm64/VocalFlow Studio.app/Contents/Resources"
+          fixture_dir="$(mktemp -d)"
+          /usr/bin/say -v Samantha -o "$fixture_dir/speech.aiff" "Welcome to VocalFlow. This is an offline test of the audio processing system."
+          "$resources/ffmpeg-static/ffmpeg" -hide_banner -loglevel error -i "$fixture_dir/speech.aiff" -ar 44100 -ac 2 "$fixture_dir/speech.wav"
+          /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' \
+            "$resources/python-runtime/python/bin/python3" -sB \
+            apps/desktop/scripts/smoke-bundled-runtime.py "$resources" "$fixture_dir/speech.wav"
+          "$resources/ffmpeg-static/ffmpeg" -hide_banner -loglevel error -i "$fixture_dir/speech.wav" -c:a aac "$fixture_dir/speech.m4a"
+          "$resources/python-runtime/python/bin/python3" -sB \
+            apps/desktop/scripts/smoke-bundled-runtime.py "$resources" "$fixture_dir/speech.m4a" --download-only
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
