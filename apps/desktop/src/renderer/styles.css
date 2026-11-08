@@ -2821,8 +2821,9 @@ button.resourceListCardMain:active {
 }
 
 
+/* Positioned by the `absolute inset-0` utilities the component applies; an
+   unlayered `position` here would override them and collapse the tile. */
 .albumCoverCard {
-  position: relative;
   overflow: hidden;
   perspective: 900px;
   container-type: inline-size;
@@ -2857,7 +2858,7 @@ button.resourceListCardMain:active {
 
 .albumCoverCardMonogram {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: clamp(44px, 26cqi, 128px);
+  font-size: clamp(40px, 16cqi, 128px);
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.02em;

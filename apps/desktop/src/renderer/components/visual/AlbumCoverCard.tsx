@@ -22,7 +22,7 @@ export function AlbumCoverCard({ title, coverUrl, active: controlledActive, clas
 
   return (
     <div
-      className={cn("albumCoverCard", className)}
+      className={cn("albumCoverCard absolute inset-0", className)}
       data-active={active ? "true" : "false"}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
