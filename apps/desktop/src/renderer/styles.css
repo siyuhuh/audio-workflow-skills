@@ -866,6 +866,22 @@ textarea:focus-visible {
   border-bottom-color: color-mix(in oklch, white 10%, transparent);
 }
 
+/* Stage: the scene fills the window; the top bar clears the macOS traffic
+   lights (hiddenInset title bar) and doubles as the window drag strip. */
+.appSceneFrame--stage {
+  --studio-chrome-height: 0px;
+}
+
+.appSceneFrame--stage .roomStageTopbar {
+  padding-top: clamp(44px, 4vw, 52px);
+  -webkit-app-region: drag;
+}
+
+.appSceneFrame--stage .roomStageNow,
+.appSceneFrame--stage .roomStageExit {
+  -webkit-app-region: no-drag;
+}
+
 .karaokeSceneShell {
   min-height: 100%;
 }
@@ -1979,10 +1995,8 @@ button.uiKey::after {
 }
 
 .captureCheckLabel {
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.04em;
 }
 
 .captureResultsChassis {

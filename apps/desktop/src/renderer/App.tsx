@@ -2032,8 +2032,8 @@ export default function App() {
     return (
       <>
         <IntroSplash open={showIntroSplash} onDone={() => setShowIntroSplash(false)} />
-      <div className="appSceneFrame appSceneFrame--withChrome" data-theme="dark" data-accent={accentColor}>
-        {studioChromeHeader}
+      {/* Stage is immersive: no brand header; the floating dock and the exit key handle navigation. */}
+      <div className="appSceneFrame appSceneFrame--withChrome appSceneFrame--stage" data-theme="dark" data-accent={accentColor}>
         <div className="studioScrollRegion">
         <KaraokeRoomScene
           activeCue={activeCue}

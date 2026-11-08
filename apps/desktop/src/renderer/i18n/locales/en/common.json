@@ -51,9 +51,9 @@
     "navPractice": "Album"
   },
   "room": {
-    "kicker": "Tonight’s room",
+    "kicker": "Songs in tonight’s setlist",
     "title": "Order the setlist, then take the stage.",
-    "subtitle": "Reorder songs here. Tap Start singing when you’re ready — Home never dumps you straight onto the Stage.",
+    "subtitle": "Put the songs in the order you want, then press Start singing.",
     "setlistLabel": "Setlist order",
     "setlistHint": "Move songs up or down, then play one to start.",
     "nextCue": "{{count}} READY · NEXT {{title}}",
