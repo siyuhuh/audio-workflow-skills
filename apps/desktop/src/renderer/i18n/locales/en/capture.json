@@ -36,7 +36,6 @@
       "platformLanguages": "Platform subtitle languages",
       "browserCookies": "Browser cookies",
       "cookiesFile": "cookies.txt",
-      "vocalSplit": "Create backing",
       "localFallback": "Local fallback",
       "keepRawVtt": "Keep raw VTT",
       "playableAudioAuto": "Playable audio auto",

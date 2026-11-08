@@ -8,6 +8,45 @@ interface HeaderJobStatusPillProps {
   t: Translator;
   /** Called when the user clicks the pill — typically scrolls to the inline LiveJobStatus. */
   onActivate?: () => void;
+  /**
+   * Changes whenever the inline status section may have been remounted
+   * (scene or workspace mode switch), so the visibility observer re-attaches.
+   */
+  inlineAnchorKey?: string;
+}
+
+/** Element id of the inline LiveJobStatus section the pill duplicates. */
+const INLINE_STATUS_ID = "captureStatus";
+
+/**
+ * True while the inline status section is on screen. The header pill exists to
+ * surface progress when that section is scrolled away or on another scene, so
+ * it hides itself whenever the full status is already visible.
+ */
+function useInlineStatusVisible(enabled: boolean, anchorKey: string | undefined): boolean {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!enabled || typeof IntersectionObserver === "undefined") {
+      setVisible(false);
+      return;
+    }
+    const target = document.getElementById(INLINE_STATUS_ID);
+    if (!target) {
+      setVisible(false);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.35 }
+    );
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [enabled, anchorKey]);
+  return visible;
 }
 
 /**
@@ -45,7 +84,8 @@ function clampFraction(value: number): number {
   return value;
 }
 
-export function HeaderJobStatusPill({ job, t, onActivate }: HeaderJobStatusPillProps) {
+export function HeaderJobStatusPill({ job, t, onActivate, inlineAnchorKey }: HeaderJobStatusPillProps) {
+  const inlineVisible = useInlineStatusVisible(Boolean(job), inlineAnchorKey);
   // Tick state used purely to re-render once the auto-fade window has
   // elapsed. We only schedule a timer when the snapshot is in a terminal
   // state, so idle/running pills stay event-driven.
@@ -70,7 +110,7 @@ export function HeaderJobStatusPill({ job, t, onActivate }: HeaderJobStatusPillP
     };
   }, [job?.status, job?.updatedAt]);
 
-  if (!job) {
+  if (!job || inlineVisible) {
     return null;
   }
   if (job.status === "succeeded" && Date.now() - job.updatedAt > SUCCESS_HIDE_MS) {

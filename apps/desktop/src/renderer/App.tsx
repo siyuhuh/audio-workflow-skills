@@ -1511,6 +1511,7 @@ export default function App() {
         <HeaderJobStatusPill
           job={liveJob}
           t={t}
+          inlineAnchorKey={`${appScene}:${workspaceMode}`}
           onActivate={() => {
             if (appScene !== "workspace") {
               navigateAdd();
@@ -2743,12 +2744,6 @@ export default function App() {
                 </div>
 
                 <div className="grid gap-2 md:grid-cols-2">
-                  <Checkbox
-                    label={t("capture:advanced.fields.vocalSplit")}
-                    checked={options.separate}
-                    disabled={options.workflowMode !== "karaoke"}
-                    onChange={(checked) => updateOptions({ separate: checked })}
-                  />
                   <Checkbox label={t("capture:advanced.fields.keepRawVtt")} checked={options.keepPlatformSubs} onChange={(checked) => updateOptions({ keepPlatformSubs: checked })} />
                   <Checkbox
                     label={autoSavesAudio ? t("capture:advanced.fields.playableAudioAuto") : t("capture:advanced.fields.keepExtractedAudio")}

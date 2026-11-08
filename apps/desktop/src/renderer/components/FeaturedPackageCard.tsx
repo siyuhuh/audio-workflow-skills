@@ -6,7 +6,7 @@ import { cn } from "../lib/cn";
 import { Button } from "./ui/Button";
 import { Eyebrow } from "./ui/Eyebrow";
 import { Icon } from "./ui/Icon";
-import { AlbumHoloCard } from "./visual/AlbumHoloCard";
+import { AlbumCoverCard } from "./visual/AlbumCoverCard";
 
 interface FeaturedPackageCardProps {
   entry: SavedJobHistory;
@@ -62,7 +62,7 @@ export function FeaturedPackageCard({
       </button>
 
       <div className="relative grid aspect-[16/10] min-h-[210px] place-items-stretch overflow-hidden rounded-lg bg-background">
-        <AlbumHoloCard title={title} coverUrl={coverUrl} active={focused} className="absolute inset-0" />
+        <AlbumCoverCard title={title} coverUrl={coverUrl} active={focused} className="absolute inset-0" />
         <span className="selectionPlayBadge">
           <Icon name="play" />
         </span>

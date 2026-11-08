@@ -1249,6 +1249,18 @@ function isLocalRequest(request: IncomingMessage): boolean {
   return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
+/**
+ * The only routes a phone on the same Wi-Fi may call: the remote page itself,
+ * the room queue (token-checked) and media search for the remote's song picker.
+ * Everything else (jobs, files, history, logs, opening paths) is reserved for
+ * the renderer on this machine, which always connects over loopback.
+ */
+const remoteAllowedPaths = new Set(["/remote", "/api/health", "/api/youtube-search", "/api/bilibili-search"]);
+
+function isRemoteAllowedPath(pathname: string): boolean {
+  return remoteAllowedPaths.has(pathname) || pathname.startsWith("/api/room/");
+}
+
 function roomTokenFromRequest(request: IncomingMessage, url: URL, body?: { token?: string }): string {
   const header = request.headers["x-vocalflow-room-token"];
   return (
@@ -1593,6 +1605,11 @@ async function handleWebApiRequest(request: IncomingMessage, response: ServerRes
     const url = new URL(request.url ?? "/", webApiOrigin);
     const pathname = url.pathname;
 
+    if (!isLocalRequest(request) && !isRemoteAllowedPath(pathname)) {
+      sendText(response, 403, "This endpoint is only available to VocalFlow on this computer.");
+      return;
+    }
+
     if (request.method === "GET" && pathname === "/remote") {
       response.writeHead(200, {
         ...corsHeaders(),
@@ -1758,7 +1775,9 @@ async function handleWebApiRequest(request: IncomingMessage, response: ServerRes
     }
 
     if (pathname === "/api/youtube-search") {
-      const { query, appendKaraoke } = await readJsonBody<{ query?: string; appendKaraoke?: boolean }>(request);
+      const body = await readJsonBody<{ query?: string; appendKaraoke?: boolean; token?: string }>(request);
+      assertRoomAccess(request, url, body);
+      const { query, appendKaraoke } = body;
       const q = String(query ?? "").trim();
       if (!q) {
         sendText(response, 400, "Search query is empty.");
@@ -1774,7 +1793,9 @@ async function handleWebApiRequest(request: IncomingMessage, response: ServerRes
     }
 
     if (pathname === "/api/bilibili-search") {
-      const { query, appendKaraoke } = await readJsonBody<{ query?: string; appendKaraoke?: boolean }>(request);
+      const body = await readJsonBody<{ query?: string; appendKaraoke?: boolean; token?: string }>(request);
+      assertRoomAccess(request, url, body);
+      const { query, appendKaraoke } = body;
       const q = String(query ?? "").trim();
       if (!q) {
         sendText(response, 400, "Search query is empty.");

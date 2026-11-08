@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
-import { AlbumHoloCard } from "./visual/AlbumHoloCard";
+import { AlbumCoverCard } from "./visual/AlbumCoverCard";
 
 interface ProcessedResourceCardProps {
   title: string;
@@ -73,7 +73,7 @@ export function ProcessedResourceCard({
         onClick={onEnter}
         className="relative block w-full min-h-[210px] overflow-hidden border-0 bg-background p-0 text-left text-white disabled:cursor-default disabled:opacity-100"
       >
-        <AlbumHoloCard title={title} coverUrl={coverUrl} active={focused} className="absolute inset-0" />
+        <AlbumCoverCard title={title} coverUrl={coverUrl} active={focused} className="absolute inset-0" />
         <div className="absolute inset-0 grid content-end gap-1 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.1),transparent_34%,rgba(0,0,0,0.84)),linear-gradient(to_right,rgba(0,0,0,0.45),transparent)] p-3.5">
           <span className="selectionPlayBadge">
             <Icon name="play" />

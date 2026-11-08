@@ -36,7 +36,6 @@
       "platformLanguages": "平台字幕语言",
       "browserCookies": "浏览器 cookies",
       "cookiesFile": "cookies.txt",
-      "vocalSplit": "生成伴奏",
       "localFallback": "本地回退",
       "keepRawVtt": "保留原始 VTT",
       "playableAudioAuto": "自动保留可播放音频",
