@@ -10,8 +10,10 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 - Website: `https://vocalflow.whothree.com` (Vercel project `vocalflow-site`, DNSPod CNAME to Vercel). Its source is not in this repo; it was built and deployed by the Grok Bot "VocalFlow" agent on 2026-11-03. Locate that source before changing the site; do not rebuild it from scratch.
 - Installer hosting: Cloudflare R2 (see Distribution). GitHub Releases carry the CI builds; the latest public GitHub release is still `v0.8.0-beta.5` (unsigned).
 
-## State as of 2026-11-07 (read before releasing)
+## State as of 2026-11-08 (read before releasing)
 
+- 2026-11-08: branch `beta10` (from `beta6-9-wip`) is the current line of work: LAN API locked to this machine, WebGL library cards replaced by CSS, dead 3D dependencies and `experiments/` removed, CI added. Verified on the mini: type-check, build, `test-*.mjs`, Python tests, app launch, LAN probes from the MacBook (403 for job/file/history/log routes, 200 for the phone remote with its token).
+- 2026-11-08: the 854 MB `apps/desktop/release/VocalFlow Studio-0.8.0-beta.9-mac-arm64.dmg` is **broken**: its `Electron Framework.framework/Versions/A/` has no `Electron Framework` binary (the 10-29 "DMG lost framework binaries" pitfall). The 1,084 MB signed DMG is the complete one. A correct Electron 44 Studio DMG is about 1.05–1.1 GB; size work has to come from the Python runtime (1.1 GB, torch 412 MB is only imported) and the models (whisper-small 464 MB), not from the Electron side.
 - 2026-11-08: Beta 6–9 work (previously uncommitted in the mini checkout, 2026-10-07 → 11-03) is committed on branch `beta6-9-wip` and merged with the security PRs #1–#4 (npm overrides, Electron 37 → 44.8.0, undici/next). On that branch `pnpm run build`, `scripts/test-*.mjs` and `skills/audio-subtitles/scripts/test_*.py` pass and the app launches on Electron 44. A build from `main` does **not** contain beta 6–9 behaviour. Before releasing from the branch, rebuild the offline DMG, notarize, and re-run the acceptance checklist in `docs/testing-beta9.md`. The mini checkout may still hold the same changes uncommitted on `main`; do not discard them until Siyu has switched to the branch.
 - `apps/desktop/package.json` in the working tree is `0.8.0-beta.9`; `origin/main` still says `0.8.0-beta.5`.
 - The 2026-11-03 mobile QR-page change (search-first, Chinese default) is source-only; the notarized beta 9 DMG does not include it.
@@ -25,6 +27,8 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 - Native Mac: `apps/mac/VocalFlowMini/scripts/build-dmg.sh release` with `MACOS_SIGNING_IDENTITY`, `APPLE_NOTARY_KEYCHAIN_PROFILE`, `REQUIRE_BUNDLED_RUNTIME=1`.
 - CI release: push a `v*` tag (`git push origin v0.8.0-beta.N`). The `Desktop Release` workflow builds the native DMG, Studio DMG and Windows EXE, unsigned or ad-hoc. Signed and notarized builds are made locally on the mini.
 - Promo video: `pnpm promo`, `pnpm promo:render` (45 s 1920×1080 `VocalFlowIntro`).
+- CI (`.github/workflows/ci.yml`, on push to `main`/`beta*` and PRs): both type-checks, `pnpm build`, `apps/desktop/scripts/test-*.mjs`, and `python -m unittest discover -s skills/audio-subtitles/scripts -p "test_*.py"`. Run the same four locally before pushing.
+- Driving the running app without Playwright: start it with `electron . --remote-debugging-port=9333`, then screenshot or evaluate JS over the DevTools protocol (a 60-line Node 22 script, no dependencies; `Input.dispatchMouseEvent` hangs when the mini's display is asleep, so scroll and hover via DOM calls instead). `screencapture` over SSH fails without a live display session.
 
 ## Release, signing and notarization (Studio DMG)
 
@@ -60,6 +64,8 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 - 2026-10-15: keep the "万能 KTV" positioning ("这个点我也想打"). Use `Trinkle23897/karaoke` as the engineering reference: text vs timing separation, stage cache, persistent queue. Do not narrow the product.
 - 2026-10-25/26: KTV auto mode prefers matching-language manual platform subtitles even when separating, then checks them against local ASR and falls back to an ASR draft. Store lyric source, needs-review flag and timing precision. Never fake word-level timing from line timing.
 - 2026-10-27/28 (beta 8/9): persistent room queue (interrupted → failed, no auto-restart); retry reuses separation only after input/model/output verification; if separation succeeded but lyrics failed, keep the backing track playable while the job stays failed.
+- 2026-11-08: library covers are CSS (`components/visual/AlbumCoverCard.tsx`: tilt, sheen, muted video preview while active), not WebGL. The three.js card cost one GPU context per package (Chromium drops contexts past about 16) and 57% of the renderer JS for a hover effect; the bundle went from 1,517 kB to 621 kB. Do not reintroduce three/fiber for decoration.
+- 2026-11-08: the room web server stays on `0.0.0.0` for the phone remote, but only `/remote`, `/api/health`, `/api/room/*` and the two search routes accept non-loopback callers, all token-checked via `assertRoomAccess`. Any new route is loopback-only unless it is added to `remoteAllowedPaths` **and** checks the token.
 - 2026-07-20: RideTogether moved to its own repo `~/Downloads/project/tars/RideTogether`. Do not develop it under `apps/ios/RideTogether`.
 
 ## Pitfalls
@@ -73,6 +79,8 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 - Shared output dirs mixed songs and stems; keep one folder per job and dedupe history by package.
 - Mini disk is tight (2.8 GB free on 10-16 blocked packaging; about 6 GB on 11-07). Each DMG is about 0.9–1.1 GB, and `apps/desktop/release*` already holds many betas. Check `df -h /` and ask before deleting anything.
 - A copied beta 6 DMG reported "The disk image is corrupted"; compare SHA-256 before and after copying and run `hdiutil verify`.
+- `styles.css` rules are unlayered, so they beat Tailwind utilities (which live in `@layer utilities`). A component base class must not set `position`/`display` that callers override with `absolute inset-0`; the cover tile collapsed to zero height this way on 2026-11-08.
+- The renderer's HTTP fallback (`createHttpAudioWorkflowApi`, `http://127.0.0.1:5175`) and the Electron bridge are the only legitimate callers of the non-room web routes; both are loopback. The native Mac client and the iPhone app talk to the Agent on port 8766, never to Studio's 5175.
 
 ## Acceptance / verification
 
