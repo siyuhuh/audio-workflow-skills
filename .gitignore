@@ -35,3 +35,5 @@ apps/desktop/vendor/whisper-models/
 apps/desktop/vendor/python-runtime/*
 !apps/desktop/vendor/python-runtime/.gitkeep
 apps/desktop/release/
+apps/desktop/release-signed/
+.playwright-cli/
