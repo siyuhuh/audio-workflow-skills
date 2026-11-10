@@ -14,7 +14,7 @@
 - File: `VocalFlow Studio-0.8.0-beta.9-mac-arm64-signed.dmg` (local `apps/desktop/release-signed/`, not committed).
 - Size: 1,136,632,840 bytes (approximately 1.14 GB).
 - SHA-256 (after stapling): `410913efa3ffb8e008ab3c8c0a5fe51040521eb39774de850845e5173d0bee18`
-- Signed by `Developer ID Application: Hangzhou Yuyao Digital Technology Co.,Ltd. (8L828D52BX)` with a secure timestamp.
+- Signed with the project's Developer ID Application certificate and a secure timestamp.
 - Notarization submission `6935ca44-f9ec-495d-8d4b-2073c835176b` (2026-11-03): `Accepted`. The earlier submission of the unrecreated image, `2ed582a9-e898-451f-816f-b996f6db68aa` (2026-10-29), was `Invalid`.
 - Passed: `stapler validate`, `hdiutil verify`, and `spctl --assess --type open` (`source=Notarized Developer ID`) on the DMG.
 - Passed on the app **inside the mounted image**: `codesign --verify --deep --strict` and `spctl --assess --type execute` (`Notarized Developer ID`); Electron, Mantle, ReactiveObjC and Squirrel frameworks are present.

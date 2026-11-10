@@ -1,6 +1,6 @@
 # AGENTS.md — VocalFlow (audio-workflow-skills)
 
-Instruction file for every coding agent. Read it first, then `AGENT.md` (architecture, playback/history rules, development plan), `DESIGN.md` (required before any UI change), `RELEASING.md` and `.cursor/rules/agent-behavior.mdc`. This file holds the dated decisions, pitfalls and release knowledge distilled from past Codex, Cursor, Claude Code and Grok Bot sessions (2026-04 → 2026-11-07). Add new findings here.
+Instruction file for every coding agent. Read it first, then `AGENT.md` (architecture, playback/history rules, development plan), `DESIGN.md` (required before any UI change), `RELEASING.md` and `.cursor/rules/agent-behavior.mdc`. This file holds the dated decisions, pitfalls and release knowledge distilled from past Codex, Cursor, Claude Code and Grok Bot sessions (2026-04 → 2026-11-10). Add new findings here.
 
 ## Project
 
@@ -10,11 +10,12 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 - Website: `https://vocalflow.whothree.com` (Vercel project `vocalflow-site`, DNSPod CNAME to Vercel). Its source is not in this repo; it was built and deployed by the Grok Bot "VocalFlow" agent on 2026-11-03. Locate that source before changing the site; do not rebuild it from scratch.
 - Installer hosting: Cloudflare R2 (see Distribution). GitHub Releases carry the CI builds; the latest public GitHub release is still `v0.8.0-beta.5` (unsigned).
 
-## State as of 2026-11-07 (read before releasing)
+## State as of 2026-11-10 (read before releasing)
 
-- The mini checkout is dirty and 4 commits behind `origin/main` (security PRs #1–#4: npm overrides, Electron 37 → 44.8.0, undici/next). Beta 6–9 work lives only in that working tree: modified `main.ts`, `generate_subtitles.py`, release scripts, `RELEASING.md` (notarization section), plus untracked `jobRetryStore.ts`, `roomQueueStore.ts`, `partialPlayback.ts`, `finalize-notarized-dmg.sh`, `bundle-node-runtime.mjs`, `smoke-bundled-runtime.py`, `test-*.mjs`, Python `test_*.py`, `docs/testing-beta{6,8,9}.md`, `docs/reliability-roadmap.md`, `docs/market-launch-plan.md`, `experiments/browser-separator/`. A build from `origin/main` does **not** contain beta 9 behaviour. Do not discard or "clean up" that tree; commit it deliberately with Siyu, then rebase on the security commits.
-- `apps/desktop/package.json` in the working tree is `0.8.0-beta.9`; `origin/main` still says `0.8.0-beta.5`.
-- The 2026-11-03 mobile QR-page change (search-first, Chinese default) is source-only; the notarized beta 9 DMG does not include it.
+- All beta 6–9 work (queue/retry stores, partial playback, lyrics checks, notarized release scripts, smoke tests, docs) was committed and squash-merged into `main` as `cfa010c` (PR #5, 2026-11-09), on top of the security PRs #1–#4 (Electron 44.8.0). The mini checkout's `main` matches `origin/main`.
+- `apps/desktop/package.json` is `0.8.0-beta.10`.
+- Latest signed build: **0.8.0-beta.10**, built from `cfa010c` on 2026-11-10, Developer ID signed, notarized and stapled. It includes Electron 44.8.0 and the 2026-11-03 mobile QR-page change (search-first, Chinese default). It is in `apps/desktop/release-signed/0.8.0-beta.10/` on the mini; file, SHA-256 and checks are in `docs/testing-beta10.md`. It is not on R2 or GitHub Releases yet; the site still serves beta 9.
+- Commit `cfa010c` put the signer's team name and ID into `docs/testing-beta9.md`; a later commit removed the line, but git history keeps it. Never paste `codesign -dv` or electron-builder signing lines into docs; they print team details.
 
 ## Commands
 
@@ -30,10 +31,13 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 
 - 2026-10-29: Developer ID Application certificate created through Xcode → Settings → Accounts → paid team → Manage Certificates → `+`. "Apple Development" certificates cannot sign for distribution. The notarytool credentials live in the login keychain profile `vocalflow-notary`. The `asc` CLI is set up with an App Store Connect API key under `~/.asc/` (dir 700, file 600). Never print, copy or commit the key, key ID, issuer ID or team details.
 - Build: `CSC_NAME="<team name> (<TEAMID>)"` without the `Developer ID Application:` prefix, `electron-builder --mac dmg --publish never --config.directories.output=release-signed --config.mac.notarize=false`. A separate output dir keeps earlier unsigned artifacts.
-- Gate, in order: strict deep `codesign --verify` on the staging app → mount the DMG read-only and verify the app **inside the image** → sign the DMG with timestamp → `xcrun notarytool submit <dmg> --keychain-profile vocalflow-notary --wait` and require `Accepted` → `stapler staple` + `stapler validate` → `hdiutil verify` → `spctl --assess --type open --context context:primary-signature` → SHA-256 **after** stapling → clean-Mac install test. The full steps are in the working-tree `RELEASING.md`.
+- Gate, in order: strict deep `codesign --verify` on the staging app → mount the DMG read-only and verify the app **inside the image** → sign the DMG with timestamp → `xcrun notarytool submit <dmg> --keychain-profile vocalflow-notary --wait` and require `Accepted` → `stapler staple` + `stapler validate` → `hdiutil verify` → `spctl --assess --type open --context context:primary-signature` → SHA-256 **after** stapling → clean-Mac install test. The full steps are in `RELEASING.md`.
 - Pitfall (2026-10-29): the first submission came back `Invalid` because electron-builder's DMG lost framework binaries, even though the staging app and the image checksum passed. Fix: recreate with `hdiutil create -srcfolder <signed-app-dir> -format UDZO <dmg>` and re-verify the mounted contents.
 - Pitfall (10-29 → 11-03): the 1.1 GB upload from the mini timed out; Apple then showed a stale `In Progress` record that was really a failed upload, and a "follow-up task" silently never finished. Check `notarytool history`/`info` and that an upload process is still alive. Use a recurring check (a 15-minute heartbeat worked on 11-03) and never report success before `Accepted` + stapled + validated.
-- Result: `VocalFlow Studio-0.8.0-beta.9-mac-arm64-notarized.dmg` (1,136,632,840 bytes, SHA-256 `410913ef…0bee18`), notarized 2026-11-03 and kept in the mini's `~/Downloads`. Signing is not notarization, and neither proves model quality, site access or clean-machine behaviour.
+- Pitfall (2026-11-10): beta 10's notarization took about 6.5 hours, so `notarytool submit --wait --timeout 2h` exited while Apple still said `In Progress`; the upload itself had succeeded. When the mini's screen locks, the `vocalflow-notary` keychain item becomes unreadable and `notarytool info` fails, but `xcrun stapler staple <dmg>` needs no credentials and succeeds only once Apple has issued the ticket. Poll stapling in the background (every 10 minutes worked), then run the full gate.
+- Pitfall (2026-11-09): codesign can fail with "The timestamp service is not available"; it was transient, and a rerun signed fine. When comparing the mounted app with the staging app, `diff -r` follows framework symlinks ("Directory loop detected"); compare a `find`/`stat` inventory instead.
+- Smoke test of the **final** image: mount the DMG read-only and run `apps/desktop/scripts/smoke-bundled-runtime.py` with `<mount>/VocalFlow Studio.app/Contents/Resources/python-runtime/python/bin/python3.12 -s` under `sandbox-exec -p '(version 1)(allow default)(deny network*)'` with `--recovery`, and with a loopback-only profile for `--download-only`.
+- Results: beta 9, `VocalFlow Studio-0.8.0-beta.9-mac-arm64-notarized.dmg` (1,136,632,840 bytes, SHA-256 `410913ef…0bee18`), notarized 2026-11-03 and kept in the mini's `~/Downloads`. Beta 10, `VocalFlow Studio-0.8.0-beta.10-mac-arm64.dmg` (1,152,855,754 bytes, SHA-256 `b64e225c…68192a`), notarized and stapled 2026-11-10. Signing is not notarization, and neither proves model quality, site access or clean-machine behaviour.
 
 ## Distribution (R2 / COS) and download site
 
@@ -71,7 +75,7 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 - ffmpeg "no timestamp" sentinel (`-9223372036855s`) leaked into progress; clamp it (fixed 07-15).
 - Bilibili: search can return HTTP 412; thumbnails need the local `/api/thumbnail` proxy with Referer + UA. YouTube embedding in Electron is unstable (`net_error -100`); play the local preview video.
 - Shared output dirs mixed songs and stems; keep one folder per job and dedupe history by package.
-- Mini disk is tight (2.8 GB free on 10-16 blocked packaging; about 6 GB on 11-07). Each DMG is about 0.9–1.1 GB, and `apps/desktop/release*` already holds many betas. Check `df -h /` and ask before deleting anything.
+- Mini disk is tight (2.8 GB free on 10-16 blocked packaging; about 6 GB on 11-07, about 90 GB on 11-10). Each DMG is about 0.9–1.1 GB, and `apps/desktop/release*` already holds many betas. Check `df -h /` and ask before deleting anything.
 - A copied beta 6 DMG reported "The disk image is corrupted"; compare SHA-256 before and after copying and run `hdiutil verify`.
 
 ## Acceptance / verification
