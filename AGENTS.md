@@ -8,13 +8,13 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 - What it is: "万能 KTV". Turn a YouTube/Bilibili link or local media into a local karaoke package (MV, original, backing track, lyrics), then sing, record and mix in the Room. Clients: Electron **VocalFlow Studio** (`apps/desktop`, the main product), native Swift **VocalFlowMini** + Mac mini Agent (`apps/mac`), iPhone remote client (`apps/ios/VocalFlowMobile`), Remotion promo (`apps/promo`). The Python CLI `skills/audio-subtitles/scripts/generate_subtitles.py` is the processing source of truth.
 - Working checkout: Mac mini `~/Downloads/project/tars/audio-workflow-skills` (about 14 GB with `apps/` models; tracked files are only a few MB).
 - Website: `https://vocalflow.whothree.com` (Vercel project `vocalflow-site`, DNSPod CNAME to Vercel). Its source is not in this repo; it was built and deployed by the Grok Bot "VocalFlow" agent on 2026-11-03. Locate that source before changing the site; do not rebuild it from scratch.
-- Installer hosting: Cloudflare R2 (see Distribution). GitHub Releases carry the CI builds; the latest public GitHub release is still `v0.8.0-beta.5` (unsigned).
+- Installer hosting: Cloudflare R2 (see Distribution). GitHub Releases carry the CI builds; the latest public GitHub release is `v0.8.0-beta.10` (prerelease, 2026-11-12), which carries only the notarized Studio DMG; Windows and the native Mac client are still at `v0.8.0-beta.5` (unsigned).
 
 ## State as of 2026-11-10 (read before releasing)
 
 - All beta 6–9 work (queue/retry stores, partial playback, lyrics checks, notarized release scripts, smoke tests, docs) was committed and squash-merged into `main` as `cfa010c` (PR #5, 2026-11-09), on top of the security PRs #1–#4 (Electron 44.8.0). The mini checkout's `main` matches `origin/main`.
 - `apps/desktop/package.json` is `0.8.0-beta.10`.
-- Latest signed build: **0.8.0-beta.10**, built from `cfa010c` on 2026-11-10, Developer ID signed, notarized and stapled. It includes Electron 44.8.0 and the 2026-11-03 mobile QR-page change (search-first, Chinese default). It is in `apps/desktop/release-signed/0.8.0-beta.10/` on the mini; file, SHA-256 and checks are in `docs/testing-beta10.md`. It is not on R2 or GitHub Releases yet; the site still serves beta 9.
+- Latest signed build: **0.8.0-beta.10**, built from `cfa010c` on 2026-11-10, Developer ID signed, notarized and stapled. It includes Electron 44.8.0 and the 2026-11-03 mobile QR-page change (search-first, Chinese default). It is in `apps/desktop/release-signed/0.8.0-beta.10/` on the mini; file, SHA-256 and checks are in `docs/testing-beta10.md`. It is published as the GitHub prerelease `v0.8.0-beta.10` (2026-11-12); it is not on R2, and the site still serves beta 9.
 - Commit `cfa010c` put the signer's team name and ID into `docs/testing-beta9.md`; a later commit removed the line, but git history keeps it. Never paste `codesign -dv` or electron-builder signing lines into docs; they print team details.
 
 ## Commands
@@ -25,6 +25,7 @@ Instruction file for every coding agent. Read it first, then `AGENT.md` (archite
 - Lite installer: `pnpm dist:mac` / `dist:win`. Full offline installer: run `apps/desktop/scripts/fetch-bundled-models.sh`, then `pnpm dist:mac:offline` / `dist:win:offline`. Check: `node apps/desktop/scripts/verify-bundled-release.mjs <release-dir>`.
 - Native Mac: `apps/mac/VocalFlowMini/scripts/build-dmg.sh release` with `MACOS_SIGNING_IDENTITY`, `APPLE_NOTARY_KEYCHAIN_PROFILE`, `REQUIRE_BUNDLED_RUNTIME=1`.
 - CI release: push a `v*` tag (`git push origin v0.8.0-beta.N`). The `Desktop Release` workflow builds the native DMG, Studio DMG and Windows EXE, unsigned or ad-hoc. Signed and notarized builds are made locally on the mini.
+- Pitfall (2026-11-12): `desktop-release.yml` still hardcodes beta 5 (`VOCALFLOW_VERSION` for the native DMG, the release body and the dispatch default). Its release step also uploads an unsigned `VocalFlow.Studio-<ver>-mac-arm64.dmg`, the same asset name as the notarized one, and would replace it. Fix the workflow before using CI for a release. For beta 10 the release was made by hand: draft release with `--notes-file docs/releases/<tag>.md`, upload the notarized DMG, push the annotated tag, cancel the triggered run at once (`gh run cancel`), then publish. The upload from the mini took about 33 minutes.
 - Promo video: `pnpm promo`, `pnpm promo:render` (45 s 1920×1080 `VocalFlowIntro`).
 
 ## Release, signing and notarization (Studio DMG)

@@ -39,4 +39,10 @@ beta.10 由 `main` 的 `cfa010c` 构建，处理流程与 beta.9 相同。和 20
 - The phone remote page on a real phone.
 - Real-song lyric quality and real YouTube/Bilibili downloads. The download test used a local file server.
 - The ticket is stapled to the DMG only, not to the `.app`. First launch of the copied app without network access has not been tested.
-- Not uploaded to R2 and no GitHub release. The site's download button still points at beta.9.
+- Not uploaded to R2. The site's download button still points at beta.9.
+
+## GitHub prerelease — 2026-11-12
+
+- Published as prerelease `v0.8.0-beta.10` (annotated tag on `6904dc1`) with this DMG as the only asset, `VocalFlow.Studio-0.8.0-beta.10-mac-arm64.dmg`. Notes: `docs/releases/v0.8.0-beta.10.md`.
+- GitHub reports the uploaded asset as 1,152,855,754 bytes with digest `sha256:b64e225c…68192a`, matching the local file. The public download link redirects to the release-asset host.
+- The tag push triggered the `Desktop Release` workflow; that run was cancelled after about 11 seconds, before any job finished, so it published nothing.
