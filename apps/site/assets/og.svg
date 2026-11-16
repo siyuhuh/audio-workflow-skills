@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="g" x1="374.947" y1="241" x2="374.947" y2="574.117" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#92A688"/>
+      <stop offset="1" stop-color="white" stop-opacity="0.2"/>
+    </linearGradient>
+    <pattern id="bars" width="6" height="26" patternUnits="userSpaceOnUse">
+      <rect width="1" height="26" fill="#A9C29B" fill-opacity="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#0E130F"/>
+  <g transform="translate(72 64) scale(0.0746667)">
+    <rect width="750" height="750" rx="100" fill="#55624E"/>
+    <path d="M259.976 375.507L335.811 241H647.27L685.895 304.671L646.905 375.507H493.175L570.675 509.231L532.938 574.117H455.587L376.836 441.223L300.109 574.117H222.618L184.44 509.231H184.734L64 304.671L108.203 241H184.588L259.976 375.507Z" fill="url(#g)" stroke="white"/>
+  </g>
+  <text x="146" y="101" font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif" font-size="26" letter-spacing="1.6" fill="#E4E9DD"><tspan font-weight="700">VOCAL</tspan><tspan font-weight="400">FLOW</tspan></text>
+  <text x="1128" y="101" text-anchor="end" font-family="'SF Mono', Menlo, monospace" font-size="22" fill="#A4AE9B">0.8.0-beta.10</text>
+  <text x="72" y="210" font-family="'PingFang SC', 'Hiragino Sans GB', sans-serif" font-size="30" font-weight="600" fill="#A9C29B">万能 KTV</text>
+  <text font-family="'PingFang SC', 'Hiragino Sans GB', sans-serif" font-size="112" font-weight="600" fill="#EEF4E6">
+    <tspan x="66" y="338">一个链接，</tspan>
+    <tspan x="66" y="468">开一间 KTV。</tspan>
+  </text>
+  <rect x="72" y="528" width="1056" height="26" fill="url(#bars)"/>
+  <rect x="682" y="520" width="3" height="42" fill="#EEF4E6"/>
+  <text x="72" y="596" font-family="'PingFang SC', 'Hiragino Sans GB', sans-serif" font-size="22" fill="#A4AE9B">MV · 原唱 · 伴奏 · 歌词</text>
+  <text x="1128" y="596" text-anchor="end" font-family="'PingFang SC', 'Hiragino Sans GB', sans-serif" font-size="22" fill="#A4AE9B">macOS · Apple Silicon · 已通过 Apple 公证</text>
+</svg>
